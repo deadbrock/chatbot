@@ -1,0 +1,470 @@
+const { Op, fn, col, literal } = require('sequelize');
+const Ticket = require('../models/TicketSQL');
+const Session = require('../models/SessionSQL');
+const User = require('../models/UserSQL');
+const { ok, fail } = require('../utils/http');
+
+async function dashboard(req, res) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const ticketsToday = await Ticket.count({ where: { createdAt: { [Op.gte]: today } } });
+    const ticketsOpen = await Ticket.count({
+      where: { status: { [Op.in]: ['open', 'waiting_human', 'in_progress'] } }
+    });
+    const sessionsActive = await Session.count({ where: { active: true } });
+    const agentsOnline = await User.count({
+      where: { status: 'online', role: { [Op.in]: ['agent', 'manager'] } }
+    });
+
+    const avgRatingRow = await Ticket.findOne({
+      attributes: [[fn('AVG', col('rating')), 'avg']],
+      where: { rating: { [Op.ne]: null } },
+      raw: true
+    });
+
+    const avgResponseTimeRow = await Ticket.findOne({
+      attributes: [[literal("(AVG((strftime('%s', assignedAt) - strftime('%s', createdAt))) * 1000)"), 'avg']],
+      where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    return ok(res, {
+      ticketsToday,
+      ticketsOpen,
+      sessionsActive,
+      agentsOnline,
+      avgRating: Number(avgRatingRow?.avg || 0),
+      avgResponseTime: Number(avgResponseTimeRow?.avg || 0)
+    });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function ticketsByDepartment(req, res) {
+  try {
+    const rows = await Ticket.findAll({
+      attributes: [
+        [col('department'), '_id'],
+        [fn('COUNT', col('id')), 'count'],
+        [fn('SUM', literal("CASE WHEN status IN ('open','waiting_human','in_progress') THEN 1 ELSE 0 END")), 'open'],
+        [fn('SUM', literal("CASE WHEN status = 'closed' THEN 1 ELSE 0 END")), 'closed']
+      ],
+      group: ['department'],
+      order: [[literal('count'), 'DESC']],
+      raw: true
+    });
+    return ok(res, rows);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function ticketsByStatus(req, res) {
+  try {
+    const rows = await Ticket.findAll({
+      attributes: [[col('status'), '_id'], [fn('COUNT', col('id')), 'count']],
+      group: ['status'],
+      order: [[literal('count'), 'DESC']],
+      raw: true
+    });
+    return ok(res, rows);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function ticketsTimeline(req, res) {
+  try {
+    const days = parseInt(req.query.days, 10) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const groupExpr = literal("strftime('%Y-%m-%d', createdAt)");
+    const rows = await Ticket.findAll({
+      attributes: [[groupExpr, '_id'], [fn('COUNT', col('id')), 'count']],
+      where: { createdAt: { [Op.gte]: startDate } },
+      group: [groupExpr],
+      order: [[groupExpr, 'ASC']],
+      raw: true
+    });
+    return ok(res, rows);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function ratings(req, res) {
+  try {
+    const rows = await Ticket.findAll({
+      attributes: [[col('rating'), '_id'], [fn('COUNT', col('id')), 'count']],
+      where: { rating: { [Op.ne]: null } },
+      group: ['rating'],
+      order: [[col('rating'), 'ASC']],
+      raw: true
+    });
+    return ok(res, rows);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function agentsPerformance(req, res) {
+  try {
+    const rows = await Ticket.findAll({
+      attributes: [
+        ['assignedTo', '_id'],
+        [fn('COUNT', col('id')), 'totalTickets'],
+        [fn('AVG', col('rating')), 'avgRating'],
+        [fn('SUM', literal("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END")), 'resolved']
+      ],
+      where: { assignedTo: { [Op.ne]: null } },
+      group: ['assignedTo'],
+      order: [[literal('totalTickets'), 'DESC']],
+      limit: 10,
+      raw: true
+    });
+
+    const agentIds = rows.map(r => Number(r._id)).filter(n => Number.isFinite(n));
+    const agents = await User.findAll({
+      where: { id: { [Op.in]: agentIds } },
+      attributes: ['id', 'name'],
+      raw: true
+    });
+    const agentById = new Map(agents.map(a => [a.id, a.name]));
+
+    const data = rows.map(r => ({
+      ...r,
+      agentName: agentById.get(Number(r._id)) || `Agente #${r._id}`,
+      totalTickets: Number(r.totalTickets || 0),
+      resolved: Number(r.resolved || 0),
+      avgRating: Number(r.avgRating || 0)
+    }));
+
+    return ok(res, data);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+// ============================================
+// NOVAS MÉTRICAS AMANDA-STYLE
+// ============================================
+
+/**
+ * Métricas Estendidas - 11 Cards
+ * GET /api/analytics/metrics/extended
+ */
+async function extendedMetrics(req, res) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Tickets Ativos vs Passivos (simulação - adicionar campo 'type' ao modelo se necessário)
+    const ticketsAtivos = 0; // Tickets iniciados pela empresa
+    const ticketsPassivos = await Ticket.count({
+      where: { status: { [Op.in]: ['open', 'in_progress'] } }
+    });
+
+    // Em Atendimento
+    const ticketsAtendimento = await Ticket.count({
+      where: { status: 'in_progress' }
+    });
+
+    // Aguardando (na fila)
+    const ticketsAguardando = await Ticket.count({
+      where: { status: 'open' }
+    });
+
+    // Finalizados (no período)
+    const ticketsFinalizados = await Ticket.count({
+      where: { 
+        status: 'closed',
+        closedAt: { [Op.gte]: today }
+      }
+    });
+
+    // Mensagens (simulação - adicionar tracking de mensagens se necessário)
+    const msgsRecebidas = ticketsFinalizados * 3;
+    const msgsEnviadas = ticketsFinalizados * 5;
+
+    // Tempo médio de atendimento
+    const avgAtendimentoRow = await Ticket.findOne({
+      attributes: [[literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avg']],
+      where: { closedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    // Tempo médio de espera
+    const avgEsperaRow = await Ticket.findOne({
+      attributes: [[literal("AVG((julianday(assignedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    // Tickets por dia
+    const ticketsPorDia = Math.round(ticketsFinalizados / 1) || 0;
+
+    // Novos Contatos
+    const novosContatos = await Session.count({
+      where: { createdAt: { [Op.gte]: today } }
+    });
+
+    // Atendentes Ativos
+    const atendentesOnline = await User.count({
+      where: { status: 'online', role: { [Op.in]: ['agent', 'manager'] } }
+    });
+    const atendentesTotal = await User.count({
+      where: { role: { [Op.in]: ['agent', 'manager'] } }
+    });
+
+    return ok(res, {
+      ticketsAtivos,
+      ticketsPassivos,
+      ticketsAtendimento,
+      ticketsAguardando,
+      ticketsFinalizados,
+      msgsRecebidas,
+      msgsEnviadas,
+      tempoAtendimento: Math.round(avgAtendimentoRow?.avg || 0),
+      tempoEspera: Math.round(avgEsperaRow?.avg || 0),
+      ticketsPorDia,
+      novosContatos,
+      atendentesAtivos: `${atendentesOnline}/${atendentesTotal}`
+    });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Ranking de Contatos - Top 10
+ */
+async function contactsRanking(req, res) {
+  try {
+    const { limit = 10 } = req.query;
+
+    const rankings = await Ticket.findAll({
+      attributes: [
+        'userId',
+        [fn('COUNT', col('id')), 'ticketCount'],
+        [col('department'), 'department'],
+        [literal("SUM((julianday(closedAt) - julianday(createdAt)) * 1440)"), 'totalTime']
+      ],
+      where: { userId: { [Op.ne]: null } },
+      group: ['userId', 'department'],
+      order: [[literal('ticketCount'), 'DESC']],
+      limit: parseInt(limit),
+      raw: true
+    });
+
+    const formattedRankings = rankings.map(r => ({
+      userId: r.userId,
+      name: r.userId.split('@')[0],
+      ticketCount: parseInt(r.ticketCount),
+      department: r.department || 'Sem departamento',
+      totalTime: Math.round(r.totalTime || 0)
+    }));
+
+    return ok(res, formattedRankings);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Ranking de Atendentes
+ */
+async function agentsRanking(req, res) {
+  try {
+    const rankings = await Ticket.findAll({
+      attributes: [
+        'assignedTo',
+        [fn('COUNT', col('id')), 'ticketCount'],
+        [fn('AVG', col('rating')), 'avgRating'],
+        [literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avgTime']
+      ],
+      where: { assignedTo: { [Op.ne]: null } },
+      group: ['assignedTo'],
+      order: [[literal('ticketCount'), 'DESC']],
+      raw: true
+    });
+
+    const agentIds = rankings.map(r => r.assignedTo);
+    const agents = await User.findAll({
+      where: { id: { [Op.in]: agentIds } },
+      attributes: ['id', 'name', 'email', 'status'],
+      raw: true
+    });
+
+    const agentsMap = {};
+    agents.forEach(a => { agentsMap[a.id] = a; });
+
+    const formattedRankings = rankings.map(r => ({
+      agentId: r.assignedTo,
+      name: agentsMap[r.assignedTo]?.name || 'Desconhecido',
+      email: agentsMap[r.assignedTo]?.email,
+      status: agentsMap[r.assignedTo]?.status,
+      ticketCount: parseInt(r.ticketCount),
+      avgRating: parseFloat((r.avgRating || 0).toFixed(1)),
+      avgTime: Math.round(r.avgTime || 0)
+    }));
+
+    return ok(res, formattedRankings);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Métricas de Tempo
+ */
+async function timeMetrics(req, res) {
+  try {
+    const avgAtendimentoRow = await Ticket.findOne({
+      attributes: [[literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avg']],
+      where: { closedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    const avgEsperaRow = await Ticket.findOne({
+      attributes: [[literal("AVG((julianday(assignedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    const avgPrimeiraRespostaRow = await Ticket.findOne({
+      attributes: [[literal("AVG((julianday(firstResponseAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      where: { firstResponseAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
+      raw: true
+    });
+
+    const tempoAtendimento = Math.round(avgAtendimentoRow?.avg || 0);
+    const tempoEspera = Math.round(avgEsperaRow?.avg || 0);
+    const tempoPrimeiraResposta = Math.round(avgPrimeiraRespostaRow?.avg || 0);
+
+    return ok(res, {
+      tempoAtendimento,
+      tempoEspera,
+      tempoPrimeiraResposta,
+      total: tempoAtendimento + tempoEspera + tempoPrimeiraResposta
+    });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Atividade por Hora (0h-23h)
+ */
+async function hourlyActivity(req, res) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const hourlyData = await Ticket.findAll({
+      attributes: [
+        [literal("CAST(strftime('%H', createdAt) AS INTEGER)"), 'hour'],
+        [fn('COUNT', col('id')), 'count']
+      ],
+      where: { createdAt: { [Op.gte]: today } },
+      group: [literal("strftime('%H', createdAt)")],
+      order: [[literal('hour'), 'ASC']],
+      raw: true
+    });
+
+    const fullHours = Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
+    hourlyData.forEach(item => {
+      if (item.hour !== null) {
+        fullHours[item.hour].count = parseInt(item.count);
+      }
+    });
+
+    const maxCount = Math.max(...fullHours.map(h => h.count));
+    const peakHours = fullHours.filter(h => h.count === maxCount);
+    const peak = peakHours.length > 0
+      ? `Entre ${peakHours[0].hour}h e ${peakHours[peakHours.length - 1].hour}h (${maxCount})`
+      : 'N/A';
+
+    return ok(res, { hourly: fullHours, peak });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Distribuição por Canal
+ */
+async function channelDistribution(req, res) {
+  try {
+    const channels = await Ticket.findAll({
+      attributes: [
+        [col('channel'), 'channel'],
+        [fn('COUNT', col('id')), 'count']
+      ],
+      group: ['channel'],
+      order: [[literal('count'), 'DESC']],
+      raw: true
+    });
+
+    const total = channels.reduce((sum, c) => sum + parseInt(c.count), 0);
+    const distribution = channels.map(c => ({
+      channel: c.channel || 'whatsapp',
+      count: parseInt(c.count),
+      percentage: total > 0 ? Math.round((parseInt(c.count) / total) * 100) : 0
+    }));
+
+    return ok(res, { channels: distribution, totalChannels: channels.length, total });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+/**
+ * Distribuição por Departamento
+ */
+async function departmentDistribution(req, res) {
+  try {
+    const departments = await Ticket.findAll({
+      attributes: [
+        [col('department'), 'department'],
+        [fn('COUNT', col('id')), 'count']
+      ],
+      group: ['department'],
+      order: [[literal('count'), 'DESC']],
+      raw: true
+    });
+
+    const total = departments.reduce((sum, d) => sum + parseInt(d.count), 0);
+    const distribution = departments.map(d => ({
+      department: d.department || 'Sem departamento',
+      count: parseInt(d.count),
+      percentage: total > 0 ? Math.round((parseInt(d.count) / total) * 100) : 0
+    }));
+
+    return ok(res, { departments: distribution, totalDepartments: departments.length, total });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+module.exports = { 
+  dashboard, 
+  ticketsByDepartment, 
+  ticketsByStatus, 
+  ticketsTimeline, 
+  ratings, 
+  agentsPerformance,
+  // Novas métricas Amanda
+  extendedMetrics,
+  contactsRanking,
+  agentsRanking,
+  timeMetrics,
+  hourlyActivity,
+  channelDistribution,
+  departmentDistribution
+};
+
+

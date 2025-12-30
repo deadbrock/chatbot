@@ -1,0 +1,334 @@
+import { ensureAuth, getStoredUser, logout } from './auth.js';
+import { apiFetch } from './api.js';
+import { createToast } from './ui/toast.js';
+import { escapeHtml, debounce } from './ui/dom.js';
+import { initRouter, navigateToSection } from './router.js';
+import { connectSocket } from './socket.js';
+import { renderDashboard, renderDashboardCharts, renderRankings, renderAdditionalCharts } from './views/dashboardView.js';
+import { renderTickets, openTicketModal } from './views/ticketsView.js';
+import { renderSessions } from './views/sessionsView.js';
+import { renderAgents } from './views/agentsView.js';
+import { renderAnalytics } from './views/analyticsView.js';
+import { loadSettingsView } from './views/settingsView.js';
+import { renderKanban } from './views/kanbanView.js';
+import { renderQuickReplies } from './views/quickRepliesView.js';
+import { renderTags } from './views/tagsView.js';
+import { renderSchedules } from './views/schedulesView.js';
+import { renderContacts } from './views/contactsView.js';
+import { renderTicketStatuses } from './views/ticketStatusesView.js';
+import { renderQueues } from './views/queuesView.js';
+import { initCampaignsView } from './views/campaignsView.js';
+import { initBroadcastsView } from './views/broadcastsView.js';
+import { renderAutomations } from './views/automationsView.js';
+import { initAdministrationView } from './views/administrationView.js';
+import { initChatView, cleanupChatView } from './views/chatView.js';
+import { initWebhooksView } from './views/webhooksView.js';
+import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
+import { initThemeToggle } from './theme.js';
+
+const state = {
+  tickets: [],
+  sessions: [],
+  agents: []
+};
+
+function hydrateUser() {
+  const user = getStoredUser();
+  if (user?.name) {
+    const el = document.getElementById('userName');
+    if (el) el.textContent = user.name;
+  }
+}
+
+function wireEvents() {
+  document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    logout();
+  });
+
+  document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+    await loadDashboard();
+    createToast({ title: 'Atualizado', message: 'Dados atualizados com sucesso.', variant: 'success' });
+  });
+
+  // Tickets
+  document.getElementById('refreshTicketsBtn')?.addEventListener('click', () => loadTickets());
+  document.getElementById('ticketStatusFilter')?.addEventListener('change', () => loadTickets());
+  document.getElementById('ticketSearch')?.addEventListener('input', debounce(() => {
+    renderTickets({ tickets: state.tickets, apiFetch, createToast, escapeHtml });
+  }, 150));
+  document.getElementById('ticketModalSaveBtn')?.addEventListener('click', async () => {
+    const id = document.getElementById('ticketModal')?.dataset?.ticketId;
+    if (!id) return;
+    const status = document.getElementById('ticketModalStatus')?.value;
+    try {
+      await apiFetch(`/tickets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      createToast({ title: 'Salvo', message: 'Ticket atualizado com sucesso.', variant: 'success' });
+      await loadTickets();
+      await loadDashboard();
+    } catch (e) {
+      createToast({ title: 'Erro', message: e?.message || 'Falha ao salvar ticket.', variant: 'danger' });
+    }
+  });
+
+  // Abrir ticket a partir de qualquer lugar (ex: tabela de recentes no dashboard)
+  window.addEventListener('openTicket', async (ev) => {
+    const ticketId = ev?.detail?.ticketId;
+    if (!ticketId) return;
+    await openTicketModal({ ticketId, apiFetch, createToast, escapeHtml });
+  });
+
+  // Sessões
+  document.getElementById('refreshSessionsBtn')?.addEventListener('click', () => loadSessions());
+
+  // Atendentes
+  document.getElementById('refreshAgentsBtn')?.addEventListener('click', () => loadAgents());
+  document.getElementById('newAgentBtn')?.addEventListener('click', () => {
+    const modalEl = document.getElementById('newAgentModal');
+    if (!modalEl) return;
+    const modal = new window.bootstrap.Modal(modalEl);
+    modal.show();
+  });
+  document.getElementById('createAgentBtn')?.addEventListener('click', async () => {
+    const form = document.getElementById('newAgentForm');
+    if (!form) return;
+    const fd = new FormData(form);
+    const payload = Object.fromEntries(fd.entries());
+    try {
+      await apiFetch('/users', { method: 'POST', body: JSON.stringify(payload) });
+      createToast({ title: 'Criado', message: 'Atendente criado com sucesso.', variant: 'success' });
+      form.reset();
+      window.bootstrap.Modal.getInstance(document.getElementById('newAgentModal'))?.hide();
+      await loadAgents();
+    } catch (e) {
+      createToast({ title: 'Erro', message: e?.message || 'Falha ao criar atendente.', variant: 'danger' });
+    }
+  });
+
+  // Analytics
+  document.getElementById('refreshAnalyticsBtn')?.addEventListener('click', () => loadAnalytics());
+}
+
+async function loadDashboard() {
+  const [dashboardData, tickets, timelineRows, statusRows, extendedMetrics, npsData, contactsRanking, agentsRanking] = await Promise.all([
+    apiFetch('/analytics/dashboard'),
+    apiFetch('/tickets?limit=10'),
+    apiFetch('/analytics/tickets/timeline?days=30'),
+    apiFetch('/analytics/tickets/by-status'),
+    apiFetch('/analytics/metrics/extended').catch(() => null),
+    apiFetch('/nps/score').catch(() => null),
+    apiFetch('/analytics/rankings/contacts?limit=10').catch(() => null),
+    apiFetch('/analytics/rankings/agents').catch(() => null)
+  ]);
+
+  renderDashboard({ data: dashboardData, tickets, extendedMetrics, npsData, escapeHtml });
+  renderDashboardCharts({ timelineRows, statusRows });
+  
+  // Renderizar rankings
+  if (contactsRanking || agentsRanking) {
+    renderRankings({ contacts: contactsRanking, agents: agentsRanking });
+  }
+  
+  // Renderizar gráficos adicionais
+  await renderAdditionalCharts({ apiFetch });
+  
+  await checkSystemStatus();
+}
+
+async function loadTickets() {
+  const status = document.getElementById('ticketStatusFilter')?.value || '';
+  const qs = new URLSearchParams();
+  if (status) qs.set('status', status);
+  qs.set('limit', '200');
+
+  state.tickets = await apiFetch(`/tickets?${qs.toString()}`);
+  renderTickets({ tickets: state.tickets, apiFetch, createToast, escapeHtml });
+}
+
+async function loadSessions() {
+  state.sessions = await apiFetch('/sessions');
+  renderSessions({ sessions: state.sessions, apiFetch, createToast, escapeHtml });
+}
+
+async function loadAgents() {
+  state.agents = await apiFetch('/users');
+  renderAgents({ agents: state.agents, apiFetch, createToast, escapeHtml });
+}
+
+async function loadAnalytics() {
+  const [byDept, ratings, perf] = await Promise.all([
+    apiFetch('/analytics/tickets/by-department'),
+    apiFetch('/analytics/ratings'),
+    apiFetch('/analytics/agents/performance')
+  ]);
+
+  renderAnalytics({ byDept, ratings, perf, createToast, escapeHtml });
+}
+
+async function loadKanban() {
+  await renderKanban({ apiFetch, createToast, escapeHtml });
+}
+
+async function loadQuickReplies() {
+  await renderQuickReplies({ apiFetch, createToast, escapeHtml });
+}
+
+async function loadTags() {
+  await renderTags({ apiFetch, createToast, escapeHtml });
+}
+
+async function loadChat() {
+  await initChatView();
+}
+
+async function loadSchedules() {
+  await renderSchedules({ apiFetch, createToast, escapeHtml });
+}
+
+async function loadContacts() {
+  await renderContacts();
+}
+
+async function loadTicketStatuses() {
+  await renderTicketStatuses();
+}
+
+async function loadQueues() {
+  await renderQueues();
+}
+
+async function loadCampaigns() {
+  await initCampaignsView();
+}
+
+async function loadBroadcasts() {
+  await initBroadcastsView();
+}
+
+async function loadAutomations() {
+  await renderAutomations();
+}
+
+async function loadAdministration() {
+  await initAdministrationView();
+}
+
+async function loadWebhooks() {
+  await initWebhooksView();
+}
+
+async function loadExecutiveDashboard() {
+  await initExecutiveDashboardView();
+}
+
+async function checkSystemStatus() {
+  try {
+    const resp = await fetch('/health');
+    const json = await resp.json();
+    document.getElementById('whatsappStatus').textContent = json.whatsapp ? 'Online' : 'Offline';
+    document.getElementById('dbStatus').textContent = json.database ? 'Online' : 'Offline';
+  } catch (_) {
+    // silencioso
+  }
+}
+
+async function onSectionChange(section) {
+  switch (section) {
+    case 'dashboard':
+      await loadDashboard();
+      break;
+    case 'tickets':
+      await loadTickets();
+      break;
+    case 'sessions':
+      await loadSessions();
+      break;
+    case 'agents':
+      await loadAgents();
+      break;
+    case 'analytics':
+      await loadAnalytics();
+      break;
+    case 'kanban':
+      await loadKanban();
+      break;
+    case 'quick-replies':
+      await loadQuickReplies();
+      break;
+    case 'tags':
+      await loadTags();
+      break;
+    case 'chat':
+      await loadChat();
+      break;
+    case 'schedules':
+      await loadSchedules();
+      break;
+    case 'contacts':
+      await loadContacts();
+      break;
+    case 'ticketStatuses':
+      await loadTicketStatuses();
+      break;
+    case 'queues':
+      await loadQueues();
+      break;
+    case 'campaigns':
+      await loadCampaigns();
+      break;
+    case 'broadcasts':
+      await loadBroadcasts();
+      break;
+    case 'automations':
+      await loadAutomations();
+      break;
+    case 'administration':
+      await loadAdministration();
+      break;
+    case 'webhooks':
+      await loadWebhooks();
+      break;
+    case 'executive-dashboard':
+      await loadExecutiveDashboard();
+      break;
+    case 'settings':
+      await loadSettingsView();
+      break;
+  }
+}
+
+async function init() {
+  if (!ensureAuth()) return;
+  initThemeToggle();
+  hydrateUser();
+  wireEvents();
+  initRouter(onSectionChange);
+
+  connectSocket({
+    onNewTicket: (data) => {
+      createToast({ title: 'Novo ticket', message: `Ticket ${data.protocol} criado.`, variant: 'primary' });
+      loadDashboard();
+      // se estiver na aba tickets, atualiza também
+      if (location.hash.includes('tickets')) loadTickets();
+    },
+    onTicketUpdated: () => {
+      loadDashboard();
+      if (location.hash.includes('tickets')) loadTickets();
+    },
+    onNewSession: () => {
+      loadDashboard();
+      if (location.hash.includes('sessions')) loadSessions();
+    }
+  });
+
+  // primeira carga baseada no hash
+  const initial = (location.hash || '#dashboard').replace('#', '');
+  navigateToSection(initial);
+}
+
+init().catch((e) => {
+  console.error(e);
+  createToast({ title: 'Erro', message: e?.message || 'Falha ao iniciar painel.', variant: 'danger' });
+});
+
+

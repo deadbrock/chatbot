@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:6
+    container_name: chatbot-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: senha123
+      MONGO_INITDB_DATABASE: chatbot_whatsapp
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - chatbot-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chatbot-network
+
+  # Chatbot Application
+  chatbot:
+    build: .
+    container_name: chatbot-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://admin:senha123@mongodb:27017/chatbot_whatsapp?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./temp:/app/temp
+      - ./config:/app/config
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      - ./.wwebjs_cache:/app/.wwebjs_cache
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - chatbot-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  chatbot-network:
+    driver: bridge
+

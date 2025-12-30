@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conectar WhatsApp - Simples</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #075e54 0%, #128c7e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+        .connect-box {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .whatsapp-icon {
+            font-size: 80px;
+            color: #25D366;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #075e54;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .qr-container {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin: 20px 0;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .qr-container img {
+            max-width: 250px;
+            border: 3px solid #25D366;
+            border-radius: 10px;
+            padding: 10px;
+            background: white;
+        }
+        .btn-whatsapp {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 10px;
+            width: 100%;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-whatsapp:hover {
+            background: #1ea952;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(37,211,102,0.3);
+        }
+        .btn-whatsapp:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .status-connecting {
+            background: #ffc107;
+            color: #000;
+        }
+        .status-connected {
+            background: #28a745;
+            color: white;
+        }
+        .status-error {
+            background: #dc3545;
+            color: white;
+        }
+        .console-log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .console-log div {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="connect-box">
+        <div class="whatsapp-icon">
+            <i class="bi bi-whatsapp"></i>
+        </div>
+        <h1>Conectar WhatsApp</h1>
+        
+        <div id="statusContainer" class="text-center"></div>
+        
+        <div class="qr-container" id="qrContainer">
+            <div class="spinner-border text-success" role="status" id="spinner" style="display: none;">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p id="qrMessage">Clique no botão abaixo para iniciar a conexão</p>
+            <img id="qrImage" style="display: none;" alt="QR Code">
+        </div>
+        
+        <button class="btn btn-whatsapp" id="btnConnect">
+            <i class="bi bi-power"></i> Iniciar Conexão
+        </button>
+        
+        <div class="console-log" id="consoleLog">
+            <div><strong>[CONSOLE]</strong> Aguardando ação...</div>
+        </div>
+    </div>
+
+    <script>
+        const log = (message, type = 'info') => {
+            const consoleLog = document.getElementById('consoleLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = type === 'error' ? '❌' : type === 'success' ? '✅' : '📝';
+            const div = document.createElement('div');
+            div.innerHTML = `<strong>[${timestamp}]</strong> ${icon} ${message}`;
+            consoleLog.appendChild(div);
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+            console.log(message);
+        };
+
+        const showStatus = (message, type) => {
+            const statusContainer = document.getElementById('statusContainer');
+            const className = `status-${type}`;
+            statusContainer.innerHTML = `<div class="status-badge ${className}">${message}</div>`;
+        };
+
+        const btnConnect = document.getElementById('btnConnect');
+        const qrMessage = document.getElementById('qrMessage');
+        const qrImage = document.getElementById('qrImage');
+        const spinner = document.getElementById('spinner');
+
+        let checkInterval = null;
+
+        btnConnect.addEventListener('click', async () => {
+            log('Botão clicado! Iniciando processo...', 'info');
+            btnConnect.disabled = true;
+            spinner.style.display = 'block';
+            qrMessage.textContent = 'Iniciando conexão...';
+            showStatus('Conectando...', 'connecting');
+
+            try {
+                log('📡 Fazendo requisição POST /api/whatsapp/connect', 'info');
+                
+                const response = await fetch('/api/whatsapp/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                log(`📥 Resposta HTTP ${response.status}`, 'info');
+                
+                const data = await response.json();
+                log(`📦 Dados recebidos: ${JSON.stringify(data)}`, 'info');
+
+                if (data.success) {
+                    log('✅ Conexão iniciada com sucesso!', 'success');
+                    qrMessage.textContent = 'Aguardando QR Code...';
+                    startQRCodeCheck();
+                } else {
+                    throw new Error(data.message || 'Erro desconhecido');
+                }
+            } catch (error) {
+                log(`❌ ERRO: ${error.message}`, 'error');
+                showStatus('Erro: ' + error.message, 'error');
+                qrMessage.textContent = 'Erro ao conectar. Tente novamente.';
+                spinner.style.display = 'none';
+                btnConnect.disabled = false;
+            }
+        });
+
+        async function startQRCodeCheck() {
+            log('🔍 Iniciando verificação de QR Code...', 'info');
+            
+            checkInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/whatsapp/qrcode');
+                    const data = await response.json();
+
+                    if (data.success && data.data && data.data.qrcode) {
+                        log('✅ QR Code recebido!', 'success');
+                        qrImage.src = data.data.qrcode;
+                        qrImage.style.display = 'block';
+                        qrMessage.textContent = `QR Code expira em ${data.data.expiresIn} segundos`;
+                        spinner.style.display = 'none';
+                        showStatus('QR Code disponível!', 'connected');
+                        
+                        // Verificar conexão a cada 3 segundos
+                        startConnectionCheck();
+                    } else if (data.data && data.data.connected) {
+                        log('✅ WhatsApp conectado!', 'success');
+                        clearInterval(checkInterval);
+                        qrImage.style.display = 'none';
+                        qrMessage.textContent = 'WhatsApp conectado com sucesso!';
+                        spinner.style.display = 'none';
+                        showStatus('Conectado!', 'connected');
+                        btnConnect.textContent = '✅ Conectado!';
+                    }
+                } catch (error) {
+                    log(`⚠️ Erro ao buscar QR Code: ${error.message}`, 'error');
+                }
+            }, 2000); // Verificar a cada 2 segundos
+        }
+
+        async function startConnectionCheck() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/whatsapp/status');
+                    const data = await response.json();
+
+                    if (data.success && data.data && data.data.connected) {
+                        log('🎉 WhatsApp conectado com sucesso!', 'success');
+                        clearInterval(checkInterval);
+                        qrImage.style.display = 'none';
+                        qrMessage.innerHTML = `<strong>✅ Conectado!</strong><br>Número: ${data.data.phoneNumber}`;
+                        spinner.style.display = 'none';
+                        showStatus('Conectado!', 'connected');
+                        btnConnect.textContent = '✅ Conectado!';
+                        btnConnect.disabled = true;
+                    }
+                } catch (error) {
+                    log(`⚠️ Erro ao verificar status: ${error.message}`, 'error');
+                }
+            }, 3000); // Verificar a cada 3 segundos
+        }
+
+        // Verificar status ao carregar
+        window.addEventListener('DOMContentLoaded', async () => {
+            log('🌐 Página carregada. Verificando status...', 'info');
+            
+            try {
+                const response = await fetch('/api/whatsapp/status');
+                const data = await response.json();
+
+                if (data.success && data.data) {
+                    if (data.data.connected) {
+                        log('✅ WhatsApp já está conectado!', 'success');
+                        qrMessage.innerHTML = `<strong>✅ Já conectado!</strong><br>Número: ${data.data.phoneNumber}`;
+                        showStatus('Conectado!', 'connected');
+                        btnConnect.textContent = '✅ Já Conectado';
+                        btnConnect.disabled = true;
+                    } else {
+                        log('📱 WhatsApp não conectado. Aguardando ação do usuário.', 'info');
+                    }
+                }
+            } catch (error) {
+                log(`⚠️ Erro ao verificar status inicial: ${error.message}`, 'error');
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,331 @@
+/* Administration Section Styles */
+
+/* Tab Content */
+.admin-tab-content {
+    display: none;
+}
+
+.admin-tab-content.active {
+    display: block;
+}
+
+/* API Keys */
+.api-key-display {
+    font-family: 'Courier New', monospace;
+    background-color: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    display: inline-block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.api-key-display:hover {
+    overflow: visible;
+    white-space: normal;
+    word-break: break-all;
+}
+
+body.dark-mode .api-key-display {
+    background-color: #2b3035;
+    color: #e0e0e0;
+}
+
+/* Connection Cards */
+.connection-card {
+    border-left: 4px solid #198754;
+    transition: all 0.3s ease;
+    margin-bottom: 20px;
+}
+
+.connection-card.disconnected {
+    border-left-color: #dc3545;
+}
+
+.connection-card.connecting {
+    border-left-color: #ffc107;
+}
+
+.connection-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* QR Code Display */
+.qr-code-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    min-height: 300px;
+}
+
+.qr-code-container img {
+    max-width: 100%;
+    height: auto;
+}
+
+body.dark-mode .qr-code-container {
+    background: #2b3035;
+}
+
+/* Settings */
+.setting-item {
+    padding: 15px;
+    border-bottom: 1px solid #dee2e6;
+    transition: background-color 0.2s;
+}
+
+.setting-item:hover {
+    background-color: #f8f9fa;
+}
+
+.setting-item:last-child {
+    border-bottom: none;
+}
+
+.setting-label {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.setting-description {
+    font-size: 0.85em;
+    color: #6c757d;
+    margin-bottom: 10px;
+}
+
+.setting-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+body.dark-mode .setting-item {
+    border-bottom-color: #495057;
+}
+
+body.dark-mode .setting-item:hover {
+    background-color: #212529;
+}
+
+body.dark-mode .setting-description {
+    color: #adb5bd;
+}
+
+/* Roles */
+.role-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.role-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.role-card.role-admin {
+    border-left: 4px solid #dc3545;
+}
+
+.role-card.role-manager {
+    border-left: 4px solid #0dcaf0;
+}
+
+.role-card.role-agent {
+    border-left: 4px solid #198754;
+}
+
+.role-card.role-viewer {
+    border-left: 4px solid #6c757d;
+}
+
+.permission-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 2px;
+    background: #e7f3ff;
+    border-radius: 4px;
+    font-size: 0.85em;
+    border: 1px solid #b3d9ff;
+}
+
+body.dark-mode .role-card {
+    border-color: #495057;
+    background-color: #212529;
+}
+
+body.dark-mode .permission-badge {
+    background: #1e3a5f;
+    color: #a8d0ff;
+    border-color: #2c5282;
+}
+
+/* Status Badges */
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.status-badge.status-active {
+    background-color: #d1f4e0;
+    color: #198754;
+}
+
+.status-badge.status-inactive {
+    background-color: #f8d7da;
+    color: #dc3545;
+}
+
+.status-badge.status-pending {
+    background-color: #fff3cd;
+    color: #ffc107;
+}
+
+body.dark-mode .status-badge.status-active {
+    background-color: #1a4d2e;
+    color: #4ade80;
+}
+
+body.dark-mode .status-badge.status-inactive {
+    background-color: #5c1a1a;
+    color: #fca5a5;
+}
+
+body.dark-mode .status-badge.status-pending {
+    background-color: #5c4d1a;
+    color: #fde047;
+}
+
+/* Tables */
+.table-hover tbody tr {
+    transition: background-color 0.2s;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+body.dark-mode .table {
+    color: #e0e0e0;
+}
+
+body.dark-mode .table-hover tbody tr:hover {
+    background-color: #2b3035;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.action-buttons .btn {
+    padding: 4px 8px;
+    font-size: 0.85em;
+}
+
+/* Forms */
+.form-section {
+    margin-bottom: 20px;
+}
+
+.form-section-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #dee2e6;
+}
+
+body.dark-mode .form-section-title {
+    border-bottom-color: #495057;
+}
+
+/* Statistics */
+.admin-stat-card {
+    text-align: center;
+    padding: 20px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-bottom: 20px;
+}
+
+.admin-stat-value {
+    font-size: 2.5em;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.admin-stat-label {
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .admin-tab-content {
+        padding: 10px;
+    }
+    
+    .role-card {
+        padding: 15px;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .action-buttons .btn {
+        width: 100%;
+    }
+}
+
+/* Loading States */
+.loading-overlay {
+    position: relative;
+}
+
+.loading-overlay::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.dark-mode .loading-overlay::after {
+    background: rgba(33, 37, 41, 0.8);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.admin-tab-content.active {
+    animation: fadeIn 0.3s ease;
+}

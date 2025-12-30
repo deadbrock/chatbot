@@ -1,0 +1,185 @@
+<!-- ADICIONAR ESTA SEÇÃO NO index.html ANTES DE "Settings Section" -->
+
+                <!-- Executive Dashboard Section -->
+                <div id="executiveDashboardSection" class="content-section">
+                    <!-- Toolbar -->
+                    <div class="dashboard-toolbar">
+                        <div>
+                            <h1>Dashboard Executivo</h1>
+                            <p class="text-muted mb-0">Visão geral e análises do negócio</p>
+                        </div>
+                        <div class="dashboard-actions">
+                            <button class="btn btn-outline-primary" id="refreshDashboard">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar
+                            </button>
+                            <button class="btn btn-outline-success btn-export" id="exportDashboard">
+                                <i class="bi bi-download"></i> Exportar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="dashboard-filters">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label">Data Inicial</label>
+                                <input type="date" class="form-control" id="dashboardStartDate" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Data Final</label>
+                                <input type="date" class="form-control" id="dashboardEndDate" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Período Rápido</label>
+                                <div class="quick-period-buttons">
+                                    <button class="btn btn-sm btn-outline-secondary" id="period7days">Últimos 7 dias</button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="period30days">Últimos 30 dias</button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="period90days">Últimos 90 dias</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KPIs -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4 col-lg">
+                            <div class="card kpi-card tickets h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Total de Tickets</div>
+                                    <div class="kpi-value" id="kpiTotalTicketsValue">0</div>
+                                    <div class="kpi-variation" id="kpiTotalTicketsVariation">
+                                        <span class="text-muted">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg">
+                            <div class="card kpi-card resolution h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Tempo Médio Resolução</div>
+                                    <div class="kpi-value" id="kpiAvgResolutionTimeValue">0min</div>
+                                    <div class="kpi-variation" id="kpiAvgResolutionTimeVariation">
+                                        <span class="text-muted">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg">
+                            <div class="card kpi-card nps h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">NPS Score</div>
+                                    <div class="kpi-value" id="kpiNpsScoreValue">0</div>
+                                    <div class="kpi-variation" id="kpiNpsScoreVariation">
+                                        <span class="text-muted">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg">
+                            <div class="card kpi-card conversion h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Taxa de Conversão</div>
+                                    <div class="kpi-value" id="kpiConversionRateValue">0%</div>
+                                    <div class="kpi-variation" id="kpiConversionRateVariation">
+                                        <span class="text-muted">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg">
+                            <div class="card kpi-card agents h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Agentes Ativos</div>
+                                    <div class="kpi-value" id="kpiActiveAgentsValue">0</div>
+                                    <div class="kpi-variation" id="kpiActiveAgentsVariation">
+                                        <span class="text-muted">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row 1 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-8">
+                            <div class="chart-card">
+                                <h5>Evolução de Tickets</h5>
+                                <div class="chart-container large">
+                                    <canvas id="ticketsTimelineChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="chart-card">
+                                <h5>Distribuição Semanal</h5>
+                                <div class="chart-container">
+                                    <canvas id="weekdayChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row 2 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5>Mensagens Recebidas vs Enviadas</h5>
+                                <div class="chart-container">
+                                    <canvas id="messagesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5>Evolução do NPS</h5>
+                                <div class="chart-container">
+                                    <canvas id="npsChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row 3 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-12">
+                            <div class="chart-card">
+                                <h5>Atividade por Hora do Dia</h5>
+                                <div class="chart-container">
+                                    <canvas id="hourHeatmapChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row 4 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5>Tickets por Fila</h5>
+                                <div class="chart-container">
+                                    <canvas id="queuesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5>Top 10 Agentes</h5>
+                                <div class="chart-container">
+                                    <canvas id="agentsChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+<!-- TAMBÉM ADICIONAR NO <head> -->
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Moment.js (se ainda não tiver) -->
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
+
+<!-- CSS do Dashboard -->
+<link rel="stylesheet" href="/css/executive-dashboard.css">
+

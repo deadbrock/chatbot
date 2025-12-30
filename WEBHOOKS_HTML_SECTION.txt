@@ -1,0 +1,288 @@
+<!-- ADICIONAR ESTA SEÇÃO NO index.html ANTES DE "Settings Section" -->
+
+                <!-- Webhooks Section -->
+                <div id="webhooksSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Webhooks</h1>
+                            <div class="page-subtitle text-muted">Gerencie webhooks para integração com sistemas externos</div>
+                        </div>
+                        <div>
+                            <button class="btn btn-primary" id="createWebhookBtn">
+                                <i class="bi bi-plus-lg"></i> Criar Webhook
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Estatísticas -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-primary" id="totalWebhooks">0</h3>
+                                    <small class="text-muted">Total de Webhooks</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-success" id="activeWebhooks">0</h3>
+                                    <small class="text-muted">Ativos</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-info" id="totalWebhookCalls">0</h3>
+                                    <small class="text-muted">Total de Chamadas</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-warning" id="globalSuccessRate">0%</h3>
+                                    <small class="text-muted">Taxa de Sucesso</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Buscar</label>
+                                    <input type="text" class="form-control" id="webhookSearchInput" placeholder="Buscar webhooks...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" id="webhookStatusFilter">
+                                        <option value="">Todos</option>
+                                        <option value="true">Ativo</option>
+                                        <option value="false">Inativo</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Evento</label>
+                                    <select class="form-select" id="webhookEventFilter">
+                                        <option value="">Todos os eventos</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Webhooks -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Webhook</th>
+                                            <th>Status</th>
+                                            <th>Método</th>
+                                            <th>Eventos</th>
+                                            <th>Estatísticas</th>
+                                            <th>Último Disparo</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="webhooksTableBody">
+                                        <tr>
+                                            <td colspan="7" class="text-center">Carregando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Webhook -->
+                <div class="modal fade" id="webhookModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Criar Webhook</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" id="webhookId">
+                                
+                                <!-- Informações Básicas -->
+                                <div class="mb-3">
+                                    <label class="form-label">Nome *</label>
+                                    <input type="text" class="form-control" id="webhookName" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Descrição</label>
+                                    <textarea class="form-control" id="webhookDescription" rows="2"></textarea>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-md-9">
+                                        <label class="form-label">URL *</label>
+                                        <input type="url" class="form-control" id="webhookUrl" placeholder="https://..." required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Método</label>
+                                        <select class="form-select" id="webhookMethod">
+                                            <option value="POST">POST</option>
+                                            <option value="GET">GET</option>
+                                            <option value="PUT">PUT</option>
+                                            <option value="PATCH">PATCH</option>
+                                            <option value="DELETE">DELETE</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Eventos -->
+                                <div class="mb-3">
+                                    <label class="form-label">Eventos *</label>
+                                    <div id="webhookEventsContainer" style="max-height: 300px; overflow-y: auto;" class="border rounded p-3">
+                                        <!-- Eventos serão carregados aqui -->
+                                    </div>
+                                </div>
+                                
+                                <!-- Configurações Avançadas -->
+                                <div class="accordion" id="webhookAdvanced">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings">
+                                                Configurações Avançadas
+                                            </button>
+                                        </h2>
+                                        <div id="advancedSettings" class="accordion-collapse collapse" data-bs-parent="#webhookAdvanced">
+                                            <div class="accordion-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Secret (para assinatura HMAC)</label>
+                                                    <input type="text" class="form-control" id="webhookSecret" placeholder="Deixe vazio para gerar automaticamente">
+                                                    <small class="text-muted">Usado para assinar o payload com HMAC-SHA256</small>
+                                                </div>
+                                                
+                                                <div class="row mb-3">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Tentativas de Retry</label>
+                                                        <input type="number" class="form-control" id="webhookRetryAttempts" min="0" max="10" value="3">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Delay (segundos)</label>
+                                                        <input type="number" class="form-control" id="webhookRetryDelay" min="1" max="3600" value="60">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Timeout (segundos)</label>
+                                                        <input type="number" class="form-control" id="webhookTimeout" min="5" max="300" value="30">
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" id="webhookIsActive" checked>
+                                                    <label class="form-check-label" for="webhookIsActive">
+                                                        Webhook ativo
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="button" class="btn btn-primary" id="saveWebhookBtn">Salvar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Detalhes do Webhook -->
+                <div class="modal fade" id="webhookDetailsModal" tabindex="-1">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Detalhes do Webhook</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- Informações -->
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6 class="text-primary">Informações Básicas</h6>
+                                        <table class="table table-sm">
+                                            <tr>
+                                                <td><strong>Nome:</strong></td>
+                                                <td id="detailsWebhookName"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>URL:</strong></td>
+                                                <td id="detailsWebhookUrl"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Método:</strong></td>
+                                                <td id="detailsWebhookMethod"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Status:</strong></td>
+                                                <td id="detailsWebhookStatus"></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6 class="text-primary">Estatísticas</h6>
+                                        <table class="table table-sm">
+                                            <tr>
+                                                <td><strong>Sucessos:</strong></td>
+                                                <td id="detailsSuccessCount"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Falhas:</strong></td>
+                                                <td id="detailsFailureCount"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Taxa de Sucesso:</strong></td>
+                                                <td id="detailsSuccessRate"></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Tempo Médio:</strong></td>
+                                                <td id="detailsAvgResponseTime"></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- Eventos -->
+                                <div class="mb-4">
+                                    <h6 class="text-primary">Eventos Monitorados</h6>
+                                    <div id="detailsWebhookEvents"></div>
+                                </div>
+                                
+                                <!-- Último Disparo -->
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6 class="text-primary">Último Disparo</h6>
+                                        <p id="detailsLastTriggered" class="mb-0"></p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6 class="text-primary">Status do Último Disparo</h6>
+                                        <div id="detailsLastStatus"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Logs Recentes -->
+                                <div>
+                                    <h6 class="text-primary">Logs Recentes</h6>
+                                    <div id="detailsRecentLogs"></div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+

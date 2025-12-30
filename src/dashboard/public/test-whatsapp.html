@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste WhatsApp API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #128C7E;
+        }
+        #resultado {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #25D366;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        h1 {
+            color: #333;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste de API WhatsApp</h1>
+        
+        <div class="info">
+            <strong>ℹ️ Instruções:</strong> Clique nos botões abaixo para testar cada endpoint. 
+            Os resultados aparecerão logo abaixo e também no console do navegador (F12).
+        </div>
+        
+        <div>
+            <button onclick="testarStatus()">1️⃣ Testar Status</button>
+            <button onclick="testarConectar()">2️⃣ Testar Conectar</button>
+            <button onclick="testarQRCode()">3️⃣ Testar QR Code</button>
+            <button onclick="limpar()">🗑️ Limpar</button>
+        </div>
+        
+        <div id="resultado"></div>
+    </div>
+
+    <script>
+        function log(mensagem, tipo = 'info') {
+            const div = document.getElementById('resultado');
+            const agora = new Date().toLocaleTimeString();
+            const texto = `[${agora}] ${mensagem}\n`;
+            
+            div.textContent += texto;
+            div.className = tipo === 'success' ? 'success' : (tipo === 'error' ? 'error' : '');
+            div.scrollTop = div.scrollHeight;
+            
+            console.log(mensagem);
+        }
+
+        async function testarStatus() {
+            log('📡 Testando GET /api/whatsapp/status...');
+            
+            try {
+                const response = await fetch('/api/whatsapp/status');
+                log(`Status HTTP: ${response.status}`);
+                
+                const data = await response.json();
+                log('Resposta:\n' + JSON.stringify(data, null, 2), 'success');
+                
+                if (data.success) {
+                    log('✅ API está funcionando!', 'success');
+                    if (data.data.connected) {
+                        log('✅ WhatsApp JÁ ESTÁ CONECTADO!', 'success');
+                    } else {
+                        log('⚠️ WhatsApp não conectado ainda', 'info');
+                    }
+                }
+            } catch (error) {
+                log('❌ ERRO: ' + error.message, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        async function testarConectar() {
+            log('📡 Testando POST /api/whatsapp/connect...');
+            
+            try {
+                const response = await fetch('/api/whatsapp/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                log(`Status HTTP: ${response.status}`);
+                
+                const data = await response.json();
+                log('Resposta:\n' + JSON.stringify(data, null, 2), 'success');
+                
+                if (data.success) {
+                    log('✅ Conexão iniciada com sucesso!', 'success');
+                    log('⏳ Aguarde 5 segundos e clique em "Testar QR Code"', 'info');
+                } else {
+                    log('⚠️ ' + data.message, 'error');
+                }
+            } catch (error) {
+                log('❌ ERRO: ' + error.message, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        async function testarQRCode() {
+            log('📡 Testando GET /api/whatsapp/qrcode...');
+            
+            try {
+                const response = await fetch('/api/whatsapp/qrcode');
+                log(`Status HTTP: ${response.status}`);
+                
+                const data = await response.json();
+                log('Resposta:\n' + JSON.stringify(data, null, 2), 'success');
+                
+                if (data.success && data.data.qrcode) {
+                    log('✅ QR Code disponível!', 'success');
+                    log('🔗 QR Code tem ' + data.data.qrcode.length + ' caracteres', 'info');
+                    
+                    // Criar imagem do QR Code
+                    const img = document.createElement('img');
+                    img.src = data.data.qrcode;
+                    img.style.maxWidth = '300px';
+                    img.style.marginTop = '10px';
+                    document.getElementById('resultado').appendChild(img);
+                    
+                    log('📱 QR Code exibido acima! Escaneie com seu WhatsApp!', 'success');
+                } else if (data.data && data.data.connected) {
+                    log('✅ WhatsApp já está conectado!', 'success');
+                } else {
+                    log('⚠️ QR Code ainda não disponível. Tente novamente em alguns segundos.', 'info');
+                }
+            } catch (error) {
+                log('❌ ERRO: ' + error.message, 'error');
+                log('Stack: ' + error.stack, 'error');
+            }
+        }
+
+        function limpar() {
+            document.getElementById('resultado').textContent = '';
+            document.getElementById('resultado').className = '';
+            log('🗑️ Resultado limpo. Pronto para novo teste!');
+        }
+
+        // Teste automático ao carregar
+        window.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Página de teste carregada!');
+            log('👉 Clique em "1️⃣ Testar Status" para começar');
+        });
+    </script>
+</body>
+</html>
+

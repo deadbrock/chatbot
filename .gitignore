@@ -1,0 +1,12 @@
+node_modules/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+logs/
+uploads/
+temp/
+*.log
+config/google-credentials.json
+package-lock.json
+.DS_Store
+

@@ -1,0 +1,186 @@
+/**
+ * Metric Cards - Estilo Amanda
+ * Cards de métricas coloridos com gradientes
+ */
+
+.metric-card {
+    border-radius: 12px;
+    padding: 1.25rem;
+    color: white;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: none;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    z-index: 0;
+}
+
+.metric-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    position: relative;
+    z-index: 1;
+}
+
+.metric-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.95;
+}
+
+.metric-header i {
+    font-size: 1.25rem;
+    opacity: 0.7;
+}
+
+.metric-value {
+    font-size: 2.25rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    position: relative;
+    z-index: 1;
+}
+
+.metric-subtitle {
+    font-size: 0.7rem;
+    opacity: 0.85;
+    position: relative;
+    z-index: 1;
+}
+
+/* Variantes de cor (Amanda Style) */
+.metric-card-orange {
+    background: linear-gradient(135deg, #FF8A00 0%, #FF6B00 100%);
+}
+
+.metric-card-magenta {
+    background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%);
+}
+
+.metric-card-teal {
+    background: linear-gradient(135deg, #00BFA6 0%, #00897B 100%);
+}
+
+.metric-card-gray {
+    background: linear-gradient(135deg, #607D8B 0%, #455A64 100%);
+}
+
+.metric-card-purple {
+    background: linear-gradient(135deg, #7F3FF2 0%, #5E35B1 100%);
+}
+
+.metric-card-dark {
+    background: linear-gradient(135deg, #424242 0%, #212121 100%);
+}
+
+.metric-card-green {
+    background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+}
+
+.metric-card-orange-light {
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+}
+
+.metric-card-red {
+    background: linear-gradient(135deg, #C2185B 0%, #AD1457 100%);
+}
+
+.metric-card-blue {
+    background: linear-gradient(135deg, #3F51B5 0%, #303F9F 100%);
+}
+
+.metric-card-cyan {
+    background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%);
+}
+
+.metric-card-green-dark {
+    background: linear-gradient(135deg, #43A047 0%, #2E7D32 100%);
+}
+
+.metric-card-yellow {
+    background: linear-gradient(135deg, #FFC107 0%, #FFA000 100%);
+}
+
+.metric-card-pink {
+    background: linear-gradient(135deg, #EC407A 0%, #D81B60 100%);
+}
+
+.metric-card-indigo {
+    background: linear-gradient(135deg, #5C6BC0 0%, #3949AB 100%);
+}
+
+.metric-card-lime {
+    background: linear-gradient(135deg, #9CCC65 0%, #7CB342 100%);
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+    .metric-card {
+        min-height: 110px;
+        padding: 1rem;
+    }
+    
+    .metric-value {
+        font-size: 1.75rem;
+    }
+    
+    .metric-title {
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .metric-card {
+        min-height: 100px;
+        padding: 0.9rem;
+    }
+    
+    .metric-value {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .metric-card {
+        min-height: 90px;
+        padding: 0.75rem;
+    }
+    
+    .metric-value {
+        font-size: 1.35rem;
+    }
+    
+    .metric-title {
+        font-size: 0.65rem;
+    }
+    
+    .metric-subtitle {
+        font-size: 0.65rem;
+    }
+}
+

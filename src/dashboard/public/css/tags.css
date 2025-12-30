@@ -1,0 +1,36 @@
+/**
+ * Tags View Styles
+ */
+
+.tag-card {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.tag-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.tag-card .card-body {
+  padding: 1rem;
+}
+
+.tag-card h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.badge-sm {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Color picker */
+.form-control-color {
+  width: 100%;
+  height: 45px;
+  cursor: pointer;
+}
+

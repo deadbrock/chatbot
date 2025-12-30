@@ -1,0 +1,2775 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot WhatsApp - Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🤖</text></svg>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/css/theme.css">
+    <link rel="stylesheet" href="/css/metric-cards.css">
+    <link rel="stylesheet" href="/css/kanban.css">
+    <link rel="stylesheet" href="/css/tags.css">
+    <link rel="stylesheet" href="/css/chat.css">
+    <link rel="stylesheet" href="/css/webhooks.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/administration.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg app-navbar">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <span class="brand-mark" aria-hidden="true"><i class="bi bi-robot"></i></span>
+                <span class="brand-title">Chatbot WhatsApp</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="themeToggle" title="Alternar tema" aria-label="Alternar tema">
+                            <i class="bi bi-moon-stars"></i>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="userInfo">
+                            <i class="bi bi-person-circle"></i> <span id="userName">Admin</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="logoutBtn">
+                            <i class="bi bi-box-arrow-right"></i> Sair
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid app-shell">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block sidebar">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#dashboard" data-section="dashboard">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#tickets" data-section="tickets">
+                                <i class="bi bi-ticket-perforated"></i> Tickets
+                                <span class="badge bg-danger ms-2" id="ticketsBadge">0</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#sessions" data-section="sessions">
+                                <i class="bi bi-chat-dots"></i> Sessões Ativas
+                                <span class="badge bg-success ms-2" id="sessionsBadge">0</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#agents" data-section="agents">
+                                <i class="bi bi-people"></i> Atendentes
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#analytics" data-section="analytics">
+                                <i class="bi bi-graph-up"></i> Analytics
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#kanban" data-section="kanban">
+                                <i class="bi bi-kanban"></i> Kanban
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#quick-replies" data-section="quick-replies">
+                                <i class="bi bi-lightning-charge"></i> Respostas Rápidas
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#tags" data-section="tags">
+                                <i class="bi bi-tags"></i> Tags
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#chat" data-section="chat">
+                                <i class="bi bi-chat-left-text"></i> Chat em Tempo Real
+                                <span class="badge bg-primary ms-2" id="chatBadge">0</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#schedules" data-section="schedules">
+                                <i class="bi bi-calendar-event"></i> Agendamentos
+                            </a>
+                            <a class="nav-link" href="#contacts" data-section="contacts">
+                                <i class="bi bi-people"></i> Contatos
+                            </a>
+                            <a class="nav-link" href="#ticketStatuses" data-section="ticketStatuses">
+                                <i class="bi bi-flag"></i> Status
+                            </a>
+                            <a class="nav-link" href="#queues" data-section="queues">
+                                <i class="bi bi-diagram-3"></i> Filas
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#campaigns" data-section="campaigns">
+                                <i class="bi bi-megaphone"></i> Campanhas
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#broadcasts" data-section="broadcasts">
+                                <i class="bi bi-broadcast"></i> Transmissões
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#automations" data-section="automations">
+                                <i class="bi bi-gear-wide-connected"></i> Automações
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#administration" data-section="administration">
+                                <i class="bi bi-shield-lock"></i> Administração
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#webhooks" data-section="webhooks">
+                                <i class="bi bi-arrow-left-right"></i> Webhooks
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#executive-dashboard" data-section="executive-dashboard">
+                                <i class="bi bi-graph-up"></i> Dashboard Executivo
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#settings" data-section="settings">
+                                <i class="bi bi-gear"></i> Configurações
+                            </a>
+                        </li>
+                    </ul>
+
+                    <hr class="sidebar-sep">
+
+                    <div class="px-3 pb-3">
+                        <h6 class="sidebar-heading">Status do sistema</h6>
+                        <div class="status-item">
+                            <i class="bi bi-whatsapp text-success"></i>
+                            <span>WhatsApp: <strong id="whatsappStatus">Online</strong></span>
+                        </div>
+                        <div class="status-item">
+                            <i class="bi bi-database text-success"></i>
+                            <span>SQLite: <strong id="dbStatus">Online</strong></span>
+                        </div>
+                        <div class="status-item">
+                            <i class="bi bi-lightning-charge text-success"></i>
+                            <span>Cache: <strong id="cacheStatus">NodeCache</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <!-- Dashboard Section -->
+                <div id="dashboardSection" class="content-section active">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Dashboard</h1>
+                            <div class="page-subtitle text-muted">Visão geral de tickets, sessões e atendentes.</div>
+                        </div>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                                <span>Atualizar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Estatísticas Amanda-Style (11 cards) -->
+                    <div class="row g-3 mb-4">
+                        <!-- Card 1: Tickets Ativos -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-orange">
+                                <div class="metric-header">
+                                    <span class="metric-title">Tickets Ativos</span>
+                                    <i class="bi bi-arrow-up-right"></i>
+                                </div>
+                                <div class="metric-value" id="ticketsAtivos">0</div>
+                                <div class="metric-subtitle">Demanda ativa</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: Tickets Passivos -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-blue">
+                                <div class="metric-header">
+                                    <span class="metric-title">Tickets Passivos</span>
+                                    <i class="bi bi-arrow-down-right"></i>
+                                </div>
+                                <div class="metric-value" id="ticketsPassivos">0</div>
+                                <div class="metric-subtitle">Aguardando</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Em Atendimento -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-green">
+                                <div class="metric-header">
+                                    <span class="metric-title">Em Atendimento</span>
+                                    <i class="bi bi-person-check"></i>
+                                </div>
+                                <div class="metric-value" id="ticketsAtendimento">0</div>
+                                <div class="metric-subtitle">Ativos agora</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 4: Aguardando -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-yellow">
+                                <div class="metric-header">
+                                    <span class="metric-title">Aguardando</span>
+                                    <i class="bi bi-hourglass-split"></i>
+                                </div>
+                                <div class="metric-value" id="ticketsAguardando">0</div>
+                                <div class="metric-subtitle">Na fila</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 5: Finalizados -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-purple">
+                                <div class="metric-header">
+                                    <span class="metric-title">Finalizados</span>
+                                    <i class="bi bi-check-circle"></i>
+                                </div>
+                                <div class="metric-value" id="ticketsFinalizados">0</div>
+                                <div class="metric-subtitle">Hoje</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 6: Mensagens Recebidas -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-cyan">
+                                <div class="metric-header">
+                                    <span class="metric-title">Msgs Recebidas</span>
+                                    <i class="bi bi-inbox"></i>
+                                </div>
+                                <div class="metric-value" id="msgsRecebidas">0</div>
+                                <div class="metric-subtitle">Período</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 7: Mensagens Enviadas -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-teal">
+                                <div class="metric-header">
+                                    <span class="metric-title">Msgs Enviadas</span>
+                                    <i class="bi bi-send"></i>
+                                </div>
+                                <div class="metric-value" id="msgsEnviadas">0</div>
+                                <div class="metric-subtitle">Período</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 8: Tempo Médio Atendimento -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-pink">
+                                <div class="metric-header">
+                                    <span class="metric-title">Tempo Atend.</span>
+                                    <i class="bi bi-clock-history"></i>
+                                </div>
+                                <div class="metric-value" id="tempoAtendimento">0</div>
+                                <div class="metric-subtitle">minutos</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 9: Tempo Médio Espera -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-indigo">
+                                <div class="metric-header">
+                                    <span class="metric-title">Tempo Espera</span>
+                                    <i class="bi bi-stopwatch"></i>
+                                </div>
+                                <div class="metric-value" id="tempoEspera">0</div>
+                                <div class="metric-subtitle">minutos</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 10: Novos Contatos -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-red">
+                                <div class="metric-header">
+                                    <span class="metric-title">Novos Contatos</span>
+                                    <i class="bi bi-person-plus"></i>
+                                </div>
+                                <div class="metric-value" id="novosContatos">0</div>
+                                <div class="metric-subtitle">Hoje</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 11: Atendentes Ativos -->
+                        <div class="col-lg-2 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-lime">
+                                <div class="metric-header">
+                                    <span class="metric-title">Atendentes</span>
+                                    <i class="bi bi-people"></i>
+                                </div>
+                                <div class="metric-value" id="atendentesAtivos">0/0</div>
+                                <div class="metric-subtitle">Online/Total</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráficos -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong>Tickets — últimos 30 dias</strong>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap">
+                                        <canvas id="ticketsChart"></canvas>
+                                        <div class="chart-empty" id="ticketsChartEmpty">
+                                            <div class="empty-title">Sem dados ainda</div>
+                                            <div class="empty-subtitle text-muted">Quando houver tickets, o gráfico aparecerá aqui.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong>Tickets por status</strong>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap">
+                                        <canvas id="statusChart"></canvas>
+                                        <div class="chart-empty" id="statusChartEmpty">
+                                            <div class="empty-title">Sem dados ainda</div>
+                                            <div class="empty-subtitle text-muted">Quando houver tickets, o gráfico aparecerá aqui.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráficos Avançados Amanda-Style -->
+                    <div class="row g-3 mb-4">
+                        <!-- Ranking de Contatos -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <strong><i class="bi bi-trophy"></i> Top 10 Contatos</strong>
+                                    <span class="badge bg-primary">Mais ativos</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Contato</th>
+                                                    <th class="text-center">Tickets</th>
+                                                    <th>Departamento</th>
+                                                    <th class="text-end">Tempo</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="rankingContatos">
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted">Carregando...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ranking de Atendentes -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <strong><i class="bi bi-star"></i> Ranking de Atendentes</strong>
+                                    <span class="badge bg-success">Performance</span>
+                                </div>
+                                <div class="card-body">
+                                    <div id="agentRankingList">
+                                        <div class="text-center text-muted">Carregando...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Métricas de Tempo e Atividade por Hora -->
+                    <div class="row g-3 mb-4">
+                        <!-- Métricas de Tempo -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong><i class="bi bi-clock-history"></i> Métricas de Tempo</strong>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap" style="height: 250px;">
+                                        <canvas id="timeMetricsChart"></canvas>
+                                        <div class="chart-empty" id="timeMetricsEmpty">
+                                            <div class="empty-title">Sem dados ainda</div>
+                                            <div class="empty-subtitle text-muted">Aguardando dados de tempo</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Atividade por Hora -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <strong><i class="bi bi-graph-up"></i> Atividade por Hora</strong>
+                                    <span class="badge bg-info" id="peakHour">Pico: --</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap" style="height: 250px;">
+                                        <canvas id="hourlyActivityChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Distribuição por Canal e Setor -->
+                    <div class="row g-3 mb-4">
+                        <!-- Distribuição por Canal -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <strong><i class="bi bi-diagram-3"></i> Distribuição por Canal</strong>
+                                    <span class="badge bg-secondary" id="totalCanais">-- canais</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap" style="height: 250px;">
+                                        <canvas id="channelDistChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Distribuição por Setor -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <strong><i class="bi bi-building"></i> Distribuição por Setor</strong>
+                                    <span class="badge bg-secondary" id="totalSetores">-- setores</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrap" style="height: 250px;">
+                                        <canvas id="sectorDistChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tickets Recentes -->
+                    <div class="card">
+                        <div class="card-header bg-transparent">
+                            <strong>Tickets recentes</strong>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Protocolo</th>
+                                            <th>Cliente</th>
+                                            <th>Departamento</th>
+                                            <th>Status</th>
+                                            <th>Data</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recentTicketsTable">
+                                        <tr>
+                                            <td colspan="6" class="text-center text-muted">Carregando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tickets Section -->
+                <div id="ticketsSection" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">Tickets</h1>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm" id="ticketStatusFilter" style="width: 180px;">
+                                <option value="">Fila (padrão)</option>
+                                <option value="open">Aberto</option>
+                                <option value="waiting_human">Aguardando humano</option>
+                                <option value="in_progress">Em progresso</option>
+                                <option value="resolved">Resolvido</option>
+                                <option value="closed">Fechado</option>
+                            </select>
+                            <input class="form-control form-control-sm" id="ticketSearch" placeholder="Buscar por protocolo, cliente..." style="width: 260px;">
+                            <button class="btn btn-sm btn-primary" id="refreshTicketsBtn">
+                                <i class="bi bi-arrow-repeat"></i> Atualizar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Protocolo</th>
+                                            <th>Cliente</th>
+                                            <th>Departamento</th>
+                                            <th>Status</th>
+                                            <th>Atualizado</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ticketsTableBody">
+                                        <tr><td colspan="6" class="text-center text-muted">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sessions Section -->
+                <div id="sessionsSection" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">Sessões ativas</h1>
+                        <button class="btn btn-sm btn-primary" id="refreshSessionsBtn">
+                            <i class="bi bi-arrow-repeat"></i> Atualizar
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Usuário</th>
+                                            <th>Nome</th>
+                                            <th>Departamento</th>
+                                            <th>Interações</th>
+                                            <th>Última atividade</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sessionsTableBody">
+                                        <tr><td colspan="6" class="text-center text-muted">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Agents Section -->
+                <div id="agentsSection" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">Atendentes</h1>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" id="refreshAgentsBtn">
+                                <i class="bi bi-arrow-repeat"></i> Atualizar
+                            </button>
+                            <button class="btn btn-sm btn-primary" id="newAgentBtn">
+                                <i class="bi bi-person-plus"></i> Novo atendente
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Nome</th>
+                                            <th>E-mail</th>
+                                            <th>Perfil</th>
+                                            <th>Status</th>
+                                            <th>Departamento</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="agentsTableBody">
+                                        <tr><td colspan="6" class="text-center text-muted">Carregando...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Section -->
+                <div id="analyticsSection" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">Analytics</h1>
+                        <button class="btn btn-sm btn-outline-secondary" id="refreshAnalyticsBtn">
+                            <i class="bi bi-arrow-repeat"></i> Atualizar
+                        </button>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong>Tickets por departamento</strong>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="byDepartmentChart" height="220"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong>Avaliações</strong>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="ratingsChart" height="220"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-transparent">
+                                    <strong>Performance dos atendentes</strong>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle">
+                                            <thead>
+                                                <tr>
+                                                    <th>Atendente</th>
+                                                    <th>Tickets</th>
+                                                    <th>Resolvidos</th>
+                                                    <th>Avaliação média</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="agentsPerfTableBody">
+                                                <tr><td colspan="4" class="text-center text-muted">Carregando...</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanban Section -->
+                <div id="kanbanSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Kanban</h1>
+                            <div class="page-subtitle text-muted">Visualização em quadro dos tickets por status</div>
+                        </div>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshKanbanBtn">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <select class="form-select" id="kanbanDeptFilter">
+                                <option value="">Todos os departamentos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" id="kanbanAgentFilter">
+                                <option value="">Todos os atendentes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Kanban Board -->
+                    <div class="kanban-board" id="kanbanBoard">
+                        <!-- Colunas serão carregadas dinamicamente -->
+                        <div class="kanban-column">
+                            <div class="kanban-column-header bg-primary">
+                                <h5>Abertos</h5>
+                                <span class="badge bg-white text-primary">0</span>
+                            </div>
+                            <div class="kanban-column-body" data-status="open">
+                                <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+
+                        <div class="kanban-column">
+                            <div class="kanban-column-header bg-warning">
+                                <h5>Aguardando</h5>
+                                <span class="badge bg-white text-warning">0</span>
+                            </div>
+                            <div class="kanban-column-body" data-status="waiting_human">
+                                <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+
+                        <div class="kanban-column">
+                            <div class="kanban-column-header bg-info">
+                                <h5>Em Progresso</h5>
+                                <span class="badge bg-white text-info">0</span>
+                            </div>
+                            <div class="kanban-column-body" data-status="in_progress">
+                                <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+
+                        <div class="kanban-column">
+                            <div class="kanban-column-header bg-success">
+                                <h5>Resolvidos</h5>
+                                <span class="badge bg-white text-success">0</span>
+                            </div>
+                            <div class="kanban-column-body" data-status="resolved">
+                                <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+
+                        <div class="kanban-column">
+                            <div class="kanban-column-header bg-secondary">
+                                <h5>Fechados</h5>
+                                <span class="badge bg-white text-secondary">0</span>
+                            </div>
+                            <div class="kanban-column-body" data-status="closed">
+                                <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Replies Section -->
+                <div id="quickRepliesSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Respostas Rápidas</h1>
+                            <div class="page-subtitle text-muted">Gerencie atalhos e mensagens pré-definidas</div>
+                        </div>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-primary" id="newQuickReplyBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Resposta
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="refreshQuickRepliesBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <input type="text" class="form-control" id="quickReplySearch" placeholder="Buscar por atalho ou mensagem...">
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="quickReplyCategoryFilter">
+                                <option value="">Todas as categorias</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="quickReplyStatusFilter">
+                                <option value="">Todos os status</option>
+                                <option value="active">Ativas</option>
+                                <option value="inactive">Inativas</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Respostas Rápidas -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Atalho</th>
+                                            <th>Mensagem</th>
+                                            <th>Categoria</th>
+                                            <th>Variáveis</th>
+                                            <th>Uso</th>
+                                            <th>Status</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="quickRepliesTable">
+                                        <tr>
+                                            <td colspan="7" class="text-center text-muted">Carregando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tags Section -->
+                <div id="tagsSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Tags</h1>
+                            <div class="page-subtitle text-muted">Organize e categorize seus tickets com tags personalizadas</div>
+                        </div>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-primary" id="newTagBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Tag
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="refreshTagsBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control" id="tagSearch" placeholder="Buscar tags...">
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="tagCategoryFilter">
+                                <option value="">Todas as categorias</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="tagStatusFilter">
+                                <option value="">Todos os status</option>
+                                <option value="active">Ativas</option>
+                                <option value="inactive">Inativas</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Grid de Tags -->
+                    <div class="row g-3" id="tagsGrid">
+                        <div class="col-12 text-center text-muted">Carregando...</div>
+                    </div>
+                </div>
+
+                <!-- Schedules Section -->
+                <div id="schedulesSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Agendamentos</h1>
+                            <div class="page-subtitle text-muted">Programe envios de mensagens e follow-ups automáticos</div>
+                        </div>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-primary" id="newScheduleBtn">
+                                <i class="bi bi-plus-lg"></i> Novo Agendamento
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="refreshSchedulesBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <select class="form-select" id="scheduleTypeFilter">
+                                <option value="">Todos os tipos</option>
+                                <option value="message">Mensagem</option>
+                                <option value="follow_up">Follow-up</option>
+                                <option value="reminder">Lembrete</option>
+                                <option value="campaign">Campanha</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="scheduleStatusFilter">
+                                <option value="">Todos os status</option>
+                                <option value="pending">Pendentes</option>
+                                <option value="sent">Enviados</option>
+                                <option value="failed">Falhados</option>
+                                <option value="cancelled">Cancelados</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Estatísticas -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0" id="schedulesPending">0</h3>
+                                    <small class="text-muted">Pendentes</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-success" id="schedulesSent">0</h3>
+                                    <small class="text-muted">Enviados</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-danger" id="schedulesFailed">0</h3>
+                                    <small class="text-muted">Falhados</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-secondary" id="schedulesCancelled">0</h3>
+                                    <small class="text-muted">Cancelados</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Agendamentos -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Destinatário</th>
+                                            <th>Mensagem</th>
+                                            <th>Agendado para</th>
+                                            <th>Recorrência</th>
+                                            <th>Status</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="schedulesTable">
+                                        <tr>
+                                            <td colspan="7" class="text-center text-muted">Carregando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contacts Section -->
+                <div id="contactsSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Gestão de Contatos</h1>
+                            <div class="page-subtitle text-muted">Gerencie todos os seus contatos do WhatsApp</div>
+                        </div>
+                    </div>
+                    <div id="contactsContent">
+                        <!-- Conteúdo será carregado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Ticket Statuses Section -->
+                <div id="ticketStatusesSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Status Personalizados</h1>
+                            <div class="page-subtitle text-muted">Customize os status dos seus tickets</div>
+                        </div>
+                    </div>
+                    <div id="ticketStatusesContent">
+                        <!-- Conteúdo será carregado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Queues Section -->
+                <div id="queuesSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Filas de Atendimento</h1>
+                            <div class="page-subtitle text-muted">Configure filas e distribuição automática de tickets</div>
+                        </div>
+                    </div>
+                    <div id="queuesContent">
+                        <!-- Conteúdo será carregado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Campaigns Section -->
+                <div id="campaignsSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">
+                                <i class="bi bi-megaphone-fill text-primary"></i>
+                                Campanhas de Mensagens em Massa
+                            </h1>
+                            <div class="page-subtitle text-muted">Crie e gerencie campanhas de envio em massa para seus contatos</div>
+                        </div>
+                        <button class="btn btn-primary" id="newCampaignBtn">
+                            <i class="bi bi-plus-circle"></i> Nova Campanha
+                        </button>
+                    </div>
+
+                    <!-- Estatísticas -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-megaphone fs-1 text-primary"></i>
+                                    <h3 class="mt-2" id="totalCampaigns">0</h3>
+                                    <p class="text-muted mb-0">Total de Campanhas</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-play-circle fs-1 text-success"></i>
+                                    <h3 class="mt-2" id="activeCampaigns">0</h3>
+                                    <p class="text-muted mb-0">Ativas</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-check-circle fs-1 text-info"></i>
+                                    <h3 class="mt-2" id="completedCampaigns">0</h3>
+                                    <p class="text-muted mb-0">Concluídas</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-clock fs-1 text-warning"></i>
+                                    <h3 class="mt-2" id="scheduledCampaigns">0</h3>
+                                    <p class="text-muted mb-0">Agendadas</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Buscar</label>
+                                    <input type="text" class="form-control" id="campaignSearch" placeholder="Nome ou descrição...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" id="campaignStatusFilter">
+                                        <option value="">Todos</option>
+                                        <option value="draft">Rascunho</option>
+                                        <option value="scheduled">Agendada</option>
+                                        <option value="sending">Enviando</option>
+                                        <option value="completed">Concluída</option>
+                                        <option value="paused">Pausada</option>
+                                        <option value="cancelled">Cancelada</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Categoria</label>
+                                    <select class="form-select" id="campaignCategoryFilter">
+                                        <option value="">Todas</option>
+                                        <option value="promocional">Promocional</option>
+                                        <option value="informativa">Informativa</option>
+                                        <option value="pesquisa">Pesquisa</option>
+                                        <option value="cobranca">Cobrança</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Campanhas -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Campanha</th>
+                                            <th>Status</th>
+                                            <th>Segmentação</th>
+                                            <th>Contatos</th>
+                                            <th>Progresso</th>
+                                            <th>Estatísticas</th>
+                                            <th>Criada em</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="campaignsTableBody">
+                                        <tr>
+                                            <td colspan="8" class="text-center py-4">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Carregando...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="campaignsPagination" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Broadcasts Section -->
+                <div id="broadcastsSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">
+                                <i class="bi bi-broadcast text-success"></i>
+                                Transmissões Rápidas
+                            </h1>
+                            <div class="page-subtitle text-muted">Envie mensagens instantâneas para listas de contatos</div>
+                        </div>
+                        <button class="btn btn-success" id="quickSendBtn">
+                            <i class="bi bi-send"></i> Envio Rápido
+                        </button>
+                    </div>
+
+                    <!-- Listas de Transmissão -->
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-list-ul"></i> Listas de Transmissão
+                            </h5>
+                            <button class="btn btn-primary btn-sm" id="newListBtn">
+                                <i class="bi bi-plus-circle"></i> Nova Lista
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3" id="broadcastListsContainer">
+                                <div class="col-12 text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Histórico de Transmissões -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="bi bi-clock-history"></i> Histórico de Transmissões
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Transmissão</th>
+                                            <th>Status</th>
+                                            <th>Destinatários</th>
+                                            <th>Progresso</th>
+                                            <th>Estatísticas</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="broadcastsTableBody">
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Carregando...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Section -->
+                <div id="chatSection" class="content-section">
+                    <div class="chat-container">
+                        <!-- Sidebar de Conversas -->
+                        <div class="chat-sidebar">
+                            <div class="chat-sidebar-header">
+                                <h5 class="mb-0">Conversas</h5>
+                                <button class="btn btn-sm btn-outline-primary" id="refreshChatsBtn" title="Atualizar">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Busca -->
+                            <div class="chat-search-box">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent border-end-0">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input type="text" class="form-control border-start-0" id="chatSearchInput" placeholder="Buscar conversa...">
+                                </div>
+                            </div>
+
+                            <!-- Filtros -->
+                            <div class="chat-filters">
+                                <button class="btn btn-sm filter-btn active" data-filter="all">
+                                    Todas <span class="badge bg-secondary" id="filterAllCount">0</span>
+                                </button>
+                                <button class="btn btn-sm filter-btn" data-filter="unread">
+                                    Não lidas <span class="badge bg-danger" id="filterUnreadCount">0</span>
+                                </button>
+                                <button class="btn btn-sm filter-btn" data-filter="open">
+                                    Abertas <span class="badge bg-success" id="filterOpenCount">0</span>
+                                </button>
+                            </div>
+
+                            <!-- Lista de Conversas -->
+                            <div class="chat-list" id="chatList">
+                                <div class="text-center py-5 text-muted">
+                                    <i class="bi bi-chat-dots fs-1"></i>
+                                    <p class="mt-2">Nenhuma conversa ativa</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Área Principal do Chat -->
+                        <div class="chat-main">
+                            <!-- Estado Inicial -->
+                            <div class="chat-empty-state" id="chatEmptyState">
+                                <i class="bi bi-chat-text fs-1 text-muted"></i>
+                                <h5 class="mt-3 text-muted">Selecione uma conversa</h5>
+                                <p class="text-muted">Escolha uma conversa na lista ao lado para começar</p>
+                            </div>
+
+                            <!-- Cabeçalho do Chat -->
+                            <div class="chat-header" id="chatHeader" style="display: none;">
+                                <div class="d-flex align-items-center">
+                                    <div class="chat-avatar me-3">
+                                        <span id="chatContactInitials">??</span>
+                                        <span class="status-indicator" id="chatContactStatus"></span>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0" id="chatContactName">Carregando...</h6>
+                                        <small class="text-muted" id="chatContactInfo">...</small>
+                                    </div>
+                                </div>
+                                <div class="chat-header-actions">
+                                    <button class="btn btn-sm btn-outline-secondary" id="chatSearchToggle" title="Buscar na conversa">
+                                        <i class="bi bi-search"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="chatInfoToggle" title="Informações do ticket">
+                                        <i class="bi bi-info-circle"></i>
+                                    </button>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots-vertical"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="#" id="chatArchiveBtn"><i class="bi bi-archive"></i> Arquivar</a></li>
+                                            <li><a class="dropdown-item" href="#" id="chatCloseBtn"><i class="bi bi-check-circle"></i> Finalizar</a></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><a class="dropdown-item text-danger" href="#" id="chatBlockBtn"><i class="bi bi-slash-circle"></i> Bloquear</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Área de Mensagens -->
+                            <div class="chat-messages" id="chatMessages" style="display: none;">
+                                <!-- Mensagens serão inseridas aqui via JavaScript -->
+                            </div>
+
+                            <!-- Indicador de Digitação -->
+                            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                                <div class="typing-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="typing-text">está digitando...</span>
+                            </div>
+
+                            <!-- Input de Mensagem -->
+                            <div class="chat-input" id="chatInput" style="display: none;">
+                                <div class="chat-input-container">
+                                    <button class="btn btn-link text-secondary" id="attachFileBtn" title="Anexar arquivo">
+                                        <i class="bi bi-paperclip fs-5"></i>
+                                    </button>
+                                    <input type="file" id="fileInput" style="display: none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar">
+                                    <textarea class="form-control chat-textarea" id="messageTextarea" placeholder="Digite sua mensagem..." rows="1"></textarea>
+                                    <button class="btn btn-link text-secondary" id="emojiBtn" title="Emoji">
+                                        <i class="bi bi-emoji-smile fs-5"></i>
+                                    </button>
+                                    <button class="btn btn-primary" id="sendMessageBtn" title="Enviar">
+                                        <i class="bi bi-send-fill"></i>
+                                    </button>
+                                </div>
+                                <!-- Preview de Arquivo -->
+                                <div class="file-preview" id="filePreview" style="display: none;">
+                                    <div class="d-flex align-items-center justify-content-between p-2 bg-light rounded">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark fs-4 me-2"></i>
+                                            <div>
+                                                <small class="fw-bold" id="filePreviewName">arquivo.pdf</small>
+                                                <br>
+                                                <small class="text-muted" id="filePreviewSize">1.2 MB</small>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-sm btn-link text-danger" id="removeFileBtn">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Painel de Informações (Opcional) -->
+                        <div class="chat-info-panel" id="chatInfoPanel" style="display: none;">
+                            <div class="chat-info-header">
+                                <h6 class="mb-0">Informações do Ticket</h6>
+                                <button class="btn btn-sm btn-link text-secondary" id="closeInfoPanel">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                            <div class="chat-info-content">
+                                <div class="info-section">
+                                    <h6 class="info-title">Contato</h6>
+                                    <p class="info-value" id="infoContactName">-</p>
+                                    <p class="info-label">Telefone</p>
+                                    <p class="info-value" id="infoContactPhone">-</p>
+                                </div>
+                                <div class="info-section">
+                                    <h6 class="info-title">Ticket</h6>
+                                    <p class="info-label">Status</p>
+                                    <p class="info-value" id="infoTicketStatus">-</p>
+                                    <p class="info-label">Fila</p>
+                                    <p class="info-value" id="infoTicketQueue">-</p>
+                                    <p class="info-label">Atendente</p>
+                                    <p class="info-value" id="infoTicketAgent">-</p>
+                                </div>
+                                <div class="info-section">
+                                    <h6 class="info-title">Tags</h6>
+                                    <div id="infoTicketTags">
+                                        <span class="badge bg-secondary">Nenhuma tag</span>
+                                    </div>
+                                </div>
+                                <div class="info-section">
+                                    <h6 class="info-title">Anexos <span class="badge bg-secondary" id="infoAttachmentCount">0</span></h6>
+                                    <div id="infoAttachments" class="attachment-grid">
+                                        <p class="text-muted small">Nenhum anexo</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Automations Section -->
+                <div id="automationsSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">
+                                <i class="bi bi-gear-wide-connected text-primary"></i>
+                                Automações
+                            </h1>
+                            <div class="page-subtitle text-muted">Fluxos de campanha, follow-ups e gatilhos automáticos</div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Automação -->
+                    <ul class="nav nav-tabs mb-4" id="automationTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="flows-tab" data-bs-toggle="tab" data-bs-target="#flowsTab" type="button" role="tab">
+                                <i class="bi bi-diagram-3"></i> Fluxos de Campanha
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="followups-tab" data-bs-toggle="tab" data-bs-target="#followupsTab" type="button" role="tab">
+                                <i class="bi bi-arrow-repeat"></i> Follow-ups
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="triggers-tab" data-bs-toggle="tab" data-bs-target="#triggersTab" type="button" role="tab">
+                                <i class="bi bi-lightning-charge"></i> Gatilhos
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="automationTabContent">
+                        <!-- Fluxos de Campanha -->
+                        <div class="tab-pane fade show active" id="flowsTab" role="tabpanel">
+                            <div id="flowsContent">
+                                <!-- Conteúdo carregado dinamicamente -->
+                            </div>
+                        </div>
+
+                        <!-- Follow-ups -->
+                        <div class="tab-pane fade" id="followupsTab" role="tabpanel">
+                            <div id="followupsContent">
+                                <!-- Conteúdo carregado dinamicamente -->
+                            </div>
+                        </div>
+
+                        <!-- Gatilhos -->
+                        <div class="tab-pane fade" id="triggersTab" role="tabpanel">
+                            <div id="triggersContent">
+                                <!-- Conteúdo carregado dinamicamente -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Administration Section -->
+                <div id="administrationSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">
+                                <i class="bi bi-shield-lock text-primary"></i>
+                                Administração
+                            </h1>
+                            <div class="page-subtitle text-muted">Gerenciamento de API Keys, Conexões, Configurações e Permissões</div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Administração -->
+                    <ul class="nav nav-tabs mb-4" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-admin-tab="api-keys" type="button">
+                                <i class="bi bi-key"></i> API Keys
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="connections" type="button">
+                                <i class="bi bi-whatsapp"></i> Conexões WhatsApp
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="settings" type="button">
+                                <i class="bi bi-gear"></i> Configurações
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="roles" type="button">
+                                <i class="bi bi-shield-check"></i> Roles & Permissões
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- API Keys Tab -->
+                    <div data-admin-content="api-keys" class="admin-tab-content active">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Chaves de API</h4>
+                            <button class="btn btn-primary" id="newApiKeyBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Chave
+                            </button>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Chave</th>
+                                        <th>Tipo</th>
+                                        <th>Status</th>
+                                        <th>Requisições</th>
+                                        <th>Último Uso</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="apiKeysTableBody">
+                                    <tr><td colspan="7" class="text-center">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Connections Tab -->
+                    <div data-admin-content="connections" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Conexões WhatsApp</h4>
+                            <button class="btn btn-success" id="newConnectionBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Conexão
+                            </button>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Telefone</th>
+                                        <th>Status</th>
+                                        <th>Mensagens</th>
+                                        <th>Última Conexão</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="connectionsTableBody">
+                                    <tr><td colspan="6" class="text-center">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div data-admin-content="settings" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Configurações do Sistema</h4>
+                            <div>
+                                <button class="btn btn-outline-primary" id="exportSettingsBtn">
+                                    <i class="bi bi-download"></i> Exportar
+                                </button>
+                                <button class="btn btn-outline-secondary" id="importSettingsBtn">
+                                    <i class="bi bi-upload"></i> Importar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="settingsContainer">
+                            <p class="text-center text-muted">Carregando...</p>
+                        </div>
+                    </div>
+
+                    <!-- Roles Tab -->
+                    <div data-admin-content="roles" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Papéis e Permissões</h4>
+                            <button class="btn btn-primary" id="newRoleBtn">
+                                <i class="bi bi-plus-lg"></i> Novo Papel
+                            </button>
+                        </div>
+                        
+                        <div class="row" id="rolesContainer">
+                            <div class="col-12 text-center text-muted">Carregando...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Webhooks Section -->
+                <div id="webhooksSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">Webhooks</h1>
+                            <div class="page-subtitle text-muted">Gerencie webhooks para integração com sistemas externos</div>
+                        </div>
+                        <div>
+                            <button class="btn btn-primary" id="createWebhookBtn">
+                                <i class="bi bi-plus-lg"></i> Criar Webhook
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Estatísticas -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-primary" id="totalWebhooks">0</h3>
+                                    <small class="text-muted">Total de Webhooks</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-success" id="activeWebhooks">0</h3>
+                                    <small class="text-muted">Ativos</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-info" id="totalWebhookCalls">0</h3>
+                                    <small class="text-muted">Total de Chamadas</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="mb-0 text-warning" id="globalSuccessRate">0%</h3>
+                                    <small class="text-muted">Taxa de Sucesso</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Buscar</label>
+                                    <input type="text" class="form-control" id="webhookSearchInput" placeholder="Buscar webhooks...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" id="webhookStatusFilter">
+                                        <option value="">Todos</option>
+                                        <option value="true">Ativo</option>
+                                        <option value="false">Inativo</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Evento</label>
+                                    <select class="form-select" id="webhookEventFilter">
+                                        <option value="">Todos os eventos</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Webhooks -->
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Webhook</th>
+                                            <th>Status</th>
+                                            <th>Método</th>
+                                            <th>Eventos</th>
+                                            <th>Estatísticas</th>
+                                            <th>Último Disparo</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="webhooksTableBody">
+                                        <tr>
+                                            <td colspan="7" class="text-center">Carregando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div id="settingsSection" class="content-section">
+                    <h1 class="h2 mb-4">Configurações</h1>
+                    <div id="settingsContent">
+                        <!-- Conteúdo será carregado dinamicamente -->
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script type="module" src="/app/app.js"></script>
+
+    <!-- Toast container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+
+    <!-- Ticket Modal -->
+    <div class="modal fade" id="ticketModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              Ticket <span class="text-muted" id="ticketModalProtocol"></span>
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <div class="small text-muted">Cliente</div>
+                <div class="fw-semibold" id="ticketModalUser">—</div>
+              </div>
+              <div class="col-md-4">
+                <div class="small text-muted">Departamento</div>
+                <div class="fw-semibold" id="ticketModalDept">—</div>
+              </div>
+              <div class="col-md-4">
+                <div class="small text-muted">Status</div>
+                <select class="form-select" id="ticketModalStatus">
+                  <option value="open">Aberto</option>
+                  <option value="waiting_human">Aguardando humano</option>
+                  <option value="in_progress">Em progresso</option>
+                  <option value="resolved">Resolvido</option>
+                  <option value="closed">Fechado</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <div class="small text-muted">Descrição</div>
+                <div class="p-3 bg-light rounded" id="ticketModalDesc">—</div>
+              </div>
+              <div class="col-12">
+                <div class="small text-muted mb-2">Histórico</div>
+                <div class="ticket-timeline" id="ticketModalTimeline"></div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+            <button class="btn btn-primary" id="ticketModalSaveBtn">
+              <i class="bi bi-save"></i> Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Agent Modal -->
+    <div class="modal fade" id="newAgentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Novo atendente</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="newAgentForm">
+              <div class="mb-2">
+                <label class="form-label">Nome</label>
+                <input class="form-control" name="name" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label">E-mail</label>
+                <input class="form-control" name="email" type="email" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Senha</label>
+                <input class="form-control" name="password" type="password" required />
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">Perfil</label>
+                  <select class="form-select" name="role">
+                    <option value="agent">Atendente</option>
+                    <option value="manager">Gestor</option>
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Leitura</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <label class="form-label">Status</label>
+                  <select class="form-select" name="status">
+                    <option value="offline">Offline</option>
+                    <option value="online">Online</option>
+                    <option value="away">Ausente</option>
+                    <option value="busy">Ocupado</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-2">
+                <label class="form-label">Departamento</label>
+                <input class="form-control" name="department" placeholder="Ex: Comercial" />
+              </div>
+            </form>
+            <div class="small text-muted mt-2">
+              Dica: durante desenvolvimento, você pode criar atendentes por aqui para testar fila/atribuição.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-primary" id="createAgentBtn">
+              <i class="bi bi-person-check"></i> Criar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div class="modal fade" id="contactModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="contactModalTitle">Novo Contato</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="contactForm">
+              <input type="hidden" id="contactId" />
+              
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Nome *</label>
+                  <input type="text" class="form-control" id="contactName" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Telefone *</label>
+                  <input type="tel" class="form-control" id="contactPhone" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">WhatsApp ID *</label>
+                  <input type="text" class="form-control" id="contactWhatsappId" required placeholder="5511999999999@c.us">
+                  <small class="text-muted">Formato: número@c.us</small>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Email</label>
+                  <input type="email" class="form-control" id="contactEmail">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Categoria</label>
+                  <select class="form-select" id="contactCategory">
+                    <option value="">Selecione...</option>
+                    <option value="Cliente">Cliente</option>
+                    <option value="Lead">Lead</option>
+                    <option value="Fornecedor">Fornecedor</option>
+                    <option value="Parceiro">Parceiro</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Empresa</label>
+                  <input type="text" class="form-control" id="contactCompany">
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label">Cargo/Posição</label>
+                  <input type="text" class="form-control" id="contactPosition">
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label">Observações</label>
+                  <textarea class="form-control" id="contactNotes" rows="3"></textarea>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="saveContact()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Importar Contatos</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle"></i>
+              <strong>Formato do CSV:</strong>
+              <ul class="mb-0 mt-2">
+                <li>Primeira linha deve conter os cabeçalhos</li>
+                <li>Campos obrigatórios: whatsappId, name, phone</li>
+                <li>Campos opcionais: email, category, company, position, notes</li>
+              </ul>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">Selecione o arquivo CSV</label>
+              <input type="file" class="form-control" id="importFile" accept=".csv">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="importContacts()">Importar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Modal -->
+    <div class="modal fade" id="statusModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="statusModalTitle">Novo Status</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="statusForm">
+              <input type="hidden" id="statusId" />
+              
+              <div class="mb-3">
+                <label class="form-label">Nome *</label>
+                <input type="text" class="form-control" id="statusName" required>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Slug</label>
+                <input type="text" class="form-control" id="statusSlug" placeholder="Deixe vazio para gerar automaticamente">
+                <small class="text-muted">URL amigável (ex: aguardando-pagamento)</small>
+              </div>
+              
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label">Cor *</label>
+                  <div class="input-group">
+                    <input type="color" class="form-control form-control-color" id="statusColor" value="#6c757d">
+                    <div class="input-group-text" id="colorPreview" style="width: 50px;"></div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Ícone</label>
+                  <input type="text" class="form-control" id="statusIcon" placeholder="clock, check-circle">
+                  <small class="text-muted">Bootstrap Icons</small>
+                </div>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Categoria *</label>
+                <select class="form-select" id="statusCategory" required>
+                  <option value="open">Aberto</option>
+                  <option value="pending">Aguardando</option>
+                  <option value="in_progress">Em Progresso</option>
+                  <option value="resolved">Resolvido</option>
+                  <option value="closed">Fechado</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Descrição</label>
+                <textarea class="form-control" id="statusDescription" rows="2"></textarea>
+              </div>
+              
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="statusIsDefault">
+                <label class="form-check-label" for="statusIsDefault">
+                  Status padrão para novos tickets
+                </label>
+              </div>
+              
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="statusIsFinal">
+                <label class="form-check-label" for="statusIsFinal">
+                  Status final (ticket não pode mais ser alterado)
+                </label>
+              </div>
+              
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="statusIsActive" checked>
+                <label class="form-check-label" for="statusIsActive">
+                  Status ativo
+                </label>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="saveStatus()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue Modal -->
+    <div class="modal fade" id="queueModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="queueModalTitle">Nova Fila</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="queueForm">
+              <input type="hidden" id="queueId" />
+              
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Nome *</label>
+                  <input type="text" class="form-control" id="queueName" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Slug</label>
+                  <input type="text" class="form-control" id="queueSlug" placeholder="Gerar automaticamente">
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Cor *</label>
+                  <div class="input-group">
+                    <input type="color" class="form-control form-control-color" id="queueColor" value="#007bff">
+                    <div class="input-group-text" id="queueColorPreview" style="width: 50px;"></div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Ícone</label>
+                  <input type="text" class="form-control" id="queueIcon" placeholder="headset, cart">
+                </div>
+                
+                <div class="col-md-12">
+                  <label class="form-label">Descrição</label>
+                  <textarea class="form-control" id="queueDescription" rows="2"></textarea>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Modo de Distribuição *</label>
+                  <select class="form-select" id="queueDistributionMode" required>
+                    <option value="round_robin">Round Robin</option>
+                    <option value="least_active">Menos Ativo</option>
+                    <option value="manual">Manual</option>
+                    <option value="random">Aleatório</option>
+                    <option value="priority">Prioridade</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Máx. Tickets por Agente *</label>
+                  <input type="number" class="form-control" id="queueMaxTickets" value="10" min="1" required>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">SLA (segundos) *</label>
+                  <input type="number" class="form-control" id="queueSlaTime" value="3600" min="60" required>
+                  <small class="text-muted">3600 = 1 hora</small>
+                </div>
+                
+                <div class="col-md-12">
+                  <label class="form-label">Mensagem de Saudação</label>
+                  <textarea class="form-control" id="queueGreeting" rows="2" placeholder="Olá! Bem-vindo ao atendimento..."></textarea>
+                </div>
+                
+                <div class="col-md-12">
+                  <label class="form-label">Mensagem Fora do Horário</label>
+                  <textarea class="form-control" id="queueOutOfHours" rows="2" placeholder="Nosso horário de atendimento é..."></textarea>
+                </div>
+                
+                <div class="col-md-12">
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="queueAutoAssign" checked>
+                    <label class="form-check-label" for="queueAutoAssign">
+                      Auto-atribuir tickets automaticamente
+                    </label>
+                  </div>
+                  
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="queueChatbotEnabled">
+                    <label class="form-check-label" for="queueChatbotEnabled">
+                      Habilitar chatbot antes do atendimento humano
+                    </label>
+                  </div>
+                  
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="queueIsDefault">
+                    <label class="form-check-label" for="queueIsDefault">
+                      Fila padrão
+                    </label>
+                  </div>
+                  
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="queueIsActive" checked>
+                    <label class="form-check-label" for="queueIsActive">
+                      Fila ativa
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="saveQueue()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule Modal -->
+    <div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="scheduleModalTitle">Novo Agendamento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="scheduleForm">
+              <input type="hidden" id="scheduleId" />
+              
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Tipo *</label>
+                  <select class="form-select" id="scheduleType" required>
+                    <option value="message">Mensagem</option>
+                    <option value="follow_up">Follow-up</option>
+                    <option value="reminder">Lembrete</option>
+                    <option value="campaign">Campanha</option>
+                  </select>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Destinatário (WhatsApp) *</label>
+                  <input type="text" class="form-control" id="scheduleRecipient" placeholder="5511999999999@c.us" required />
+                  <small class="text-muted">Formato: 5511999999999@c.us</small>
+                </div>
+                
+                <div class="col-12">
+                  <label class="form-label">Mensagem *</label>
+                  <textarea class="form-control" id="scheduleMessage" rows="4" placeholder="Digite a mensagem..." required></textarea>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Agendar para *</label>
+                  <input type="datetime-local" class="form-control" id="scheduleDate" required />
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Recorrência</label>
+                  <select class="form-select" id="scheduleRepeat">
+                    <option value="none">Sem recorrência</option>
+                    <option value="daily">Diária</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="monthly">Mensal</option>
+                  </select>
+                </div>
+                
+                <div class="col-md-6" id="repeatUntilGroup" style="display: none;">
+                  <label class="form-label">Repetir até</label>
+                  <input type="datetime-local" class="form-control" id="scheduleRepeatUntil" />
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">URL da Mídia (opcional)</label>
+                  <input type="url" class="form-control" id="scheduleMediaUrl" placeholder="https://..." />
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Tipo de Mídia</label>
+                  <select class="form-select" id="scheduleMediaType">
+                    <option value="">Nenhum</option>
+                    <option value="image">Imagem</option>
+                    <option value="video">Vídeo</option>
+                    <option value="audio">Áudio</option>
+                    <option value="document">Documento</option>
+                  </select>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-primary" id="saveScheduleBtn">
+              <i class="bi bi-check-lg"></i> Agendar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tag Modal -->
+    <div class="modal fade" id="tagModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="tagModalTitle">Nova Tag</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="tagForm">
+              <input type="hidden" id="tagId" />
+              
+              <div class="mb-3">
+                <label class="form-label">Nome *</label>
+                <input type="text" class="form-control" id="tagName" placeholder="Urgente" required />
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Descrição</label>
+                <textarea class="form-control" id="tagDescription" rows="2" placeholder="Descrição opcional"></textarea>
+              </div>
+              
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Cor *</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="color" class="form-control form-control-color" id="tagColor" value="#6c757d" required />
+                    <input type="text" class="form-control" id="tagColorHex" value="#6c757d" pattern="^#[0-9A-Fa-f]{6}$" />
+                  </div>
+                  <small class="text-muted">Escolha uma cor para a tag</small>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Ícone (Bootstrap Icons)</label>
+                  <input type="text" class="form-control" id="tagIcon" placeholder="star" />
+                  <small class="text-muted">Ex: star, flag, heart</small>
+                </div>
+              </div>
+              
+              <div class="mb-3 mt-3">
+                <label class="form-label">Categoria</label>
+                <input type="text" class="form-control" id="tagCategory" placeholder="Prioridade" />
+              </div>
+              
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="tagIsActive" checked />
+                <label class="form-check-label" for="tagIsActive">Ativa</label>
+              </div>
+              
+              <!-- Preview -->
+              <div class="mt-3 p-3 bg-light rounded">
+                <label class="form-label small text-muted">Preview:</label>
+                <div id="tagPreview">
+                  <span class="badge" style="background-color: #6c757d;">
+                    <i class="bi bi-tag"></i> Tag de exemplo
+                  </span>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-primary" id="saveTagBtn">
+              <i class="bi bi-check-lg"></i> Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Reply Modal -->
+    <div class="modal fade" id="quickReplyModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="quickReplyModalTitle">Nova Resposta Rápida</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="quickReplyForm">
+              <input type="hidden" id="quickReplyId" />
+              
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Atalho *</label>
+                  <input type="text" class="form-control" id="quickReplyShortcut" placeholder="/oi" required />
+                  <small class="text-muted">Ex: /oi, /obrigado, /horario</small>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Categoria</label>
+                  <input type="text" class="form-control" id="quickReplyCategory" placeholder="Saudação" />
+                </div>
+                
+                <div class="col-12">
+                  <label class="form-label">Mensagem *</label>
+                  <textarea class="form-control" id="quickReplyMessage" rows="4" placeholder="Olá {{nome}}! Como posso ajudar?" required></textarea>
+                  <small class="text-muted">Use variáveis: {{nome}}, {{protocolo}}, {{data}}, {{hora}}</small>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">URL da Mídia (opcional)</label>
+                  <input type="url" class="form-control" id="quickReplyMediaUrl" placeholder="https://..." />
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Tipo de Mídia</label>
+                  <select class="form-select" id="quickReplyMediaType">
+                    <option value="">Nenhum</option>
+                    <option value="image">Imagem</option>
+                    <option value="video">Vídeo</option>
+                    <option value="audio">Áudio</option>
+                    <option value="document">Documento</option>
+                  </select>
+                </div>
+                
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="quickReplyIsActive" checked />
+                    <label class="form-check-label" for="quickReplyIsActive">Ativa</label>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-primary" id="saveQuickReplyBtn">
+              <i class="bi bi-check-lg"></i> Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campaign Modal -->
+    <div class="modal fade" id="campaignModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="campaignModalLabel">Nova Campanha</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="campaignForm">
+              <input type="hidden" id="campaignId" />
+              
+              <div class="row g-3">
+                <!-- Informações Básicas -->
+                <div class="col-12">
+                  <h6 class="border-bottom pb-2">Informações Básicas</h6>
+                </div>
+                
+                <div class="col-md-6">
+                  <label for="campaignName" class="form-label">Nome da Campanha *</label>
+                  <input type="text" class="form-control" id="campaignName" required>
+                </div>
+                
+                <div class="col-md-6">
+                  <label for="campaignCategory" class="form-label">Categoria</label>
+                  <select class="form-select" id="campaignCategory">
+                    <option value="">Selecione...</option>
+                    <option value="promocional">Promocional</option>
+                    <option value="informativa">Informativa</option>
+                    <option value="pesquisa">Pesquisa</option>
+                    <option value="cobranca">Cobrança</option>
+                    <option value="relacionamento">Relacionamento</option>
+                  </select>
+                </div>
+                
+                <div class="col-12">
+                  <label for="campaignDescription" class="form-label">Descrição</label>
+                  <textarea class="form-control" id="campaignDescription" rows="2"></textarea>
+                </div>
+
+                <!-- Mensagem -->
+                <div class="col-12 mt-4">
+                  <h6 class="border-bottom pb-2">Mensagem</h6>
+                </div>
+                
+                <div class="col-md-6">
+                  <label for="campaignMessage" class="form-label">Conteúdo da Mensagem *</label>
+                  <textarea class="form-control" id="campaignMessage" rows="8" required 
+                            placeholder="Digite sua mensagem aqui...&#10;&#10;Variáveis disponíveis:&#10;{{nome}} - Nome do contato&#10;{{email}} - Email&#10;{{telefone}} - Telefone&#10;{{empresa}} - Nome da empresa"></textarea>
+                  <small class="text-muted">
+                    <i class="bi bi-info-circle"></i> Use variáveis para personalizar: {{nome}}, {{email}}, {{telefone}}, {{empresa}}
+                  </small>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Preview da Mensagem</label>
+                  <div class="card bg-light">
+                    <div class="card-body" id="campaignMessagePreview" style="min-height: 200px;">
+                      <em class="text-muted">Preview da mensagem aparecerá aqui...</em>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mídia -->
+                <div class="col-12">
+                  <label for="campaignMedia" class="form-label">Anexar Mídia (Opcional)</label>
+                  <input type="file" class="form-control" id="campaignMedia" 
+                         accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
+                  <small class="text-muted">Formatos: Imagem, Vídeo, Áudio, PDF, DOC</small>
+                </div>
+
+                <!-- Segmentação -->
+                <div class="col-12 mt-4">
+                  <h6 class="border-bottom pb-2">Segmentação de Contatos</h6>
+                </div>
+                
+                <div class="col-md-6">
+                  <label for="campaignTargetType" class="form-label">Tipo de Segmentação *</label>
+                  <select class="form-select" id="campaignTargetType" required>
+                    <option value="all">Todos os Contatos</option>
+                    <option value="tags">Por Tags</option>
+                    <option value="segment">Por Segmento</option>
+                    <option value="list">Lista Personalizada</option>
+                  </select>
+                </div>
+                
+                <div class="col-md-6">
+                  <label class="form-label">Estimativa de Contatos</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-people"></i></span>
+                    <input type="text" class="form-control" id="campaignEstimatedContacts" 
+                           value="0" readonly>
+                  </div>
+                </div>
+                
+                <div class="col-12" id="campaignTargetFilters">
+                  <!-- Filtros dinâmicos serão inseridos aqui -->
+                </div>
+
+                <!-- Agendamento -->
+                <div class="col-12 mt-4">
+                  <h6 class="border-bottom pb-2">Agendamento</h6>
+                </div>
+                
+                <div class="col-md-6">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="campaignSendImmediately">
+                    <label class="form-check-label" for="campaignSendImmediately">
+                      Enviar Imediatamente
+                    </label>
+                  </div>
+                </div>
+                
+                <div class="col-md-6" id="campaignScheduleContainer">
+                  <label for="campaignScheduledFor" class="form-label">Data/Hora de Envio</label>
+                  <input type="datetime-local" class="form-control" id="campaignScheduledFor">
+                </div>
+
+                <!-- Configurações Avançadas -->
+                <div class="col-12 mt-4">
+                  <h6 class="border-bottom pb-2">Configurações Avançadas</h6>
+                </div>
+                
+                <div class="col-md-4">
+                  <label for="campaignSendingSpeed" class="form-label">Velocidade de Envio</label>
+                  <select class="form-select" id="campaignSendingSpeed">
+                    <option value="5">Lenta (5 msg/min)</option>
+                    <option value="10" selected>Normal (10 msg/min)</option>
+                    <option value="20">Rápida (20 msg/min)</option>
+                    <option value="30">Muito Rápida (30 msg/min)</option>
+                  </select>
+                </div>
+                
+                <div class="col-md-8">
+                  <label class="form-label">Opções</label>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="campaignRespectOptOut" checked>
+                    <label class="form-check-label" for="campaignRespectOptOut">
+                      Respeitar opt-out (não enviar para contatos bloqueados)
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="campaignAllowReplies" checked>
+                    <label class="form-check-label" for="campaignAllowReplies">
+                      Permitir respostas
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="campaignTrackOpens" checked>
+                    <label class="form-check-label" for="campaignTrackOpens">
+                      Rastrear aberturas
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle"></i> Cancelar
+            </button>
+            <button type="button" class="btn btn-outline-primary" id="campaignTestBtn">
+              <i class="bi bi-send"></i> Enviar Teste
+            </button>
+            <button type="submit" form="campaignForm" class="btn btn-primary">
+              <i class="bi bi-save"></i> Salvar Campanha
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Send Modal -->
+    <div class="modal fade" id="quickSendModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-send text-success"></i>
+              Envio Rápido
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="quickSendForm">
+              <div class="mb-3">
+                <label for="quickSendList" class="form-label">Lista de Transmissão *</label>
+                <select class="form-select" id="quickSendList" required>
+                  <option value="">Selecione uma lista...</option>
+                </select>
+              </div>
+              
+              <div class="mb-3">
+                <label for="quickSendMessage" class="form-label">Mensagem *</label>
+                <textarea class="form-control" id="quickSendMessage" rows="6" required 
+                          placeholder="Digite sua mensagem aqui..."></textarea>
+                <small class="text-muted">
+                  <i class="bi bi-info-circle"></i> A mensagem será enviada imediatamente
+                </small>
+              </div>
+              
+              <div class="mb-3">
+                <label for="quickSendMedia" class="form-label">Anexar Mídia (Opcional)</label>
+                <input type="file" class="form-control" id="quickSendMedia" 
+                       accept="image/*,video/*,audio/*,.pdf">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle"></i> Cancelar
+            </button>
+            <button type="submit" form="quickSendForm" class="btn btn-success">
+              <i class="bi bi-send"></i> Enviar Agora
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Broadcast List Modal -->
+    <div class="modal fade" id="broadcastListModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="broadcastListModalLabel">Nova Lista de Transmissão</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <form id="broadcastListForm">
+              <input type="hidden" id="listId" />
+              
+              <div class="mb-3">
+                <label for="listName" class="form-label">Nome da Lista *</label>
+                <input type="text" class="form-control" id="listName" required>
+              </div>
+              
+              <div class="mb-3">
+                <label for="listDescription" class="form-label">Descrição</label>
+                <textarea class="form-control" id="listDescription" rows="2"></textarea>
+              </div>
+              
+              <div class="mb-3">
+                <label for="listCategory" class="form-label">Categoria</label>
+                <select class="form-select" id="listCategory">
+                  <option value="">Selecione...</option>
+                  <option value="clientes">Clientes</option>
+                  <option value="leads">Leads</option>
+                  <option value="fornecedores">Fornecedores</option>
+                  <option value="equipe">Equipe</option>
+                  <option value="outros">Outros</option>
+                </select>
+              </div>
+              
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="listIsActive" checked>
+                <label class="form-check-label" for="listIsActive">
+                  Lista ativa
+                </label>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle"></i> Cancelar
+            </button>
+            <button type="submit" form="broadcastListForm" class="btn btn-primary">
+              <i class="bi bi-save"></i> Salvar Lista
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Webhook -->
+    <div class="modal fade" id="webhookModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Criar Webhook</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="webhookId">
+                    
+                    <!-- Informações Básicas -->
+                    <div class="mb-3">
+                        <label class="form-label">Nome *</label>
+                        <input type="text" class="form-control" id="webhookName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea class="form-control" id="webhookDescription" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-9">
+                            <label class="form-label">URL *</label>
+                            <input type="url" class="form-control" id="webhookUrl" placeholder="https://..." required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Método</label>
+                            <select class="form-select" id="webhookMethod">
+                                <option value="POST">POST</option>
+                                <option value="GET">GET</option>
+                                <option value="PUT">PUT</option>
+                                <option value="PATCH">PATCH</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Eventos -->
+                    <div class="mb-3">
+                        <label class="form-label">Eventos *</label>
+                        <div id="webhookEventsContainer" style="max-height: 300px; overflow-y: auto;" class="border rounded p-3">
+                            <!-- Eventos serão carregados aqui -->
+                        </div>
+                    </div>
+                    
+                    <!-- Configurações Avançadas -->
+                    <div class="accordion" id="webhookAdvanced">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings">
+                                    Configurações Avançadas
+                                </button>
+                            </h2>
+                            <div id="advancedSettings" class="accordion-collapse collapse" data-bs-parent="#webhookAdvanced">
+                                <div class="accordion-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Secret (para assinatura HMAC)</label>
+                                        <input type="text" class="form-control" id="webhookSecret" placeholder="Deixe vazio para gerar automaticamente">
+                                        <small class="text-muted">Usado para assinar o payload com HMAC-SHA256</small>
+                                    </div>
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label">Tentativas de Retry</label>
+                                            <input type="number" class="form-control" id="webhookRetryAttempts" min="0" max="10" value="3">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Delay (segundos)</label>
+                                            <input type="number" class="form-control" id="webhookRetryDelay" min="1" max="3600" value="60">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Timeout (segundos)</label>
+                                            <input type="number" class="form-control" id="webhookTimeout" min="5" max="300" value="30">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="webhookIsActive" checked>
+                                        <label class="form-check-label" for="webhookIsActive">
+                                            Webhook ativo
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="saveWebhookBtn">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Detalhes do Webhook -->
+    <div class="modal fade" id="webhookDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalhes do Webhook</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Informações -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Informações Básicas</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Nome:</strong></td>
+                                    <td id="detailsWebhookName"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>URL:</strong></td>
+                                    <td id="detailsWebhookUrl"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Método:</strong></td>
+                                    <td id="detailsWebhookMethod"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td id="detailsWebhookStatus"></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Estatísticas</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Sucessos:</strong></td>
+                                    <td id="detailsSuccessCount"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Falhas:</strong></td>
+                                    <td id="detailsFailureCount"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Taxa de Sucesso:</strong></td>
+                                    <td id="detailsSuccessRate"></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tempo Médio:</strong></td>
+                                    <td id="detailsAvgResponseTime"></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Eventos -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">Eventos Monitorados</h6>
+                        <div id="detailsWebhookEvents"></div>
+                    </div>
+                    
+                    <!-- Último Disparo -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Último Disparo</h6>
+                            <p id="detailsLastTriggered" class="mb-0"></p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Status do Último Disparo</h6>
+                            <div id="detailsLastStatus"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Logs Recentes -->
+                    <div>
+                        <h6 class="text-primary">Logs Recentes</h6>
+                        <div id="detailsRecentLogs"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bibliotecas JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.45/builds/moment-timezone-with-data.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+    
+    <!-- Bootstrap Bundle (inclui Popper) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- App JavaScript (Módulos ES6) -->
+    <script type="module" src="/app/app.js"></script>
+</body>
+</html>
+

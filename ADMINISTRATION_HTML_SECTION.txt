@@ -1,0 +1,129 @@
+<!-- ADICIONAR ESTA SEÇÃO NO index.html, APÓS A SEÇÃO DE AUTOMAÇÕES E ANTES DOS MODAIS -->
+
+                <!-- Administration Section -->
+                <div id="administrationSection" class="content-section">
+                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+                        <div>
+                            <h1 class="page-title">
+                                <i class="bi bi-shield-lock text-primary"></i>
+                                Administração
+                            </h1>
+                            <div class="page-subtitle text-muted">Gerenciamento de API Keys, Conexões, Configurações e Permissões</div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Administração -->
+                    <ul class="nav nav-tabs mb-4" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-admin-tab="api-keys" type="button">
+                                <i class="bi bi-key"></i> API Keys
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="connections" type="button">
+                                <i class="bi bi-whatsapp"></i> Conexões WhatsApp
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="settings" type="button">
+                                <i class="bi bi-gear"></i> Configurações
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-admin-tab="roles" type="button">
+                                <i class="bi bi-shield-check"></i> Roles & Permissões
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- API Keys Tab -->
+                    <div data-admin-content="api-keys" class="admin-tab-content active">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Chaves de API</h4>
+                            <button class="btn btn-primary" id="newApiKeyBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Chave
+                            </button>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Chave</th>
+                                        <th>Tipo</th>
+                                        <th>Status</th>
+                                        <th>Requisições</th>
+                                        <th>Último Uso</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="apiKeysTableBody">
+                                    <tr><td colspan="7" class="text-center">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Connections Tab -->
+                    <div data-admin-content="connections" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Conexões WhatsApp</h4>
+                            <button class="btn btn-success" id="newConnectionBtn">
+                                <i class="bi bi-plus-lg"></i> Nova Conexão
+                            </button>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Telefone</th>
+                                        <th>Status</th>
+                                        <th>Mensagens</th>
+                                        <th>Última Conexão</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="connectionsTableBody">
+                                    <tr><td colspan="6" class="text-center">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div data-admin-content="settings" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Configurações do Sistema</h4>
+                            <div>
+                                <button class="btn btn-outline-primary" id="exportSettingsBtn">
+                                    <i class="bi bi-download"></i> Exportar
+                                </button>
+                                <button class="btn btn-outline-secondary" id="importSettingsBtn">
+                                    <i class="bi bi-upload"></i> Importar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="settingsContainer">
+                            <p class="text-center text-muted">Carregando...</p>
+                        </div>
+                    </div>
+
+                    <!-- Roles Tab -->
+                    <div data-admin-content="roles" class="admin-tab-content">
+                        <div class="d-flex justify-content-between mb-3">
+                            <h4>Papéis e Permissões</h4>
+                            <button class="btn btn-primary" id="newRoleBtn">
+                                <i class="bi bi-plus-lg"></i> Novo Papel
+                            </button>
+                        </div>
+                        
+                        <div class="row" id="rolesContainer">
+                            <div class="col-12 text-center text-muted">Carregando...</div>
+                        </div>
+                    </div>
+                </div>
+

@@ -1,0 +1,62 @@
+{
+  "examples": [
+    {
+      "message": "quero tirar férias em dezembro",
+      "intent": "dp",
+      "reasoning": "Solicitação de férias é assunto de Departamento Pessoal"
+    },
+    {
+      "message": "quando vou receber meu salário?",
+      "intent": "financeiro",
+      "reasoning": "Pagamento de salário é assunto do Financeiro"
+    },
+    {
+      "message": "a enceradeira quebrou",
+      "intent": "manutencao",
+      "reasoning": "Equipamento quebrado é assunto de Manutenção"
+    },
+    {
+      "message": "preciso contratar seus serviços",
+      "intent": "novo_cliente",
+      "reasoning": "Interesse em contratar indica novo cliente potencial"
+    },
+    {
+      "message": "quero enviar meu currículo",
+      "intent": "trabalhe_conosco",
+      "reasoning": "Envio de currículo é para vaga de emprego"
+    },
+    {
+      "message": "tem vaga de emprego?",
+      "intent": "trabalhe_conosco",
+      "reasoning": "Pergunta sobre vaga indica interesse em trabalhar"
+    },
+    {
+      "message": "preciso de uma cotação de material",
+      "intent": "compras",
+      "reasoning": "Cotação de material é assunto do setor de Compras"
+    },
+    {
+      "message": "o cliente não pagou a fatura",
+      "intent": "faturamento",
+      "reasoning": "Cobrança de fatura de cliente é assunto de Faturamento"
+    },
+    {
+      "message": "aconteceu um acidente no trabalho",
+      "intent": "seguranca",
+      "reasoning": "Acidente de trabalho é assunto de Segurança do Trabalho"
+    },
+    {
+      "message": "preciso falar urgente com alguém",
+      "intent": "atendimento_humano",
+      "reasoning": "Solicitação urgente indica necessidade de atendimento humano"
+    },
+    {
+      "message": "Quero saber do meu salário",
+      "intent": "dp",
+      "reasoning": "colaborador salário"
+    }
+  ],
+  "instructions": "Adicione novos exemplos neste arquivo para treinar a IA. Cada exemplo deve ter: message (mensagem do usuário), intent (intenção correta), e reasoning (explicação)",
+  "updatedAt": "2026-01-13T16:21:43.775Z",
+  "updatedBy": "system"
+}

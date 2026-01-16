@@ -335,9 +335,10 @@ async function timeMetrics(req, res) {
       raw: true
     });
 
+    // firstResponseAt não existe na tabela, usar uma estimativa baseada em createdAt
     const avgPrimeiraRespostaRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(firstResponseAt) - julianday(createdAt)) * 1440)"), 'avg']],
-      where: { firstResponseAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
+      attributes: [[literal("AVG((julianday(updatedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      where: { updatedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null }, status: { [Op.ne]: 'open' } },
       raw: true
     });
 
@@ -352,6 +353,7 @@ async function timeMetrics(req, res) {
       total: tempoAtendimento + tempoEspera + tempoPrimeiraResposta
     });
   } catch (error) {
+    console.error('Erro na requisição:', error.message);
     return fail(res, 500, error.message);
   }
 }
@@ -399,25 +401,20 @@ async function hourlyActivity(req, res) {
  */
 async function channelDistribution(req, res) {
   try {
-    const channels = await Ticket.findAll({
-      attributes: [
-        [col('channel'), 'channel'],
-        [fn('COUNT', col('id')), 'count']
-      ],
-      group: ['channel'],
-      order: [[literal('count'), 'DESC']],
-      raw: true
-    });
+    // Como não temos coluna 'channel', retornar apenas WhatsApp por enquanto
+    const total = await Ticket.count();
+    
+    const distribution = [
+      {
+        channel: 'whatsapp',
+        count: total,
+        percentage: 100
+      }
+    ];
 
-    const total = channels.reduce((sum, c) => sum + parseInt(c.count), 0);
-    const distribution = channels.map(c => ({
-      channel: c.channel || 'whatsapp',
-      count: parseInt(c.count),
-      percentage: total > 0 ? Math.round((parseInt(c.count) / total) * 100) : 0
-    }));
-
-    return ok(res, { channels: distribution, totalChannels: channels.length, total });
+    return ok(res, { channels: distribution, totalChannels: 1, total });
   } catch (error) {
+    console.error('Erro na requisição:', error.message);
     return fail(res, 500, error.message);
   }
 }

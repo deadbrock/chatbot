@@ -13,14 +13,33 @@ let totalPages = 1;
 export async function initCampaignsView() {
   console.log('Inicializando view de Campanhas...');
   
-  // Carregar campanhas
-  await loadCampaigns();
-  
-  // Configurar event listeners
-  setupEventListeners();
-  
-  // Carregar estatísticas gerais
-  await loadCampaignsStats();
+  try {
+    // Carregar campanhas
+    console.log('1. Carregando campanhas...');
+    await loadCampaigns();
+    console.log('2. Campanhas carregadas!');
+    
+    // Configurar event listeners
+    console.log('3. Configurando event listeners...');
+    setupEventListeners();
+    console.log('4. Event listeners configurados!');
+    
+    // Carregar estatísticas gerais
+    console.log('5. Carregando estatísticas...');
+    await loadCampaignsStats();
+    console.log('6. Estatísticas carregadas!');
+    
+    console.log('✅ View de Campanhas inicializada com sucesso!');
+    
+    // DEBUG: Listener global para detectar cliques
+    document.addEventListener('click', (e) => {
+      console.log('🎯 CLIQUE GLOBAL detectado em:', e.target.tagName, e.target.id || e.target.className);
+    }, { capture: true });
+    
+  } catch (error) {
+    console.error('❌ Erro ao inicializar view de Campanhas:', error);
+    showToast('Erro ao carregar campanhas', 'error');
+  }
 }
 
 async function loadCampaigns(page = 1, filters = {}) {
@@ -31,19 +50,29 @@ async function loadCampaigns(page = 1, filters = {}) {
       ...filters
     });
 
-    const response = await apiFetch(`/api/campaigns?${queryParams}`);
+    console.log('📡 Fazendo requisição para /campaigns...');
+    const response = await apiFetch(`/campaigns?${queryParams}`);
+    console.log('📦 Resposta recebida:', response);
     
-    if (response.success) {
+    if (response && response.success) {
       currentCampaigns = response.data;
       currentPage = response.pagination.page;
       totalPages = response.pagination.pages;
       
+      console.log(`✅ ${response.data.length} campanhas carregadas`);
       renderCampaignsTable(response.data);
       renderPagination(response.pagination);
+    } else {
+      console.warn('⚠️ Resposta sem success:', response);
+      // Mesmo sem campanhas, renderizar tabela vazia
+      renderCampaignsTable([]);
+      renderPagination({ total: 0, page: 1, pages: 1, limit: 20 });
     }
   } catch (error) {
-    console.error('Erro ao carregar campanhas:', error);
+    console.error('❌ Erro ao carregar campanhas:', error);
     showToast('Erro ao carregar campanhas', 'error');
+    // Renderizar tabela vazia em caso de erro
+    renderCampaignsTable([]);
   }
 }
 
@@ -225,6 +254,7 @@ function getActionButtons(campaign) {
 
 async function loadCampaignsStats() {
   try {
+    console.log('📊 Calculando estatísticas das campanhas...');
     // Estatísticas gerais baseadas nas campanhas carregadas
     const stats = {
       total: currentCampaigns.length,
@@ -233,10 +263,14 @@ async function loadCampaignsStats() {
       scheduled: currentCampaigns.filter(c => c.status === 'scheduled').length
     };
     
+    console.log('📊 Estatísticas calculadas:', stats);
+    
     // Atualizar cards de estatísticas
     updateStatsCards(stats);
+    console.log('✅ Cards de estatísticas atualizados');
   } catch (error) {
-    console.error('Erro ao carregar estatísticas:', error);
+    console.error('❌ Erro ao carregar estatísticas:', error);
+    // Não bloquear a inicialização por causa de erro nas estatísticas
   }
 }
 
@@ -319,23 +353,65 @@ function applyFilters() {
 }
 
 function openCampaignModal(campaignId = null) {
-  const modal = new bootstrap.Modal(document.getElementById('campaignModal'));
+  console.log('🎯 Abrindo modal de campanha...', campaignId ? `Editando: ${campaignId}` : 'Nova campanha');
+  
+  const modalElement = document.getElementById('campaignModal');
+  if (!modalElement) {
+    console.error('❌ Elemento campaignModal não encontrado!');
+    return;
+  }
+  
+  // TEMPORÁRIO: Limpar qualquer bloqueio antes de abrir
+  try {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+  } catch (e) {
+    console.warn('⚠️ Erro ao limpar bloqueios:', e);
+  }
+  
+  // FIX: Abrir modal SEM backdrop (backdrop estava bloqueando toda a página)
+  const modal = new bootstrap.Modal(modalElement, {
+    backdrop: false,  // ❌ Desabilitado: backdrop estava com z-index errado
+    keyboard: true,
+    focus: true
+  });
   
   if (campaignId) {
     // Modo edição
     loadCampaignData(campaignId);
   } else {
     // Modo criação
-    document.getElementById('campaignForm').reset();
-    document.getElementById('campaignModalLabel').textContent = 'Nova Campanha';
+    const form = document.getElementById('campaignForm');
+    if (form) {
+      form.reset();
+      console.log('✅ Formulário resetado');
+    }
+    
+    const label = document.getElementById('campaignModalLabel');
+    if (label) {
+      label.textContent = 'Nova Campanha';
+    }
   }
   
   modal.show();
+  console.log('✅ Modal exibido');
+  
+  // Debug: verificar se eventos estão chegando
+  setTimeout(() => {
+    const nameInput = document.getElementById('campaignName');
+    if (nameInput) {
+      console.log('🔍 Testando foco no campo...');
+      nameInput.focus();
+      console.log('🔍 Campo focado?', document.activeElement === nameInput);
+    }
+  }, 500);
 }
 
 async function loadCampaignData(campaignId) {
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}`);
+    const response = await apiFetch(`/campaigns/${campaignId}`);
     
     if (response.success) {
       const campaign = response.data;
@@ -378,7 +454,7 @@ async function handleCampaignSubmit(e) {
     let response;
     if (campaignId) {
       // Atualizar
-      response = await apiFetch(`/api/campaigns/${campaignId}`, {
+      response = await apiFetch(`/campaigns/${campaignId}`, {
         method: 'PUT',
         body: JSON.stringify(formData)
       });
@@ -461,8 +537,8 @@ window.openCampaignModal = openCampaignModal;
 
 window.viewCampaignDetails = async (campaignId) => {
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}`);
-    const statsResponse = await apiFetch(`/api/campaigns/${campaignId}/stats`);
+    const response = await apiFetch(`/campaigns/${campaignId}`);
+    const statsResponse = await apiFetch(`/campaigns/${campaignId}/stats`);
     
     if (response.success && statsResponse.success) {
       showCampaignDetailsModal(response.data, statsResponse.data);
@@ -477,7 +553,7 @@ window.startCampaign = async (campaignId) => {
   if (!confirm('Deseja iniciar o envio desta campanha?')) return;
   
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}/start`, {
+    const response = await apiFetch(`/campaigns/${campaignId}/start`, {
       method: 'POST'
     });
     
@@ -495,7 +571,7 @@ window.pauseCampaign = async (campaignId) => {
   if (!confirm('Deseja pausar esta campanha?')) return;
   
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}/pause`, {
+    const response = await apiFetch(`/campaigns/${campaignId}/pause`, {
       method: 'POST'
     });
     
@@ -513,7 +589,7 @@ window.duplicateCampaign = async (campaignId) => {
   if (!confirm('Deseja duplicar esta campanha?')) return;
   
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}/duplicate`, {
+    const response = await apiFetch(`/campaigns/${campaignId}/duplicate`, {
       method: 'POST'
     });
     
@@ -531,7 +607,7 @@ window.deleteCampaign = async (campaignId) => {
   if (!confirm('Deseja realmente excluir esta campanha? Esta ação não pode ser desfeita.')) return;
   
   try {
-    const response = await apiFetch(`/api/campaigns/${campaignId}`, {
+    const response = await apiFetch(`/campaigns/${campaignId}`, {
       method: 'DELETE'
     });
     

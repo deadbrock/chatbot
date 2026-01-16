@@ -81,7 +81,7 @@ async function fetchFlows() {
     if (search) params.append('search', search);
     if (status) params.append('status', status);
     
-    const response = await apiFetch(`/api/campaign-flows?${params}`);
+    const response = await apiFetch(`/campaign-flows?${params}`);
     
     if (response.success && response.data.flows) {
       renderFlowsList(response.data.flows);
@@ -262,7 +262,7 @@ async function fetchFollowUps() {
     if (type) params.append('type', type);
     if (status) params.append('status', status);
     
-    const response = await apiFetch(`/api/follow-ups?${params}`);
+    const response = await apiFetch(`/follow-ups?${params}`);
     
     if (response.success && response.data.followUps) {
       renderFollowUpsList(response.data.followUps);
@@ -441,7 +441,7 @@ async function fetchTriggers() {
     if (eventType) params.append('eventType', eventType);
     if (status) params.append('status', status);
     
-    const response = await apiFetch(`/api/triggers?${params}`);
+    const response = await apiFetch(`/triggers?${params}`);
     
     if (response.success && response.data.triggers) {
       renderTriggersList(response.data.triggers);

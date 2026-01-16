@@ -76,6 +76,12 @@ const UserSession = sequelize.define('UserSession', {
     comment: 'Dados temporários coletados no formulário'
   },
   
+  collectionIndex: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Índice do campo sendo coletado (para fluxos com múltiplos campos)'
+  },
+  
   // Controle de atendimento
   isActive: {
     type: DataTypes.BOOLEAN,

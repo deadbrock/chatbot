@@ -1,0 +1,290 @@
+/**
+ * Chat Style - WhatsApp Web Design
+ * Inspirado no design do Amanda/WhatsApp Web
+ */
+
+/* Container principal do chat */
+#chatMessages {
+    background-color: #e5ddd5;
+    background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJhIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHBhdHRlcm5UcmFuc2Zvcm09InJvdGF0ZSgxMzUpIj48cmVjdCB4PSIwIiB5PSIwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTAgNjBWMEg2MCIgc3Ryb2tlLXdpZHRoPSIwLjUiIHN0cm9rZT0iI2RmZDZjZSIgZmlsbD0ibm9uZSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjgwMCUiIGhlaWdodD0iODAwJSIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==');
+    padding: 20px;
+    overflow-y: auto;
+    height: calc(100vh - 250px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Mensagem individual */
+.chat-message {
+    display: flex;
+    width: 100%;
+    margin-bottom: 4px;
+    animation: messageSlide 0.2s ease-out;
+}
+
+@keyframes messageSlide {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mensagens recebidas (esquerda) */
+.chat-message.incoming {
+    justify-content: flex-start;
+}
+
+/* Mensagens enviadas (direita) */
+.chat-message.outgoing {
+    justify-content: flex-end;
+}
+
+/* Bolha de mensagem */
+.message-bubble {
+    max-width: 65%;
+    padding: 8px 12px 8px 12px;
+    border-radius: 8px;
+    position: relative;
+    word-wrap: break-word;
+    box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Bolha mensagem recebida */
+.chat-message.incoming .message-bubble {
+    background-color: #ffffff;
+    border-top-left-radius: 0;
+}
+
+/* Bolha mensagem enviada */
+.chat-message.outgoing .message-bubble {
+    background-color: #d9fdd3;
+    border-top-right-radius: 0;
+}
+
+/* Conteúdo da mensagem */
+.message-content {
+    font-size: 14px;
+    line-height: 19px;
+    color: #111b21;
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+}
+
+/* Footer da mensagem (hora + checks) */
+.message-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+/* Hora */
+.message-time {
+    font-size: 11px;
+    color: #667781;
+    white-space: nowrap;
+}
+
+/* Status de leitura (checks) */
+.message-status {
+    display: inline-flex;
+    align-items: center;
+}
+
+.message-status svg {
+    width: 16px;
+    height: 16px;
+    fill: #667781;
+}
+
+/* Checks azuis quando lido */
+.message-status.read svg {
+    fill: #53bdeb;
+}
+
+/* Avisos do sistema */
+.chat-system-message {
+    display: flex;
+    justify-content: center;
+    margin: 12px 0;
+}
+
+.system-message-content {
+    background-color: #ffffff;
+    color: #54656f;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+    text-align: center;
+    max-width: 80%;
+}
+
+/* Aviso de ticket aguardando */
+.chat-waiting-notice {
+    background-color: #e7f3ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #0066cc;
+    font-size: 13px;
+}
+
+.chat-waiting-notice i {
+    font-size: 20px;
+}
+
+/* Campo de mensagem */
+.chat-input-container {
+    background-color: #f0f2f5;
+    padding: 10px 16px;
+    border-top: 1px solid #d1d7db;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Campo de mensagem quando ticket está aguardando */
+.chat-input-container.waiting {
+    background-color: #fff3cd;
+    border-top-color: #ffc107;
+}
+
+.chat-input-container.waiting input {
+    background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Input de mensagem */
+.chat-input {
+    flex: 1;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    background-color: #ffffff;
+    outline: none;
+}
+
+.chat-input:focus {
+    box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.3);
+}
+
+/* Botão de enviar */
+.chat-send-btn {
+    background-color: #25d366;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.chat-send-btn:hover {
+    background-color: #20bd5a;
+}
+
+.chat-send-btn:active {
+    transform: scale(0.95);
+}
+
+/* Ícone SVG de check duplo */
+.check-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Scroll suave */
+#chatMessages {
+    scroll-behavior: smooth;
+}
+
+/* Scrollbar customizada (estilo WhatsApp) */
+#chatMessages::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chatMessages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#chatMessages::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Loading de mensagem */
+.message-sending {
+    opacity: 0.6;
+}
+
+.message-sending .message-status svg {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .message-bubble {
+        max-width: 80%;
+    }
+    
+    #chatMessages {
+        padding: 12px;
+    }
+}
+
+/* Dark mode support (opcional) */
+@media (prefers-color-scheme: dark) {
+    #chatMessages {
+        background-color: #0b141a;
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJhIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHBhdHRlcm5UcmFuc2Zvcm09InJvdGF0ZSgxMzUpIj48cmVjdCB4PSIwIiB5PSIwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTAgNjBWMEg2MCIgc3Ryb2tlLXdpZHRoPSIwLjUiIHN0cm9rZT0iIzIwMmMyZSIgZmlsbD0ibm9uZSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjgwMCUiIGhlaWdodD0iODAwJSIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==');
+    }
+    
+    .chat-message.incoming .message-bubble {
+        background-color: #202c33;
+    }
+    
+    .chat-message.outgoing .message-bubble {
+        background-color: #005c4b;
+    }
+    
+    .message-content {
+        color: #e9edef;
+    }
+    
+    .chat-input-container {
+        background-color: #202c33;
+        border-top-color: #2a3942;
+    }
+    
+    .chat-input {
+        background-color: #2a3942;
+        color: #e9edef;
+    }
+}
+

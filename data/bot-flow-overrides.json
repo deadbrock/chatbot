@@ -1,0 +1,21 @@
+{
+  "administrative_menu": {
+    "options": {
+      "2": {
+        "next": "billing_menu"
+      },
+      "5": {
+        "next": "supplier_flow"
+      },
+      "10": {
+        "next": "wait_for_agent"
+      },
+      "11": {
+        "next": "wait_for_agent"
+      },
+      "12": {
+        "next": "initial"
+      }
+    }
+  }
+}

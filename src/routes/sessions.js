@@ -34,5 +34,14 @@ router.delete('/:userId', async (req, res) => {
   return sessionsController.remove(req, res);
 });
 
+/**
+ * PATCH /api/sessions/:userId/flow
+ * Força fluxo atual da conversa (user_sessions)
+ * body: { currentFlow, currentStep?, resetContext? }
+ */
+router.patch('/:userId/flow', async (req, res) => {
+  return sessionsController.updateFlow(req, res);
+});
+
 module.exports = router;
 

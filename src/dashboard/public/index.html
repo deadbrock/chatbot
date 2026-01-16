@@ -14,7 +14,10 @@
     <link rel="stylesheet" href="/css/chat.css">
     <link rel="stylesheet" href="/css/webhooks.css">
     <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/whatsapp-chat.css">
     <link rel="stylesheet" href="/css/administration.css">
+    <link rel="stylesheet" href="/app/views/aiPlayground.css">
+    <link rel="stylesheet" href="/css/modal-fix.css">
 </head>
 <body>
     <!-- Navbar -->
@@ -130,6 +133,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="#automations" data-section="automations">
                                 <i class="bi bi-gear-wide-connected"></i> Automações
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#ai-playground" data-section="ai-playground">
+                                <i class="bi bi-robot"></i> AI Playground
                             </a>
                         </li>
                         <li class="nav-item">
@@ -1264,6 +1272,9 @@
                                     </div>
                                 </div>
                                 <div class="chat-header-actions">
+                                    <!-- Botões de Ação (Aceitar, Rejeitar, Finalizar) -->
+                                    <div id="chatHeaderActions" class="me-2" style="display: flex; gap: 8px;"></div>
+                                    
                                     <button class="btn btn-sm btn-outline-secondary" id="chatSearchToggle" title="Buscar na conversa">
                                         <i class="bi bi-search"></i>
                                     </button>
@@ -1428,6 +1439,11 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- AI Playground Section -->
+                <div id="ai-playgroundSection" class="content-section">
+                    <!-- Conteúdo será renderizado via aiPlaygroundView.js -->
                 </div>
 
                 <!-- Administration Section -->
@@ -1719,10 +1735,31 @@
                 <div class="small text-muted mb-2">Histórico</div>
                 <div class="ticket-timeline" id="ticketModalTimeline"></div>
               </div>
+              
+              <!-- Transferir Ticket (apenas admin/manager) -->
+              <div class="col-12" id="ticketTransferSection" style="display: none;">
+                <hr>
+                <div class="small text-muted mb-2">🔄 Transferir Ticket</div>
+                <div class="row g-2">
+                  <div class="col-md-8">
+                    <select class="form-select" id="ticketTransferAgent">
+                      <option value="">Selecione um atendente...</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <button class="btn btn-warning w-100" id="ticketTransferBtn">
+                      <i class="bi bi-arrow-right-circle"></i> Transferir
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+            <button class="btn btn-success" id="ticketModalChatBtn">
+              <i class="bi bi-chat-dots"></i> Iniciar Conversa
+            </button>
             <button class="btn btn-primary" id="ticketModalSaveBtn">
               <i class="bi bi-save"></i> Salvar
             </button>
@@ -2767,6 +2804,9 @@
     
     <!-- Socket.IO Client -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- AI Playground View (Global) -->
+    <script src="/app/views/aiPlaygroundView.js" onerror="console.error('❌ Erro ao carregar aiPlaygroundView.js')"></script>
     
     <!-- App JavaScript (Módulos ES6) -->
     <script type="module" src="/app/app.js"></script>

@@ -400,10 +400,10 @@ window.saveContact = async function() {
 
   try {
     if (contactId) {
-      await apiFetch(`/contacts/${contactId}`, { method: 'PUT', body: JSON.stringify(data) });
+      await apiFetch(`/contacts/${contactId}`, { method: 'PUT', body: data });
       showToast('Contato atualizado com sucesso!', 'success');
     } else {
-      await apiFetch('/contacts', { method: 'POST', body: JSON.stringify(data) });
+      await apiFetch('/contacts', { method: 'POST', body: data });
       showToast('Contato criado com sucesso!', 'success');
     }
 

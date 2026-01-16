@@ -273,10 +273,10 @@ window.saveStatus = async function() {
 
   try {
     if (statusId) {
-      await apiFetch(`/ticket-statuses/${statusId}`, { method: 'PUT', body: JSON.stringify(data) });
+      await apiFetch(`/ticket-statuses/${statusId}`, { method: 'PUT', body: data });
       showToast('Status atualizado com sucesso!', 'success');
     } else {
-      await apiFetch('/ticket-statuses', { method: 'POST', body: JSON.stringify(data) });
+      await apiFetch('/ticket-statuses', { method: 'POST', body: data });
       showToast('Status criado com sucesso!', 'success');
     }
 

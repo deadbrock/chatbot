@@ -26,7 +26,7 @@ export function renderAgents({ agents, apiFetch, createToast, escapeHtml }) {
       const id = btn.getAttribute('data-user-id');
       const status = btn.getAttribute('data-status');
       try {
-        await apiFetch(`/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+        await apiFetch(`/users/${id}/status`, { method: 'PATCH', body: { status } });
         createToast({ title: 'Ok', message: 'Status atualizado.', variant: 'success' });
       } catch (e) {
         createToast({ title: 'Erro', message: e?.message || 'Falha ao atualizar status.', variant: 'danger' });

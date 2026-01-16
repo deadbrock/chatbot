@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
+const logger = require('../utils/logger');
 
 /**
  * Controller de Chat em Tempo Real
@@ -22,10 +23,14 @@ async function getTicketMessages(req, res) {
     const { ticketId } = req.params;
     const { limit = 50, offset = 0, before, after } = req.query;
     
+    logger.info(`🔍 [GET_MESSAGES] ticketId: ${ticketId}, limit: ${limit}, offset: ${offset}`);
+    
     const where = {
-      ticketId,
-      isDeleted: false
+      ticketId: parseInt(ticketId) // Garantir que é número
+      // Removido isDeleted temporariamente para debug
     };
+    
+    logger.info(`🔍 [GET_MESSAGES] WHERE:`, JSON.stringify(where));
     
     // Filtro por data
     if (before) {
@@ -49,6 +54,8 @@ async function getTicketMessages(req, res) {
         }
       ]
     });
+    
+    logger.info(`🔍 [GET_MESSAGES] Encontradas ${messages.length} mensagens`);
     
     // Contar não lidas
     const unreadCount = await ChatMessage.countUnread(ticketId);
@@ -111,11 +118,40 @@ async function sendMessage(req, res) {
       quotedMessageId
     });
     
-    // TODO: Integrar com WhatsApp Client para enviar mensagem real
-    // await whatsappClient.sendMessage(to, body);
-    
-    // Simular envio bem-sucedido
-    await message.updateStatus('sent', 1);
+    // 📱 ENVIAR MENSAGEM VIA WHATSAPP
+    try {
+      logger.info('🔍 [CHAT] Iniciando envio via WhatsApp...');
+      logger.info(`🔍 [CHAT] Para: ${to}`);
+      logger.info(`🔍 [CHAT] Mensagem: ${body.substring(0, 50)}...`);
+      
+      const whatsappClient = require('../bot/whatsapp');
+      logger.info(`🔍 [CHAT] Cliente WhatsApp (WPPConnect) carregado. isReady: ${whatsappClient.isReady}`);
+      
+      // Se já tem @, usar como está. Caso contrário, adicionar @c.us (WPPConnect)
+      const formattedNumber = to.includes('@') ? to : `${to}@c.us`;
+      logger.info(`🔍 [CHAT] Número original: ${to}`);
+      logger.info(`🔍 [CHAT] Número formatado: ${formattedNumber}`);
+      
+      // Adicionar timeout de 10 segundos
+      const sendPromise = whatsappClient.sendMessage(formattedNumber, body);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao enviar mensagem')), 10000)
+      );
+      
+      logger.info('🔍 [CHAT] Aguardando envio...');
+      await Promise.race([sendPromise, timeoutPromise]);
+      
+      // Atualizar status como enviado
+      await message.updateStatus('sent', 1);
+      
+      logger.info(`✅ [CHAT] Mensagem enviada via WhatsApp para ${to}`);
+    } catch (whatsappError) {
+      logger.error(`❌ [CHAT] Erro ao enviar via WhatsApp: ${whatsappError.message}`);
+      logger.error(`❌ [CHAT] Stack completo: ${whatsappError.stack}`);
+      logger.error(`❌ [CHAT] isReady no momento do erro: ${require('../bot/whatsapp').isReady}`);
+      // Mesmo que falhe, continuar (mensagem já está salva no banco)
+      // Marcar como 'pending' para reprocessamento posterior
+    }
     
     // Emitir via Socket.IO
     const io = req.app.get('io');

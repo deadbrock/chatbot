@@ -160,6 +160,36 @@ function setupSocketEvents() {
   socket.on('user_left_ticket', (data) => {
     console.log('👋 Usuário saiu:', data);
   });
+  
+  // 🔔 NOVOS EVENTOS: Notificações de Tickets
+  socket.on('new_ticket_notification', (data) => {
+    console.log('🔔 Novo ticket aguardando atendente:', data);
+    showTicketNotification(data);
+    // Recarregar lista de chats para mostrar novo ticket
+    loadChats();
+  });
+  
+  socket.on('ticket_accepted', (data) => {
+    console.log('✅ Ticket aceito:', data);
+    showToast(`Ticket ${data.protocol} aceito por ${data.agentName}`, 'success');
+    loadChats();
+  });
+  
+  socket.on('ticket_rejected', (data) => {
+    console.log('⏭️ Ticket rejeitado:', data);
+    loadChats();
+  });
+  
+  socket.on('ticket_finished', (data) => {
+    console.log('🏁 Ticket finalizado:', data);
+    showToast(`Ticket ${data.protocol} finalizado`, 'info');
+    loadChats();
+  });
+  
+  socket.on('ticket_auto_assigned', (data) => {
+    console.log('🤖 Ticket atribuído automaticamente à IA:', data);
+    loadChats();
+  });
 }
 
 /**
@@ -215,6 +245,15 @@ function setupEventListeners() {
   document.getElementById('removeFileBtn')?.addEventListener('click', () => {
     clearFileSelection();
   });
+
+  // Evento global para abrir chat de um ticket específico
+  window.addEventListener('openChat', (event) => {
+    const ticketId = event?.detail?.ticketId;
+    if (ticketId) {
+      console.log('🎯 Abrindo chat do ticket:', ticketId);
+      openChat(ticketId);
+    }
+  });
   
   // Painel de informações
   document.getElementById('chatInfoToggle')?.addEventListener('click', toggleInfoPanel);
@@ -233,18 +272,26 @@ async function loadChats() {
   try {
     showLoading();
     
-    const response = await apiFetch('/tickets', {
-      params: {
-        status: 'open,pending,waiting',
-        limit: 100
-      }
-    });
+    // Não passar status específicos - deixar o backend filtrar automaticamente
+    // Para agents: mostra apenas tickets atribuídos (assignedTo = userId)
+    // Para admins/managers: mostra todos os tickets ativos
+    const tickets = await apiFetch('/tickets?limit=100');
     
-    const tickets = response.data || [];
-    renderChatList(tickets);
+    console.log('📋 Tickets carregados para chat:', tickets);
+    
+    const ticketsArray = Array.isArray(tickets) ? tickets : [];
+    
+    // Filtrar apenas tickets relevantes para chat (ativos)
+    const activeTickets = ticketsArray.filter(t => 
+      ['open', 'in_progress', 'waiting_human'].includes(t.status)
+    );
+    
+    console.log('📋 Tickets ativos filtrados:', activeTickets.length);
+    
+    renderChatList(activeTickets);
     
     // Atualizar contadores
-    updateFilterCounts(tickets);
+    updateFilterCounts(activeTickets);
     
   } catch (error) {
     console.error('❌ Erro ao carregar conversas:', error);
@@ -319,12 +366,15 @@ async function openChat(ticketId) {
     currentTicketId = ticketId;
     
     // Carregar mensagens
-    const response = await apiFetch(`/api/chat/tickets/${ticketId}/messages`);
-    const messages = response.data || [];
+    const messagesResponse = await apiFetch(`/chat/tickets/${ticketId}/messages`);
+    const messages = messagesResponse?.messages || messagesResponse?.data?.messages || [];
+    
+    console.log('📨 Mensagens recebidas:', messages.length, messages);
     
     // Carregar dados do ticket
-    const ticketResponse = await apiFetch(`/api/tickets/${ticketId}`);
-    const ticket = ticketResponse.data;
+    const ticket = await apiFetch(`/tickets/${ticketId}`);
+    
+    console.log('📋 Ticket carregado:', ticket);
     
     // Renderizar chat
     renderChatHeader(ticket);
@@ -365,44 +415,102 @@ async function openChat(ticketId) {
  * Renderiza cabeçalho do chat
  */
 function renderChatHeader(ticket) {
-  const contact = ticket.contact || {};
-  const queue = ticket.queue || {};
-  const agent = ticket.user || {};
+  // Usar dados diretos do ticket (sem relações)
+  const contactName = ticket.userName || ticket.contact?.name || 'Sem nome';
+  const contactPhone = ticket.userPhone || ticket.contact?.number || '';
+  const queueName = ticket.department || ticket.queue?.name || '-';
+  const agentName = ticket.assignedAgent?.name || 'Não atribuído';
   
-  document.getElementById('chatContactInitials').textContent = getInitials(contact.name);
-  document.getElementById('chatContactName').textContent = contact.name || 'Sem nome';
-  document.getElementById('chatContactInfo').textContent = contact.number || '';
+  const initialsEl = document.getElementById('chatContactInitials');
+  if (initialsEl) initialsEl.textContent = getInitials(contactName);
+  
+  const nameEl = document.getElementById('chatContactName');
+  if (nameEl) nameEl.textContent = contactName;
+  
+  const infoEl = document.getElementById('chatContactInfo');
+  if (infoEl) infoEl.textContent = contactPhone;
   
   // Status indicator
   const statusIndicator = document.getElementById('chatContactStatus');
-  statusIndicator.className = `status-indicator ${ticket.status === 'open' ? 'online' : 'offline'}`;
+  if (statusIndicator) {
+    statusIndicator.className = `status-indicator ${ticket.status === 'open' || ticket.status === 'in_progress' ? 'online' : 'offline'}`;
+  }
   
   // Painel de informações
-  document.getElementById('infoContactName').textContent = contact.name || '-';
-  document.getElementById('infoContactPhone').textContent = contact.number || '-';
-  document.getElementById('infoTicketStatus').textContent = getStatusLabel(ticket.status);
-  document.getElementById('infoTicketQueue').textContent = queue.name || '-';
-  document.getElementById('infoTicketAgent').textContent = agent.name || 'Não atribuído';
+  const infoNameEl = document.getElementById('infoContactName');
+  if (infoNameEl) infoNameEl.textContent = contactName;
   
-  // Tags
-  if (ticket.tags && ticket.tags.length > 0) {
-    document.getElementById('infoTicketTags').innerHTML = ticket.tags.map(tag => 
+  const infoPhoneEl = document.getElementById('infoContactPhone');
+  if (infoPhoneEl) infoPhoneEl.textContent = contactPhone;
+  
+  const infoStatusEl = document.getElementById('infoTicketStatus');
+  if (infoStatusEl) infoStatusEl.textContent = getStatusLabel(ticket.status);
+  
+  const infoQueueEl = document.getElementById('infoTicketQueue');
+  if (infoQueueEl) infoQueueEl.textContent = queueName;
+  
+  const infoAgentEl = document.getElementById('infoTicketAgent');
+  if (infoAgentEl) infoAgentEl.textContent = agentName;
+  
+  // Tags (se existirem)
+  const infoTagsEl = document.getElementById('infoTicketTags');
+  if (infoTagsEl && ticket.tags && ticket.tags.length > 0) {
+    infoTagsEl.innerHTML = ticket.tags.map(tag => 
       `<span class="badge" style="background-color: ${tag.color}">${tag.name}</span>`
     ).join(' ');
+  }
+  
+  // Renderizar botões de ação (aceitar, rejeitar, finalizar)
+  renderActionButtons(ticket);
+}
+
+/**
+ * Renderiza botões de ação no cabeçalho (Aceitar, Rejeitar, Finalizar)
+ */
+function renderActionButtons(ticket) {
+  const actionsContainer = document.getElementById('chatHeaderActions');
+  if (!actionsContainer) return;
+  
+  // Limpar botões existentes
+  actionsContainer.innerHTML = '';
+  
+  // Obter usuário logado
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  // Se ticket está aguardando atendente (waiting_human)
+  if (ticket.status === 'waiting_human') {
+    actionsContainer.innerHTML = `
+      <button class="btn btn-success btn-sm" onclick="acceptTicket(${ticket.id})" title="Aceitar Atendimento">
+        <i class="bi bi-check-circle"></i> Aceitar
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="rejectTicket(${ticket.id})" title="Rejeitar (IA assume)">
+        <i class="bi bi-x-circle"></i> Rejeitar
+      </button>
+    `;
+  }
+  
+  // Se ticket está em progresso E atribuído ao atendente logado
+  if (ticket.status === 'in_progress' && ticket.assignedTo === currentUser.id) {
+    actionsContainer.innerHTML = `
+      <button class="btn btn-primary btn-sm" onclick="finishTicket(${ticket.id})" title="Finalizar Atendimento">
+        <i class="bi bi-check2-all"></i> Finalizar Atendimento
+      </button>
+    `;
   }
 }
 
 /**
- * Renderiza mensagens
+ * Renderiza mensagens (Estilo WhatsApp)
  */
 function renderMessages(messages) {
   const messagesContainer = document.getElementById('chatMessages');
   
   if (!messages || messages.length === 0) {
     messagesContainer.innerHTML = `
-      <div class="text-center py-5 text-muted">
-        <i class="bi bi-chat-square-text fs-1"></i>
-        <p class="mt-2">Nenhuma mensagem ainda</p>
+      <div class="chat-system-message">
+        <div class="system-message-content">
+          <i class="bi bi-chat-square-text"></i> Nenhuma mensagem ainda
+        </div>
       </div>
     `;
     return;
@@ -410,124 +518,83 @@ function renderMessages(messages) {
   
   messagesContainer.innerHTML = messages.map(msg => renderMessage(msg)).join('');
   
-  // Event listeners para reações
-  messagesContainer.querySelectorAll('.message-react-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const messageId = e.target.closest('.message').dataset.messageId;
-      showReactionPicker(messageId);
-    });
-  });
+  // Scroll automático para o final
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
 /**
- * Renderiza uma mensagem
+ * Renderiza uma mensagem (Estilo WhatsApp)
  */
 function renderMessage(message) {
-  const isFromMe = message.fromMe || message.senderId === currentUserId;
-  const messageClass = isFromMe ? 'message-outgoing' : 'message-incoming';
-  
-  let content = '';
-  
-  // Texto
-  if (message.type === 'text' || !message.type) {
-    content = `<div class="message-text">${escapeHtml(message.body)}</div>`;
+  // Verificar se mensagem é válida
+  if (!message || !message.body) {
+    console.warn('⚠️ Mensagem inválida:', message);
+    return '';
   }
   
-  // Imagem
-  if (message.type === 'image') {
-    content = `
-      <div class="message-media">
-        <img src="${message.mediaUrl}" alt="Imagem" class="message-image">
-        ${message.body ? `<div class="message-text mt-2">${escapeHtml(message.body)}</div>` : ''}
-      </div>
-    `;
-  }
+  const isFromMe = message.fromMe || message.direction === 'outgoing' || message.userId === currentUserId;
+  const messageClass = isFromMe ? 'outgoing' : 'incoming';
   
-  // Vídeo
-  if (message.type === 'video') {
-    content = `
-      <div class="message-media">
-        <video controls class="message-video">
-          <source src="${message.mediaUrl}" type="video/mp4">
-        </video>
-        ${message.body ? `<div class="message-text mt-2">${escapeHtml(message.body)}</div>` : ''}
-      </div>
-    `;
-  }
+  // Conteúdo da mensagem
+  let content = escapeHtml(message.body);
   
-  // Áudio
-  if (message.type === 'audio' || message.type === 'voice' || message.type === 'ptt') {
-    content = `
-      <div class="message-media">
-        <audio controls class="message-audio">
-          <source src="${message.mediaUrl}" type="audio/mpeg">
-        </audio>
-      </div>
-    `;
-  }
+  // Formatar hora
+  const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
   
-  // Documento
-  if (message.type === 'document') {
-    content = `
-      <div class="message-document">
-        <i class="bi bi-file-earmark-text fs-3"></i>
-        <div>
-          <div class="fw-bold">${message.fileName || 'Documento'}</div>
-          <small class="text-muted">${formatFileSize(message.fileSize)}</small>
-        </div>
-        <a href="${message.mediaUrl}" download class="btn btn-sm btn-outline-primary">
-          <i class="bi bi-download"></i>
-        </a>
-      </div>
-    `;
+  // Status de leitura (apenas para mensagens enviadas)
+  let statusIcon = '';
+  if (isFromMe) {
+    const isRead = message.status === 'read' || message.ack >= 3;
+    const isDelivered = message.status === 'delivered' || message.ack === 2;
+    const isSent = message.status === 'sent' || message.ack === 1;
+    
+    const statusClass = isRead ? 'read' : '';
+    
+    if (isRead || isDelivered) {
+      // Check duplo
+      statusIcon = `
+        <span class="message-status ${statusClass}">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="currentColor" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609zm-4.892 0l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609z"/>
+          </svg>
+        </span>
+      `;
+    } else if (isSent) {
+      // Check simples
+      statusIcon = `
+        <span class="message-status">
+          <svg viewBox="0 0 12 11" width="12" height="11">
+            <path fill="currentColor" d="M11.1 2.4L9.8 1.2 4.3 6.7 2.1 4.5.9 5.7l3.4 3.4 6.8-6.7z"/>
+          </svg>
+        </span>
+      `;
+    } else {
+      // Relógio (pendente)
+      statusIcon = `
+        <span class="message-status">
+          <svg viewBox="0 0 16 16" width="14" height="14">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path fill="currentColor" d="M8 4v4.5l3 1.75"/>
+          </svg>
+        </span>
+      `;
+    }
   }
   
   return `
-    <div class="message ${messageClass}" data-message-id="${message.id}">
-      <div class="message-content">
-        ${content}
+    <div class="chat-message ${messageClass}" data-message-id="${message.id}">
+      <div class="message-bubble">
+        <div class="message-content">${content}</div>
         <div class="message-footer">
-          <span class="message-time">${formatTime(message.timestamp)}</span>
-          ${isFromMe ? renderMessageStatus(message.status) : ''}
+          <span class="message-time">${time}</span>
+          ${statusIcon}
         </div>
       </div>
-      ${message.reactions ? renderReactions(message.reactions) : ''}
-      <button class="message-react-btn" title="Reagir">
-        <i class="bi bi-emoji-smile"></i>
-      </button>
     </div>
   `;
 }
 
-/**
- * Renderiza status da mensagem
- */
-function renderMessageStatus(status) {
-  const icons = {
-    pending: 'bi-clock',
-    sent: 'bi-check',
-    delivered: 'bi-check-all',
-    read: 'bi-check-all text-primary',
-    failed: 'bi-x-circle text-danger'
-  };
-  
-  return `<i class="bi ${icons[status] || icons.pending} message-status"></i>`;
-}
-
-/**
- * Renderiza reações
- */
-function renderReactions(reactions) {
-  if (!reactions || Object.keys(reactions).length === 0) return '';
-  
-  return `
-    <div class="message-reactions">
-      ${Object.entries(reactions).map(([emoji, count]) => 
-        `<span class="reaction-item">${emoji} ${count}</span>`
-      ).join('')}
-    </div>
-  `;
-}
+// Funções de status e reações removidas (design simplificado estilo WhatsApp)
 
 /**
  * Envia mensagem
@@ -560,9 +627,13 @@ async function sendMessage() {
       fileSize = selectedFile.size;
     }
     
+    // Buscar ticket para pegar o número do destinatário
+    const ticket = await apiFetch(`/tickets/${currentTicketId}`);
+    
     // Enviar mensagem
     const message = {
       ticketId: currentTicketId,
+      to: ticket.userPhone,  // ✅ Campo obrigatório!
       body: body,
       type: mediaType,
       mediaUrl: mediaUrl,
@@ -570,21 +641,28 @@ async function sendMessage() {
       fileSize: fileSize
     };
     
-    // Via Socket.IO para tempo real
-    if (socket) {
-      socket.emit('send_message', message);
-    }
+    console.log('📤 Enviando mensagem:', message);
     
-    // Também via API para garantir
-    await apiFetch('/chat/messages', {
+    // Via API
+    const response = await apiFetch('/chat/messages', {
       method: 'POST',
-      body: JSON.stringify(message)
+      body: message  // ✅ apiFetch já faz JSON.stringify!
     });
+    
+    console.log('✅ Resposta da API:', response);
+    
+    // Adicionar mensagem ao chat localmente
+    // A API retorna { message: {...}, success: true }
+    const sentMessage = response.message || response;
+    addMessageToChat(sentMessage);
     
     // Limpar input
     textarea.value = '';
     clearFileSelection();
     autoResizeTextarea(textarea);
+    
+    // Scroll para o final
+    scrollToBottom();
     
   } catch (error) {
     console.error('❌ Erro ao enviar mensagem:', error);
@@ -642,22 +720,39 @@ function clearFileSelection() {
  * Manipula nova mensagem recebida
  */
 function handleNewMessage(data) {
-  if (data.ticketId === currentTicketId) {
-    // Adicionar mensagem ao chat
-    const messagesContainer = document.getElementById('chatMessages');
-    const messageHtml = renderMessage(data.message);
-    messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
-    scrollToBottom();
+  const message = data.message || data;
+  
+  if (data.ticketId === currentTicketId || message.ticketId === currentTicketId) {
+    addMessageToChat(message);
     
     // Marcar como lida
     markMessagesAsRead(currentTicketId);
   } else {
     // Atualizar badge
-    updateChatItemUnread(data.ticketId);
+    updateChatItemUnread(data.ticketId || message.ticketId);
   }
   
   // Atualizar lista de conversas
   loadChats();
+}
+
+/**
+ * Adiciona mensagem ao chat
+ */
+function addMessageToChat(message) {
+  const messagesContainer = document.getElementById('chatMessages');
+  if (!messagesContainer) return;
+  
+  // Se container está vazio (mensagem inicial), limpar placeholder
+  if (messagesContainer.querySelector('.text-center')) {
+    messagesContainer.innerHTML = '';
+  }
+  
+  const messageHtml = renderMessage(message);
+  if (messageHtml) {
+    messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+    scrollToBottom();
+  }
 }
 
 /**
@@ -702,9 +797,10 @@ function hideTypingIndicator() {
  */
 async function markMessagesAsRead(ticketId) {
   try {
+    // apiFetch já faz JSON.stringify automaticamente
     await apiFetch('/chat/messages/read', {
       method: 'POST',
-      body: JSON.stringify({ ticketId })
+      body: { ticketId }
     });
     
     if (socket) {
@@ -846,9 +942,9 @@ async function closeTicket() {
   if (!confirm('Deseja finalizar este ticket?')) return;
   
   try {
-    await apiFetch(`/api/tickets/${currentTicketId}`, {
+    await apiFetch(`/tickets/${currentTicketId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: 'closed' })
+      body: { status: 'closed' }
     });
     
     showToast('Ticket finalizado com sucesso!', 'success');
@@ -876,9 +972,9 @@ async function archiveTicket() {
   if (!confirm('Deseja arquivar este ticket?')) return;
   
   try {
-    await apiFetch(`/api/tickets/${currentTicketId}`, {
+    await apiFetch(`/tickets/${currentTicketId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ archived: true })
+      body: { archived: true }
     });
     
     showToast('Ticket arquivado com sucesso!', 'success');
@@ -905,6 +1001,158 @@ async function blockContact() {
   } catch (error) {
     console.error('❌ Erro ao bloquear contato:', error);
     showToast('Erro ao bloquear contato', 'error');
+  }
+}
+
+/**
+ * Mostra notificação de novo ticket
+ */
+function showTicketNotification(data) {
+  // Criar notificação sonora e visual
+  const notification = document.createElement('div');
+  notification.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3';
+  notification.style.zIndex = '9999';
+  notification.style.minWidth = '300px';
+  notification.innerHTML = `
+    <h6><i class="bi bi-bell-fill"></i> Novo Cliente Aguardando!</h6>
+    <p class="mb-2"><strong>${data.ticket.userName || 'Cliente'}</strong></p>
+    <p class="mb-3 small">${data.message || 'Nova conversa'}</p>
+    <div class="d-grid gap-2">
+      <button class="btn btn-success btn-sm" onclick="acceptTicketFromNotification(${data.ticket.id})">
+        <i class="bi bi-check-circle"></i> Aceitar Atendimento
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="rejectTicketFromNotification(${data.ticket.id})">
+        <i class="bi bi-x-circle"></i> Rejeitar
+      </button>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // Tocar som de notificação (opcional)
+  try {
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24g');
+    audio.play().catch(() => {}); // Ignorar erro se não conseguir tocar
+  } catch (e) {}
+  
+  // Auto-remover após 30 segundos
+  setTimeout(() => {
+    notification.remove();
+  }, 30000);
+}
+
+/**
+ * Aceitar ticket pela notificação
+ */
+async function acceptTicketFromNotification(ticketId) {
+  await acceptTicket(ticketId);
+  // Carregar o ticket automaticamente
+  await loadTicket(ticketId);
+}
+
+/**
+ * Rejeitar ticket pela notificação
+ */
+async function rejectTicketFromNotification(ticketId) {
+  await rejectTicket(ticketId);
+}
+
+/**
+ * Aceitar ticket (atendimento humano)
+ */
+async function acceptTicket(ticketId) {
+  try {
+    showLoading();
+    
+    const response = await apiFetch(`/tickets/${ticketId}/accept`, {
+      method: 'POST'
+    });
+    
+    showToast('✅ Atendimento aceito! Você está atendendo este cliente.', 'success');
+    
+    // Recarregar ticket
+    await loadTicket(ticketId);
+    await loadChats();
+    
+    hideLoading();
+  } catch (error) {
+    console.error('❌ Erro ao aceitar ticket:', error);
+    showToast('Erro ao aceitar atendimento', 'error');
+    hideLoading();
+  }
+}
+
+/**
+ * Rejeitar ticket (IA assume)
+ */
+async function rejectTicket(ticketId) {
+  try {
+    if (!confirm('Deseja rejeitar este atendimento? A IA assumirá automaticamente.')) return;
+    
+    showLoading();
+    
+    const response = await apiFetch(`/tickets/${ticketId}/reject`, {
+      method: 'POST'
+    });
+    
+    showToast('⏭️ Atendimento rejeitado. IA assumiu o atendimento.', 'info');
+    
+    // Recarregar lista de chats
+    await loadChats();
+    
+    // Limpar chat atual
+    currentTicketId = null;
+    document.getElementById('chatEmptyState').style.display = 'flex';
+    document.getElementById('chatHeader').style.display = 'none';
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('chatInputArea').style.display = 'none';
+    
+    hideLoading();
+  } catch (error) {
+    console.error('❌ Erro ao rejeitar ticket:', error);
+    showToast('Erro ao rejeitar atendimento', 'error');
+    hideLoading();
+  }
+}
+
+/**
+ * Finalizar ticket (encerrar atendimento)
+ */
+async function finishTicket(ticketId) {
+  try {
+    // Modal para feedback (opcional)
+    const feedback = prompt('Deseja adicionar um comentário sobre este atendimento? (Opcional)');
+    
+    showLoading();
+    
+    const response = await apiFetch(`/tickets/${ticketId}/finish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        feedback: feedback || null
+      })
+    });
+    
+    showToast('✅ Atendimento finalizado com sucesso!', 'success');
+    
+    // Recarregar lista de chats
+    await loadChats();
+    
+    // Limpar chat atual
+    currentTicketId = null;
+    document.getElementById('chatEmptyState').style.display = 'flex';
+    document.getElementById('chatHeader').style.display = 'none';
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('chatInputArea').style.display = 'none';
+    
+    hideLoading();
+  } catch (error) {
+    console.error('❌ Erro ao finalizar ticket:', error);
+    showToast('Erro ao finalizar atendimento', 'error');
+    hideLoading();
   }
 }
 
@@ -950,6 +1198,8 @@ function getStatusLabel(status) {
     open: 'Aberto',
     pending: 'Pendente',
     waiting: 'Aguardando',
+    waiting_human: 'Aguardando Humano',
+    in_progress: 'Em Atendimento',
     closed: 'Fechado',
     resolved: 'Resolvido'
   };

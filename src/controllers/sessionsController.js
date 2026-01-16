@@ -40,6 +40,24 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { list, statsSummary, get, remove };
+async function updateFlow(req, res) {
+  try {
+    const { currentFlow, currentStep, resetContext } = req.body || {};
+    const session = await sessionManager.setConversationFlow(req.params.userId, {
+      currentFlow,
+      currentStep,
+      resetContext: resetContext !== false
+    });
+    return ok(res, {
+      userId: session.phone,
+      currentFlow: session.currentFlow,
+      currentStep: session.currentStep
+    }, 'Fluxo da conversa atualizado');
+  } catch (error) {
+    return fail(res, 400, error.message);
+  }
+}
+
+module.exports = { list, statsSummary, get, remove, updateFlow };
 
 

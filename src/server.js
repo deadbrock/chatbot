@@ -6,6 +6,22 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 
+// Evitar "quedas" do servidor por EPIPE ao escrever no stdout/stderr
+// (pode acontecer quando o processo roda em background/pipe).
+function ignoreEpipe(stream) {
+  if (!stream || typeof stream.on !== 'function') return;
+  stream.on('error', (err) => {
+    if (err && err.code === 'EPIPE') {
+      // Silenciosamente ignorar para não derrubar o processo
+      return;
+    }
+    // Outros erros de stream devem ser visíveis
+    console.error('Erro em stream de saída:', err);
+  });
+}
+ignoreEpipe(process.stdout);
+ignoreEpipe(process.stderr);
+
 // Importações internas
 const whatsappClient = require('./bot/whatsapp');
 const logger = require('./utils/logger');
@@ -37,6 +53,14 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'dashboard/public')));
 
+// Se chegar JSON inválido, responder 400 (sem derrubar / sem virar 500 genérico)
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido no body' });
+  }
+  return next(err);
+});
+
 // Disponibilizar io globalmente
 app.set('io', io);
 
@@ -53,7 +77,7 @@ app.get('/health', async (req, res) => {
   const dbConnected = await testConnection();
   res.json({ 
     status: 'ok', 
-    whatsapp: whatsappClient.isConnected(),
+    whatsapp: whatsappClient.isReady,
     database: dbConnected
   });
 });
@@ -109,7 +133,7 @@ async function startServer() {
   try {
     logger.info('🚀 Iniciando servidor...');
 
-    // Conectar ao banco de dados SQLite
+    // Conectar ao banco de dados
     logger.info('📊 Conectando ao banco de dados...');
     const dbConnected = await testConnection();
     if (!dbConnected) {
@@ -196,13 +220,13 @@ async function startServer() {
 // Tratamento de sinais de encerramento
 process.on('SIGINT', async () => {
   logger.info('🛑 Encerrando servidor...');
-  await whatsappClient.destroy();
+  await whatsappClient.disconnect();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   logger.info('🛑 Encerrando servidor...');
-  await whatsappClient.destroy();
+  await whatsappClient.disconnect();
   process.exit(0);
 });
 
@@ -210,13 +234,25 @@ process.on('SIGTERM', async () => {
 process.on('uncaughtException', (error) => {
   logger.error('❌ Erro não capturado:', error);
   console.error('❌ Erro não capturado:', error);
+  // Não derrubar o servidor por EPIPE (broken pipe) causado por logging no console
+  if (error && error.code === 'EPIPE') {
+    logger.warn('⚠️ Ignorando EPIPE (broken pipe) para manter o servidor online.');
+    return;
+  }
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('❌ Promise rejeitada não tratada:', reason);
   console.error('❌ Promise rejeitada não tratada:', reason);
-  process.exit(1);
+  // Evitar quedas por rejeições não críticas em produção/dev.
+  // (Ainda fica logado em logs/rejections.log via winston)
+  if (reason && reason.code === 'EPIPE') {
+    logger.warn('⚠️ Ignorando EPIPE (broken pipe) em unhandledRejection.');
+    return;
+  }
+  // Manter processo vivo (o ideal é corrigir a origem; aqui priorizamos disponibilidade)
+  // process.exit(1);
 });
 
 // Iniciar

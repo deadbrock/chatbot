@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
 const campaignsController = require('../controllers/campaignsController');
-
-// Aplicar autenticação a todas as rotas
-router.use(authenticate);
 
 /**
  * Rotas de Campanhas
  * Sistema completo de mensagens em massa
+ * 
+ * Nota: A autenticação já é aplicada em src/routes/index.js
  */
 
 // CRUD básico

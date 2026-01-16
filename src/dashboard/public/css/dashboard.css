@@ -630,3 +630,135 @@ canvas {
 
 /* Navbar overrides (legacy) removed — see .app-navbar */
 
+/* ==================== Editor de Fluxos (Bot) - Visual Simplificado ==================== */
+
+#botFlowCards .card {
+    transition: all 0.3s ease;
+    margin-bottom: 1.5rem;
+}
+
+#botFlowCards .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12) !important;
+}
+
+#botFlowCards .card-header {
+    border-left: 4px solid transparent;
+    font-size: 1rem;
+}
+
+#botFlowCards .border-primary .card-header {
+    border-left-color: var(--bs-primary);
+    background: linear-gradient(90deg, rgba(13,110,253,0.08) 0%, transparent 100%);
+}
+
+#botFlowCards .border-success .card-header {
+    border-left-color: var(--bs-success);
+    background: linear-gradient(90deg, rgba(25,135,84,0.08) 0%, transparent 100%);
+}
+
+#botFlowCards .border-warning .card-header {
+    border-left-color: var(--bs-warning);
+    background: linear-gradient(90deg, rgba(255,193,7,0.12) 0%, transparent 100%);
+}
+
+#botFlowCards .border-info .card-header {
+    border-left-color: var(--bs-info);
+    background: linear-gradient(90deg, rgba(13,202,240,0.08) 0%, transparent 100%);
+}
+
+#botFlowCards textarea {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    transition: border-color 0.2s;
+}
+
+#botFlowCards textarea:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+#botFlowCards .bg-light {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+    border-radius: 8px;
+}
+
+#botFlowCards select.form-select-sm {
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+#botFlowCards select.form-select-sm:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+#botFlowCards .badge {
+    font-weight: 600;
+    padding: 0.4em 0.7em;
+    font-size: 0.75rem;
+    border-radius: 6px;
+}
+
+#botFlowCards .bi-arrow-down-circle {
+    opacity: 0.4;
+    transition: opacity 0.3s;
+}
+
+#botFlowCards .bi-arrow-down-circle:hover {
+    opacity: 0.8;
+}
+
+#botFlowCards .bi-arrow-right-circle {
+    color: var(--bs-success);
+    font-size: 1.1rem;
+}
+
+#botFlowCards .alert {
+    border-radius: 8px;
+    border-left: 4px solid;
+}
+
+#botFlowCards .alert-info {
+    border-left-color: var(--bs-info);
+}
+
+#botFlowCards .alert-warning {
+    border-left-color: var(--bs-warning);
+}
+
+/* Lista de flows lateral */
+#botFlowsList .list-group-item {
+    cursor: pointer;
+    transition: all 0.25s;
+    border-left: 3px solid transparent;
+    border-radius: 8px;
+    margin-bottom: 4px;
+}
+
+#botFlowsList .list-group-item:hover {
+    background-color: #f8f9fa;
+    border-left-color: var(--bs-primary);
+    transform: translateX(4px);
+}
+
+#botFlowsList .list-group-item.active {
+    border-left-color: var(--bs-primary);
+    background: linear-gradient(90deg, rgba(13,110,253,0.15) 0%, rgba(13,110,253,0.05) 100%);
+}
+
+/* Animação de seta cascata */
+@keyframes flowArrowPulse {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(4px); opacity: 0.8; }
+}
+
+#botFlowCards .text-center .bi-arrow-down-circle {
+    animation: flowArrowPulse 2s ease-in-out infinite;
+}
+

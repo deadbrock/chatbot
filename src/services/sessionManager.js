@@ -1,4 +1,5 @@
 const Session = require('../models/SessionSQL');
+const UserSession = require('../models/UserSessionSQL');
 const logger = require('../utils/logger');
 const NodeCache = require('node-cache');
 
@@ -129,11 +130,75 @@ class SessionManager {
    */
   async getActiveSessions() {
     try {
-      return await Session.getActiveSessions();
+      // Buscar de user_sessions (usado pelo bot)
+      const sessions = await UserSession.findAll({
+        where: { isActive: true },
+        order: [['lastInteraction', 'DESC']]
+      });
+
+      // Formatar para o formato esperado pelo frontend
+      return sessions.map(s => ({
+        userId: s.phone,
+        userName: s.name,
+        // compatibilidade: alguns lugares do dashboard usam "currentDepartment"
+        currentDepartment: s.currentFlow,
+        // novos campos: para exibir/configurar manualmente
+        currentFlow: s.currentFlow,
+        currentStep: s.currentStep,
+        interactionCount: 0, // Pode ser calculado se necessário
+        lastInteraction: s.lastInteraction,
+        updatedAt: s.updatedAt,
+        createdAt: s.createdAt
+      }));
     } catch (error) {
       logger.error('Erro ao obter sessões ativas:', error);
       return [];
     }
+  }
+
+  /**
+   * Força fluxo/step atual de uma conversa (user_sessions)
+   * @param {string} userId - telefone (ex: 558199999999)
+   * @param {Object} payload
+   * @param {string} payload.currentFlow
+   * @param {string} [payload.currentStep]
+   * @param {boolean} [payload.resetContext=true]
+   */
+  async setConversationFlow(userId, { currentFlow, currentStep, resetContext = true }) {
+    const botFlows = require('../bot/flows/flowDefinitions');
+
+    if (!userId) throw new Error('userId é obrigatório');
+    if (!currentFlow) throw new Error('currentFlow é obrigatório');
+
+    const targetFlow = botFlows[currentFlow];
+    if (!targetFlow) throw new Error(`Fluxo do bot inválido: ${currentFlow}`);
+
+    const normalizedStep = (currentStep && String(currentStep).trim()) ? String(currentStep).trim() : 'start';
+
+    // validar step quando o fluxo tem steps
+    if (targetFlow.steps) {
+      if (!targetFlow.steps[normalizedStep]) {
+        throw new Error(`Step inválido para o fluxo "${currentFlow}": ${normalizedStep}`);
+      }
+    } else {
+      // fluxo simples não usa steps; manter start para consistência
+      // (o processSimpleFlow ignora currentStep)
+    }
+
+    const session = await UserSession.findOne({ where: { phone: userId } });
+    if (!session) throw new Error('Sessão não encontrada em user_sessions');
+
+    session.currentFlow = currentFlow;
+    session.currentStep = normalizedStep;
+
+    if (resetContext) {
+      session.collectionIndex = 0;
+      session.formData = {};
+      session.menuPath = [];
+    }
+
+    await session.save();
+    return session;
   }
 
   /**

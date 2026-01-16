@@ -1,9 +1,9 @@
 /**
- * WhatsApp Client usando Baileys
+ * WhatsApp Client usando WPPConnect
  * 
- * MIGRADO DE: whatsapp-web.js para Baileys
- * MOTIVO: Performance e velocidade (QR Code instantâneo)
- * BACKUP: whatsapp-old.js (whatsapp-web.js original)
+ * MIGRADO DE: Baileys para WPPConnect
+ * MOTIVO: Maior estabilidade e menos problemas de conexão
+ * DATA: 2026-01-14
  */
 
-module.exports = require('./whatsapp-baileys');
+module.exports = require('./whatsapp-wppconnect');

@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
 const broadcastsController = require('../controllers/broadcastsController');
 
-// Aplicar autenticação a todas as rotas
-router.use(authenticate);
+// Nota: A autenticação já é aplicada em src/routes/index.js
 
 /**
  * Rotas de Transmissões (Broadcasts)

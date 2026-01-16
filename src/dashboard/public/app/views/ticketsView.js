@@ -45,10 +45,79 @@ export async function openTicketModal({ ticketId, apiFetch, createToast, escapeH
       `).join('');
     }
 
+    // 🔐 Verificar permissões para transferir ticket
+    await loadTransferSection(ticket, apiFetch, createToast);
+
     const modal = new window.bootstrap.Modal(modalEl);
     modal.show();
   } catch (e) {
     createToast({ title: 'Erro', message: e?.message || 'Não foi possível abrir o ticket.', variant: 'danger' });
+  }
+}
+
+/**
+ * Carrega seção de transferência (apenas para admin/manager)
+ */
+async function loadTransferSection(ticket, apiFetch, createToast) {
+  const transferSection = document.getElementById('ticketTransferSection');
+  const transferSelect = document.getElementById('ticketTransferAgent');
+  const transferBtn = document.getElementById('ticketTransferBtn');
+  
+  // Verificar permissão do usuário logado
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isAdminOrManager = user.role === 'admin' || user.role === 'manager';
+  
+  if (!isAdminOrManager) {
+    transferSection.style.display = 'none';
+    return;
+  }
+  
+  // Mostrar seção
+  transferSection.style.display = 'block';
+  
+  try {
+    // Carregar lista de atendentes
+    const agents = await apiFetch('/users?role=agent,manager');
+    
+    transferSelect.innerHTML = '<option value="">Selecione um atendente...</option>';
+    agents.forEach(agent => {
+      const isCurrentAssigned = agent.id === ticket.assignedTo;
+      const option = document.createElement('option');
+      option.value = agent.id;
+      option.textContent = `${agent.name} (${agent.department || 'Sem departamento'})${isCurrentAssigned ? ' - ATUAL' : ''}`;
+      if (isCurrentAssigned) option.disabled = true;
+      transferSelect.appendChild(option);
+    });
+    
+    // Adicionar evento de transferência
+    transferBtn.onclick = async () => {
+      const newAgentId = transferSelect.value;
+      if (!newAgentId) {
+        createToast({ title: 'Atenção', message: 'Selecione um atendente', variant: 'warning' });
+        return;
+      }
+      
+      if (confirm(`Deseja transferir este ticket para outro atendente?`)) {
+        try {
+          await apiFetch(`/tickets/${ticket.id}/transfer`, {
+            method: 'POST',
+            body: { agentId: parseInt(newAgentId) }
+          });
+          
+          createToast({ title: 'Sucesso', message: 'Ticket transferido com sucesso!', variant: 'success' });
+          
+          // Fechar modal e recarregar tickets
+          const modal = window.bootstrap.Modal.getInstance(document.getElementById('ticketModal'));
+          if (modal) modal.hide();
+          
+          window.location.reload();
+        } catch (error) {
+          createToast({ title: 'Erro', message: error?.message || 'Falha ao transferir ticket', variant: 'danger' });
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Erro ao carregar atendentes:', error);
   }
 }
 

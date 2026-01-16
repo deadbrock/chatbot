@@ -1,0 +1,16 @@
+2026/01/16-17:04:30.438 3f3c Reusing MANIFEST C:\Users\user\Documents\chatbot\chatbot\tokens\chatbot-session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/16-17:04:30.439 3f3c Recovering log #827
+2026/01/16-17:04:30.446 3f3c Reusing old log C:\Users\user\Documents\chatbot\chatbot\tokens\chatbot-session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000827.log 
+2026/01/16-17:04:30.446 3f3c Delete type=2 #824
+2026/01/16-17:04:30.446 3f3c Delete type=2 #825
+2026/01/16-17:04:31.487 3f3c Level-0 table #833: started
+2026/01/16-17:04:31.492 3f3c Level-0 table #833: 132320 bytes OK
+2026/01/16-17:04:31.493 3f3c Delete type=0 #827
+2026/01/16-17:04:31.494 3f3c Manual compaction at level-0 from ' \x1e\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \x1f\x01\x00\x00\x00' @ 0 : 0; will stop at ' \x1e\x01\x00\x00\x05' @ 332696 : 1
+2026/01/16-17:04:31.494 3f3c Compacting 1@0 + 2@1 files
+2026/01/16-17:04:31.567 3f3c Generated table #834@0: 108895 keys, 2280512 bytes
+2026/01/16-17:04:31.583 3f3c Generated table #835@0: 23774 keys, 448850 bytes
+2026/01/16-17:04:31.583 3f3c Compacted 1@0 + 2@1 files => 2729362 bytes
+2026/01/16-17:04:31.584 3f3c compacted to: files[ 0 2 1 0 0 0 0 ]
+2026/01/16-17:04:31.584 3f3c Delete type=2 #833
+2026/01/16-17:04:31.585 3f3c Manual compaction at level-0 from ' \x1e\x01\x00\x00\x05' @ 332696 : 1 .. ' \x1f\x01\x00\x00\x00' @ 0 : 0; will stop at (end)

@@ -37,5 +37,12 @@ router.post('/disconnect', authenticate, whatsappController.disconnect);
  */
 router.post('/restart', authenticate, whatsappController.restart);
 
+/**
+ * POST /api/whatsapp/force-reconnect
+ * Força reconexão (quando isReady=false)
+ * TEMPORARIAMENTE SEM AUTENTICAÇÃO PARA DEBUG
+ */
+router.post('/force-reconnect', whatsappController.forceReconnect);
+
 module.exports = router;
 

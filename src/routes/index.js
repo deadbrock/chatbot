@@ -35,6 +35,10 @@ const performanceRoutes = require('./performance'); // Análise de Desempenho (F
 const satisfactionRoutes = require('./satisfaction'); // Análise de Satisfação (Fase 6C)
 const conversationRoutes = require('./conversation'); // Análise de Conversas (Fase 6D)
 const whatsappRoutes = require('./whatsapp'); // Conexão WhatsApp
+const conversationFlowsRoutes = require('./conversationFlows'); // Fluxos internos do bot (diagnóstico/config)
+const botFlowsRoutes = require('./botFlows'); // Editor do fluxo do bot (base + overrides)
+const aiRoutes = require('./ai'); // IA e Classificação de Intenções
+const aiPlaygroundRoutes = require('./aiPlayground'); // AI Playground (Treinamento e Testes)
 
 // Middleware de autenticação (implementar conforme necessário)
 const authMiddleware = require('../middleware/auth');
@@ -75,6 +79,10 @@ router.use('/performance', performanceRoutes); // Análise de Desempenho (Fase 6
 router.use('/satisfaction', satisfactionRoutes); // Análise de Satisfação (Fase 6C)
 router.use('/conversation', conversationRoutes); // Análise de Conversas (Fase 6D)
 router.use('/whatsapp', whatsappRoutes); // Conexão WhatsApp
+router.use('/conversation-flows', authMiddleware, conversationFlowsRoutes);
+router.use('/bot-flows', authMiddleware, botFlowsRoutes);
+router.use('/ai', authMiddleware, aiRoutes); // IA e Classificação de Intenções
+router.use('/ai-playground', aiPlaygroundRoutes); // AI Playground (Treinamento e Testes) - auth dentro das rotas
 
 // Rota de status
 router.get('/status', (req, res) => {

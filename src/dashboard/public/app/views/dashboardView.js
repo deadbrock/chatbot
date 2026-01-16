@@ -17,14 +17,18 @@ function formatStatus(status) {
 }
 
 export function renderDashboard({ data, tickets, extendedMetrics, npsData, escapeHtml }) {
-  // Métricas básicas (compatibilidade)
-  document.getElementById('ticketsToday').textContent = data?.ticketsToday ?? 0;
-  document.getElementById('ticketsOpen').textContent = data?.ticketsOpen ?? 0;
-  document.getElementById('sessionsActive').textContent = data?.sessionsActive ?? 0;
-  document.getElementById('agentsOnline').textContent = data?.agentsOnline ?? 0;
+  // Métricas básicas (compatibilidade) - verificar se elementos existem
+  const setTextIfExists = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
 
-  document.getElementById('ticketsBadge').textContent = data?.ticketsOpen ?? 0;
-  document.getElementById('sessionsBadge').textContent = data?.sessionsActive ?? 0;
+  setTextIfExists('ticketsToday', data?.ticketsToday ?? 0);
+  setTextIfExists('ticketsOpen', data?.ticketsOpen ?? 0);
+  setTextIfExists('sessionsActive', data?.sessionsActive ?? 0);
+  setTextIfExists('agentsOnline', data?.agentsOnline ?? 0);
+  setTextIfExists('ticketsBadge', data?.ticketsOpen ?? 0);
+  setTextIfExists('sessionsBadge', data?.sessionsActive ?? 0);
 
   // Métricas estendidas (11 cards) - se disponível
   if (extendedMetrics) {

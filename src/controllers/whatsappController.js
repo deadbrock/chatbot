@@ -1,9 +1,8 @@
 const logger = require('../utils/logger');
 const { sendSuccess, sendError } = require('../utils/http');
-const QRCode = require('qrcode');
 
 /**
- * Controller para gerenciar conexões WhatsApp
+ * Controller para gerenciar conexões WhatsApp (WPPConnect)
  */
 
 // Armazenar QR Code temporariamente
@@ -26,14 +25,15 @@ exports.getStatus = async (req, res) => {
       });
     }
 
-    const info = whatsappClient.isReady ? whatsappClient.client.info : null;
+    const status = whatsappClient.getStatus();
 
     sendSuccess(res, {
-      connected: whatsappClient.isReady,
-      status: whatsappClient.isReady ? 'ready' : 'connecting',
-      phoneNumber: info ? info.wid.user : null,
-      pushname: info ? info.pushname : null,
-      platform: info ? info.platform : null
+      connected: status.connected,
+      status: status.status,
+      phoneNumber: null, // WPPConnect fornece isso após conexão
+      pushname: null,
+      platform: 'WPPConnect',
+      qrCode: status.qrCode
     });
 
   } catch (error) {
@@ -96,7 +96,7 @@ exports.connect = async (req, res) => {
       return sendError(res, 'Cliente WhatsApp não inicializado', 400);
     }
 
-    logger.info(`📊 Status atual - isReady: ${whatsappClient.isReady}, hasClient: ${!!whatsappClient.client}`);
+    logger.info(`📊 Status atual - isReady: ${whatsappClient.isReady}, isInitializing: ${whatsappClient.isInitializing}`);
 
     if (whatsappClient.isReady) {
       logger.info('✅ WhatsApp já está conectado');
@@ -106,8 +106,8 @@ exports.connect = async (req, res) => {
       });
     }
 
-    // Se já tem um cliente inicializando, apenas aguardar o QR Code
-    if (whatsappClient.client) {
+    // Se já está inicializando, apenas aguardar o QR Code
+    if (whatsappClient.isInitializing) {
       logger.info('🔄 Cliente já está inicializando. QR Code será gerado automaticamente.');
       return sendSuccess(res, {
         status: 'connecting',
@@ -140,11 +140,11 @@ exports.disconnect = async (req, res) => {
   try {
     const whatsappClient = req.app.get('whatsappClient');
 
-    if (!whatsappClient || !whatsappClient.client) {
-      return sendError(res, 'Cliente WhatsApp não inicializado', 400);
+    if (!whatsappClient || !whatsappClient.isReady) {
+      return sendError(res, 'Cliente WhatsApp não está conectado', 400);
     }
 
-    await whatsappClient.client.logout();
+    await whatsappClient.disconnect();
     currentQRCode = null;
     qrCodeExpiry = null;
 
@@ -171,8 +171,8 @@ exports.restart = async (req, res) => {
     }
 
     // Desconectar se estiver conectado
-    if (whatsappClient.client) {
-      await whatsappClient.client.destroy();
+    if (whatsappClient.isReady) {
+      await whatsappClient.disconnect();
       currentQRCode = null;
       qrCodeExpiry = null;
     }
@@ -195,33 +195,23 @@ exports.restart = async (req, res) => {
 };
 
 /**
- * Função auxiliar para armazenar QR Code
- * Chamada pelo whatsapp.js quando QR é gerado
+ * Função para armazenar QR Code do WPPConnect
  */
-exports.setQRCode = async (qr) => {
+exports.setQRCodeFromWPPConnect = async (base64Qr) => {
   try {
-    // Gerar QR Code como Data URL
-    currentQRCode = await QRCode.toDataURL(qr);
+    if (!base64Qr) {
+      logger.error('❌ QR Code vazio recebido!');
+      return;
+    }
+    
+    // WPPConnect já retorna em base64, apenas adicionar prefixo se necessário
+    currentQRCode = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
     qrCodeExpiry = Date.now() + (60 * 1000); // Expira em 60 segundos
     
-    logger.info('✅ QR Code gerado e armazenado');
+    logger.info('✅ QR Code do WPPConnect armazenado');
+    logger.info(`📊 QR Code length: ${currentQRCode.length}, expires: ${new Date(qrCodeExpiry).toLocaleTimeString()}`);
   } catch (error) {
-    logger.error('❌ Erro ao gerar QR Code:', error);
-  }
-};
-
-/**
- * Função para armazenar QR Code do Baileys (recebe string diretamente)
- */
-exports.setQRCodeFromBaileys = async (qrString) => {
-  try {
-    // Baileys já retorna o QR como string, converter para Data URL
-    currentQRCode = await QRCode.toDataURL(qrString);
-    qrCodeExpiry = Date.now() + (60 * 1000); // Expira em 60 segundos
-    
-    logger.info('✅ QR Code do Baileys gerado e armazenado');
-  } catch (error) {
-    logger.error('❌ Erro ao gerar QR Code do Baileys:', error);
+    logger.error('❌ Erro ao armazenar QR Code do WPPConnect:', error);
   }
 };
 
@@ -233,5 +223,59 @@ exports.clearQRCode = () => {
   qrCodeExpiry = null;
 };
 
-module.exports = exports;
+/**
+ * POST /api/whatsapp/force-reconnect
+ * Força reconexão do WhatsApp
+ */
+exports.forceReconnect = async (req, res) => {
+  try {
+    logger.warn('🔄 Solicitação de reconexão forçada via API');
+    
+    const whatsappClient = req.app.get('whatsappClient');
 
+    if (!whatsappClient) {
+      return sendError(res, 'Cliente WhatsApp não inicializado', 400);
+    }
+
+    await whatsappClient.forceReconnect();
+    
+    sendSuccess(res, {
+      message: 'Reconexão iniciada',
+      status: 'reconnecting'
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao forçar reconexão:', error);
+    sendError(res, 'Erro ao forçar reconexão: ' + error.message);
+  }
+};
+
+/**
+ * POST /api/whatsapp/clear-session
+ * Limpa sessão do WhatsApp
+ */
+exports.clearSession = async (req, res) => {
+  try {
+    logger.warn('🗑️ Solicitação de limpeza de sessão via API');
+    
+    const whatsappClient = req.app.get('whatsappClient');
+
+    if (!whatsappClient) {
+      return sendError(res, 'Cliente WhatsApp não inicializado', 400);
+    }
+
+    await whatsappClient.clearSession();
+    currentQRCode = null;
+    qrCodeExpiry = null;
+    
+    sendSuccess(res, {
+      message: 'Sessão limpa com sucesso'
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao limpar sessão:', error);
+    sendError(res, 'Erro ao limpar sessão: ' + error.message);
+  }
+};
+
+module.exports = exports;

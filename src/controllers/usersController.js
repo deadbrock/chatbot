@@ -40,8 +40,18 @@ async function login(req, res) {
 
 async function list(req, res) {
   try {
+    const { role } = req.query;
+    
+    const where = { active: true };
+    
+    // Filtrar por role se especificado (ex: ?role=agent,manager)
+    if (role) {
+      const roles = role.split(',').map(r => r.trim());
+      where.role = roles.length > 1 ? { [require('sequelize').Op.in]: roles } : roles[0];
+    }
+    
     const users = await User.findAll({
-      where: { active: true },
+      where,
       attributes: { exclude: ['password'] },
       order: [['name', 'ASC']]
     });

@@ -4,13 +4,14 @@
  */
 
 const logger = require('../../utils/logger');
-const flows = require('../flows/flowDefinitions');
+const { getFlowDefinitions } = require('../flows/getFlowDefinitions');
 const UserSession = require('../../models/UserSessionSQL');
 const scheduleService = require('./scheduleService');
 
 class FlowManager {
   constructor() {
-    this.flows = flows;
+    // carregar definições efetivas (base + override). Atualizamos também por mensagem.
+    this.flows = getFlowDefinitions().effective;
   }
 
   /**
@@ -22,6 +23,8 @@ class FlowManager {
    */
   async processMessage(session, userMessage, whatsappClient) {
     try {
+      // Recarregar (permite editar via UI sem restart)
+      this.flows = getFlowDefinitions().effective;
       await session.updateLastInteraction();
 
       // Obter fluxo e passo atual
@@ -147,32 +150,67 @@ class FlowManager {
     const formData = session.formData || {};
     
     if (Array.isArray(step.collect)) {
-      // Coletar múltiplos dados
-      const currentField = step.collect[0];
+      // Rastrear progresso da coleta (NÃO modificar o step original!)
+      let collectionIndex = session.collectionIndex || 0;
+      
+      // Coletar o dado atual
+      const currentField = step.collect[collectionIndex];
       formData[currentField] = userMessage;
       
-      // Remover campo coletado
-      step.collect.shift();
+      // Salvar dados específicos na sessão
+      if (currentField === 'name') session.name = userMessage;
+      if (currentField === 'email') session.email = userMessage;
+      // IMPORTANTE: não sobrescrever `session.phone` (identificador único da sessão = WhatsApp).
+      // O telefone informado pelo usuário deve ficar apenas em `formData.phone`.
+      if (currentField === 'cpf') session.cpf = userMessage;
+      if (currentField === 'company') session.company = userMessage;
+      if (currentField === 'contract') session.contract = userMessage;
       
-      if (step.collect.length > 0) {
+      // Avançar para o próximo campo
+      collectionIndex++;
+      
+      if (collectionIndex < step.collect.length) {
         // Ainda há campos para coletar
         session.formData = formData;
+        session.collectionIndex = collectionIndex;
         await session.save();
         
+        const nextField = step.collect[collectionIndex];
+        const fieldLabels = {
+          'name': '📝 Nome',
+          'phone': '📞 Telefone',
+          'email': '📧 Email',
+          'contract': '🏢 Qual contrato',
+          'cpf': '🆔 CPF',
+          'company': '🏢 Empresa'
+        };
+        
         return {
-          message: step.messages ? step.messages[0] : `Por favor, informe ${step.collect[0]}`,
+          message: `✅ Obrigado! Agora informe:\n\n${fieldLabels[nextField] || nextField}`,
           collecting: true
         };
       } else {
         // Todos os campos coletados
         session.formData = formData;
+        session.collectionIndex = 0; // Resetar para próxima coleta
         if (step.next) {
           session.currentStep = step.next;
         }
         await session.save();
         
+        logger.info(`✅ Dados coletados: ${JSON.stringify(formData)}`);
+        
+        // Retornar mensagem do próximo step (se houver)
+        const nextStep = this.flows[session.currentFlow]?.steps?.[session.currentStep];
+        if (nextStep && nextStep.message) {
+          const message = typeof nextStep.message === 'function' 
+            ? nextStep.message(session.name)
+            : nextStep.message;
+          return { message, next: session.currentStep };
+        }
+        
         return {
-          message: 'Dados coletados com sucesso!',
+          message: '✅ Dados coletados com sucesso!',
           next: step.next
         };
       }
@@ -253,6 +291,37 @@ class FlowManager {
         session.currentStep = option.next;
       }
       await session.save();
+    }
+
+    // Retornar a mensagem do próximo step/fluxo para evitar "transição silenciosa"
+    const nextFlow = this.flows[session.currentFlow];
+    if (nextFlow) {
+      // Fluxo simples (menu)
+      if (!nextFlow.steps && nextFlow.message) {
+        return { message: nextFlow.message, next: option.next };
+      }
+
+      // Fluxo com steps
+      if (nextFlow.steps) {
+        const nextStep = nextFlow.steps[session.currentStep];
+        if (nextStep) {
+          // Se for coleta, apenas instruir (não coletar automaticamente com mensagem vazia)
+          if (nextStep.collect && nextStep.message) {
+            return { message: nextStep.message, collecting: true, next: option.next };
+          }
+
+          if (Array.isArray(nextStep.messages)) {
+            return { message: nextStep.messages.join('\n'), next: option.next };
+          }
+
+          if (nextStep.message) {
+            const msg = typeof nextStep.message === 'function'
+              ? nextStep.message(session.name)
+              : nextStep.message;
+            return { message: msg, next: option.next };
+          }
+        }
+      }
     }
 
     return { success: true, next: option.next };

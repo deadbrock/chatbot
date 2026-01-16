@@ -264,10 +264,10 @@ window.saveQueue = async function() {
 
   try {
     if (queueId) {
-      await apiFetch(`/queues/${queueId}`, { method: 'PUT', body: JSON.stringify(data) });
+      await apiFetch(`/queues/${queueId}`, { method: 'PUT', body: data });
       showToast('Fila atualizada com sucesso!', 'success');
     } else {
-      await apiFetch('/queues', { method: 'POST', body: JSON.stringify(data) });
+      await apiFetch('/queues', { method: 'POST', body: data });
       showToast('Fila criada com sucesso!', 'success');
     }
 

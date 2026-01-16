@@ -33,9 +33,30 @@ async function listConnections(req, res) {
       qrCode: conn.qrCode ? '***' : null
     }));
     
+    // Se não há conexões no banco, adicionar a conexão WPPConnect atual
+    if (connections.length === 0) {
+      const whatsappClient = req.app.get('whatsappClient');
+      if (whatsappClient && whatsappClient.isReady) {
+        sanitized.push({
+          id: 'wppconnect-default',
+          name: 'WhatsApp WPPConnect (Padrão)',
+          instanceId: 'wppconnect-1',
+          phoneNumber: 'Conectado',
+          phoneNumberFormatted: 'Conectado',
+          status: whatsappClient.isReady ? 'connected' : 'disconnected',
+          isActive: true,
+          isDefault: true,
+          priority: 100,
+          deviceInfo: { platform: 'Baileys' },
+          lastConnectedAt: new Date(),
+          createdAt: new Date()
+        });
+      }
+    }
+    
     return sendSuccess(res, {
       connections: sanitized,
-      total: connections.length
+      total: sanitized.length
     });
   } catch (error) {
     console.error('Erro ao listar conexões:', error);

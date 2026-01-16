@@ -62,13 +62,31 @@ function wireEvents() {
     if (!id) return;
     const status = document.getElementById('ticketModalStatus')?.value;
     try {
-      await apiFetch(`/tickets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      await apiFetch(`/tickets/${id}`, { method: 'PATCH', body: { status } });
       createToast({ title: 'Salvo', message: 'Ticket atualizado com sucesso.', variant: 'success' });
       await loadTickets();
       await loadDashboard();
     } catch (e) {
       createToast({ title: 'Erro', message: e?.message || 'Falha ao salvar ticket.', variant: 'danger' });
     }
+  });
+
+  // Botão "Iniciar Conversa" no modal do ticket
+  document.getElementById('ticketModalChatBtn')?.addEventListener('click', () => {
+    const ticketId = document.getElementById('ticketModal')?.dataset?.ticketId;
+    if (!ticketId) return;
+    
+    // Fechar o modal
+    const modal = window.bootstrap.Modal.getInstance(document.getElementById('ticketModal'));
+    if (modal) modal.hide();
+    
+    // Navegar para a aba Chat
+    navigateToSection('chat');
+    
+    // Disparar evento para abrir o chat do ticket
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openChat', { detail: { ticketId } }));
+    }, 300);
   });
 
   // Abrir ticket a partir de qualquer lugar (ex: tabela de recentes no dashboard)
@@ -95,7 +113,7 @@ function wireEvents() {
     const fd = new FormData(form);
     const payload = Object.fromEntries(fd.entries());
     try {
-      await apiFetch('/users', { method: 'POST', body: JSON.stringify(payload) });
+      await apiFetch('/users', { method: 'POST', body: payload });  // ✅ apiFetch já faz JSON.stringify!
       createToast({ title: 'Criado', message: 'Atendente criado com sucesso.', variant: 'success' });
       form.reset();
       window.bootstrap.Modal.getInstance(document.getElementById('newAgentModal'))?.hide();
@@ -209,6 +227,34 @@ async function loadAutomations() {
   await renderAutomations();
 }
 
+async function loadAIPlayground() {
+  console.log('🔍 Tentando carregar AI Playground...');
+  console.log('🔍 window.aiPlaygroundView existe?', !!window.aiPlaygroundView);
+  
+  // Aguardar um pouco caso o script ainda esteja carregando
+  if (!window.aiPlaygroundView) {
+    console.log('⏳ Aguardando carregamento do AI Playground...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  
+  // Usar a instância global do aiPlaygroundView
+  if (window.aiPlaygroundView) {
+    console.log('✅ AI Playground encontrado, renderizando...');
+    const aiPlaygroundSection = document.getElementById('ai-playgroundSection');
+    if (aiPlaygroundSection) {
+      aiPlaygroundSection.innerHTML = '<div id="main-content"></div>';
+      window.aiPlaygroundView.render();
+      console.log('✅ AI Playground renderizado com sucesso!');
+    } else {
+      console.error('❌ Seção #ai-playgroundSection não encontrada no DOM');
+    }
+  } else {
+    console.error('❌ AI Playground View não está disponível após aguardar');
+    console.error('❌ Verifique se o script /app/views/aiPlaygroundView.js foi carregado');
+    createToast({ title: 'Erro', message: 'AI Playground não está disponível. Recarregue a página.', variant: 'danger' });
+  }
+}
+
 async function loadAdministration() {
   await initAdministrationView();
 }
@@ -281,6 +327,9 @@ async function onSectionChange(section) {
       break;
     case 'automations':
       await loadAutomations();
+      break;
+    case 'ai-playground':
+      await loadAIPlayground();
       break;
     case 'administration':
       await loadAdministration();

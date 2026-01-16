@@ -1,0 +1,28 @@
+/**
+ * FIX: Modal backdrop estava bloqueando toda a página
+ * Solução: Desabilitar backdrop e estilizar o modal para funcionar sem ele
+ */
+
+/* Modal sem backdrop precisa ter sombra própria */
+.modal.show {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  z-index: 1055 !important;
+}
+
+/* Garantir que o conteúdo do modal fique acima */
+.modal-dialog {
+  z-index: 1056 !important;
+  position: relative;
+}
+
+/* Backdrop sempre atrás do modal (se aparecer) */
+.modal-backdrop {
+  z-index: 1040 !important;
+}
+
+/* Garantir que o modal seja clicável */
+.modal .modal-content {
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1057 !important;
+}

@@ -1,7 +1,7 @@
 const Webhook = require('../models/WebhookSQL');
 const WebhookLog = require('../models/WebhookLogSQL');
 const webhookService = require('../services/webhookService');
-const { success, error, notFound } = require('../utils/http');
+const { sendSuccess, sendError, notFound } = require('../utils/http');
 const logger = require('../utils/logger');
 
 /**
@@ -48,10 +48,10 @@ exports.listWebhooks = async (req, res) => {
       stats: webhook.getStats()
     }));
 
-    success(res, webhooksWithStats, 'Webhooks listados com sucesso');
+    sendSuccess(res, webhooksWithStats, 'Webhooks listados com sucesso');
   } catch (err) {
     logger.error('Erro ao listar webhooks:', err);
-    error(res, 'Erro ao listar webhooks', 500);
+    sendError(res, 'Erro ao listar webhooks', 500);
   }
 };
 
@@ -77,21 +77,21 @@ exports.createWebhook = async (req, res) => {
 
     // Validações
     if (!name) {
-      return error(res, 'Nome do webhook é obrigatório', 400);
+      return sendError(res, 'Nome do webhook é obrigatório', 400);
     }
 
     if (!url) {
-      return error(res, 'URL do webhook é obrigatória', 400);
+      return sendError(res, 'URL do webhook é obrigatória', 400);
     }
 
     if (!events || !Array.isArray(events) || events.length === 0) {
-      return error(res, 'Eventos são obrigatórios', 400);
+      return sendError(res, 'Eventos são obrigatórios', 400);
     }
 
     // Validar eventos
     const invalidEvents = events.filter(e => !Webhook.isValidEvent(e));
     if (invalidEvents.length > 0) {
-      return error(res, `Eventos inválidos: ${invalidEvents.join(', ')}`, 400);
+      return sendError(res, `Eventos inválidos: ${invalidEvents.join(', ')}`, 400);
     }
 
     // Criar webhook
@@ -116,10 +116,10 @@ exports.createWebhook = async (req, res) => {
     }
 
     logger.info(`Webhook criado: ${webhook.id} por ${userId}`);
-    success(res, webhook, 'Webhook criado com sucesso', 201);
+    sendSuccess(res, webhook, 'Webhook criado com sucesso', 201);
   } catch (err) {
     logger.error('Erro ao criar webhook:', err);
-    error(res, 'Erro ao criar webhook', 500);
+    sendError(res, 'Erro ao criar webhook', 500);
   }
 };
 
@@ -140,7 +140,7 @@ exports.getWebhook = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     const webhookData = {
@@ -148,10 +148,10 @@ exports.getWebhook = async (req, res) => {
       stats: webhook.getStats()
     };
 
-    success(res, webhookData, 'Webhook obtido com sucesso');
+    sendSuccess(res, webhookData, 'Webhook obtido com sucesso');
   } catch (err) {
     logger.error('Erro ao obter webhook:', err);
-    error(res, 'Erro ao obter webhook', 500);
+    sendError(res, 'Erro ao obter webhook', 500);
   }
 };
 
@@ -173,14 +173,14 @@ exports.updateWebhook = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     // Validar eventos se fornecidos
     if (updates.events) {
       const invalidEvents = updates.events.filter(e => !Webhook.isValidEvent(e));
       if (invalidEvents.length > 0) {
-        return error(res, `Eventos inválidos: ${invalidEvents.join(', ')}`, 400);
+        return sendError(res, `Eventos inválidos: ${invalidEvents.join(', ')}`, 400);
       }
     }
 
@@ -200,10 +200,10 @@ exports.updateWebhook = async (req, res) => {
     await webhook.save();
 
     logger.info(`Webhook atualizado: ${webhook.id} por ${userId}`);
-    success(res, webhook, 'Webhook atualizado com sucesso');
+    sendSuccess(res, webhook, 'Webhook atualizado com sucesso');
   } catch (err) {
     logger.error('Erro ao atualizar webhook:', err);
-    error(res, 'Erro ao atualizar webhook', 500);
+    sendError(res, 'Erro ao atualizar webhook', 500);
   }
 };
 
@@ -224,16 +224,16 @@ exports.deleteWebhook = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     await webhook.destroy();
 
     logger.info(`Webhook deletado: ${id} por ${userId}`);
-    success(res, null, 'Webhook deletado com sucesso');
+    sendSuccess(res, null, 'Webhook deletado com sucesso');
   } catch (err) {
     logger.error('Erro ao deletar webhook:', err);
-    error(res, 'Erro ao deletar webhook', 500);
+    sendError(res, 'Erro ao deletar webhook', 500);
   }
 };
 
@@ -254,17 +254,17 @@ exports.testWebhook = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     logger.info(`Testando webhook: ${webhook.name}`);
 
     const result = await webhookService.testWebhook(webhook);
 
-    success(res, result, 'Teste de webhook executado');
+    sendSuccess(res, result, 'Teste de webhook executado');
   } catch (err) {
     logger.error('Erro ao testar webhook:', err);
-    error(res, 'Erro ao testar webhook: ' + err.message, 500);
+    sendError(res, 'Erro ao testar webhook: ' + err.message, 500);
   }
 };
 
@@ -293,7 +293,7 @@ exports.getWebhookLogs = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     const logs = await WebhookLog.findByWebhook(id, {
@@ -310,7 +310,7 @@ exports.getWebhookLogs = async (req, res) => {
       where: { webhookId: id }
     });
 
-    success(res, {
+    sendSuccess(res, {
       logs: logs.map(log => log.getSummary()),
       pagination: {
         total,
@@ -321,7 +321,7 @@ exports.getWebhookLogs = async (req, res) => {
     }, 'Logs obtidos com sucesso');
   } catch (err) {
     logger.error('Erro ao obter logs:', err);
-    error(res, 'Erro ao obter logs', 500);
+    sendError(res, 'Erro ao obter logs', 500);
   }
 };
 
@@ -342,17 +342,17 @@ exports.retryWebhook = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     logger.info(`Reprocessando webhooks com falha: ${webhook.name}`);
 
     const result = await webhookService.retryFailedWebhooks(id);
 
-    success(res, result, `${result.processed} webhook(s) reprocessado(s)`);
+    sendSuccess(res, result, `${result.processed} webhook(s) reprocessado(s)`);
   } catch (err) {
     logger.error('Erro ao reprocessar webhooks:', err);
-    error(res, 'Erro ao reprocessar webhooks', 500);
+    sendError(res, 'Erro ao reprocessar webhooks', 500);
   }
 };
 
@@ -363,10 +363,10 @@ exports.retryWebhook = async (req, res) => {
 exports.getGlobalStats = async (req, res) => {
   try {
     const stats = await webhookService.getGlobalStats();
-    success(res, stats, 'Estatísticas obtidas com sucesso');
+    sendSuccess(res, stats, 'Estatísticas obtidas com sucesso');
   } catch (err) {
     logger.error('Erro ao obter estatísticas:', err);
-    error(res, 'Erro ao obter estatísticas', 500);
+    sendError(res, 'Erro ao obter estatísticas', 500);
   }
 };
 
@@ -388,15 +388,15 @@ exports.getWebhookStats = async (req, res) => {
 
     // Verificar permissão
     if (webhook.createdBy !== userId && req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     const stats = await webhookService.getWebhookStats(id, { dateFrom, dateTo });
 
-    success(res, stats, 'Estatísticas obtidas com sucesso');
+    sendSuccess(res, stats, 'Estatísticas obtidas com sucesso');
   } catch (err) {
     logger.error('Erro ao obter estatísticas:', err);
-    error(res, 'Erro ao obter estatísticas', 500);
+    sendError(res, 'Erro ao obter estatísticas', 500);
   }
 };
 
@@ -409,14 +409,14 @@ exports.listAvailableEvents = async (req, res) => {
     const events = Webhook.getEventsByCategory();
     const allEvents = Webhook.AVAILABLE_EVENTS;
 
-    success(res, {
+    sendSuccess(res, {
       byCategory: events,
       all: allEvents,
       total: allEvents.length
     }, 'Eventos listados com sucesso');
   } catch (err) {
     logger.error('Erro ao listar eventos:', err);
-    error(res, 'Erro ao listar eventos', 500);
+    sendError(res, 'Erro ao listar eventos', 500);
   }
 };
 
@@ -429,10 +429,10 @@ exports.getTopEvents = async (req, res) => {
     const { limit = 10 } = req.query;
     const topEvents = await webhookService.getTopEvents(parseInt(limit));
 
-    success(res, topEvents, 'Top eventos obtidos com sucesso');
+    sendSuccess(res, topEvents, 'Top eventos obtidos com sucesso');
   } catch (err) {
     logger.error('Erro ao obter top eventos:', err);
-    error(res, 'Erro ao obter top eventos', 500);
+    sendError(res, 'Erro ao obter top eventos', 500);
   }
 };
 
@@ -445,10 +445,10 @@ exports.getTopFailures = async (req, res) => {
     const { limit = 10 } = req.query;
     const topFailures = await webhookService.getTopFailures(parseInt(limit));
 
-    success(res, topFailures, 'Top falhas obtidas com sucesso');
+    sendSuccess(res, topFailures, 'Top falhas obtidas com sucesso');
   } catch (err) {
     logger.error('Erro ao obter top falhas:', err);
-    error(res, 'Erro ao obter top falhas', 500);
+    sendError(res, 'Erro ao obter top falhas', 500);
   }
 };
 
@@ -469,16 +469,16 @@ exports.resetStats = async (req, res) => {
 
     // Verificar permissão (apenas admin ou owner)
     if (webhook.createdBy !== userId && req.user.role !== 'admin') {
-      return error(res, 'Acesso negado', 403);
+      return sendError(res, 'Acesso negado', 403);
     }
 
     await webhook.resetStats();
 
     logger.info(`Estatísticas resetadas: ${webhook.id} por ${userId}`);
-    success(res, webhook, 'Estatísticas resetadas com sucesso');
+    sendSuccess(res, webhook, 'Estatísticas resetadas com sucesso');
   } catch (err) {
     logger.error('Erro ao resetar estatísticas:', err);
-    error(res, 'Erro ao resetar estatísticas', 500);
+    sendError(res, 'Erro ao resetar estatísticas', 500);
   }
 };
 

@@ -259,10 +259,20 @@ app.get('/health', async (req, res) => {
 
 // Tratamento de erros
 app.use((err, req, res, next) => {
-  logger.error('Erro na aplicação:', err);
-  res.status(500).json({ 
-    error: 'Erro interno do servidor',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  logger.error('❌ Erro na aplicação:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body,
+    headers: req.headers
+  });
+  
+  // Sempre retornar JSON, mesmo em caso de erro
+  res.status(err.status || 500).json({ 
+    success: false,
+    error: err.message || 'Erro interno do servidor',
+    message: process.env.NODE_ENV === 'development' ? err.stack : 'Erro interno do servidor'
   });
 });
 

@@ -86,13 +86,98 @@ form.addEventListener('submit', async (e) => {
   setLoading(true);
 
   try {
-    const resp = await fetch('/api/users/login', {
+    // Detectar URL da API
+    function getApiBaseUrl() {
+      // 1. Tentar meta tag
+      const apiUrlMeta = document.querySelector('meta[name="api-url"]');
+      if (apiUrlMeta) {
+        const url = apiUrlMeta.getAttribute('content');
+        if (url && url.trim()) {
+          return url.endsWith('/api') ? url : `${url}/api`;
+        }
+      }
+      
+      // 2. Tentar script tag
+      const apiConfigScript = document.getElementById('api-config');
+      if (apiConfigScript) {
+        if (apiConfigScript.dataset.apiUrl) {
+          const url = apiConfigScript.dataset.apiUrl;
+          return url.endsWith('/api') ? url : `${url}/api`;
+        }
+        if (apiConfigScript.textContent) {
+          try {
+            const config = JSON.parse(apiConfigScript.textContent);
+            if (config.apiUrl) {
+              const url = config.apiUrl;
+              return url.endsWith('/api') ? url : `${url}/api`;
+            }
+          } catch (e) {
+            console.warn('Erro ao parsear api-config:', e);
+          }
+        }
+      }
+      
+      // 3. Detecção automática (produção)
+      const hostname = window.location.hostname;
+      if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168')) {
+        // Em produção, assumir que a API está no mesmo domínio ou usar fallback
+        console.warn('⚠️ URL da API não configurada. Usando fallback.');
+        return '/api'; // Fallback para desenvolvimento
+      }
+      
+      // 4. Desenvolvimento local
+      return '/api';
+    }
+
+    const apiBaseUrl = getApiBaseUrl();
+    const loginUrl = `${apiBaseUrl}/users/login`;
+    
+    console.log('🔍 Tentando fazer login em:', loginUrl);
+
+    const resp = await fetch(loginUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
 
-    const json = await resp.json();
+    console.log('📊 Resposta recebida:');
+    console.log('   - Status:', resp.status);
+    console.log('   - Status Text:', resp.statusText);
+    console.log('   - Content-Type:', resp.headers.get('content-type'));
+    console.log('   - Todas as Headers:');
+    resp.headers.forEach((value, key) => {
+      console.log(`     ${key}: ${value}`);
+    });
+
+    // Tentar ler o corpo da resposta como texto primeiro
+    const text = await resp.text();
+    console.log('   - Corpo da resposta (texto, primeiros 500 chars):', text.substring(0, 500));
+    console.log('   - Tamanho da resposta:', text.length);
+
+    const contentType = resp.headers.get('content-type');
+    let json;
+    
+    if (text.trim() === '') {
+      console.error('❌ Resposta vazia do servidor!');
+      console.error('   - Isso pode indicar que o backend crashou ou não está processando a rota corretamente');
+      console.error('   - Verifique os logs do Railway');
+      throw new Error(`Resposta vazia do servidor. Status: ${resp.status}. Verifique se o backend está rodando.`);
+    }
+    
+    // Tentar parsear como JSON
+    try {
+      json = JSON.parse(text);
+      console.log('✅ JSON parseado com sucesso:', json);
+    } catch (parseError) {
+      console.error('❌ Erro ao parsear JSON:', parseError);
+      console.error('   - Texto recebido completo:', text);
+      console.error('   - Isso pode ser HTML ou texto simples em vez de JSON');
+      throw new Error(`Resposta não é JSON válido. Status: ${resp.status}. Conteúdo: ${text.substring(0, 200)}...`);
+    }
+    
+    if (contentType && !contentType.includes('application/json')) {
+      console.warn('⚠️ Content-Type não é application/json:', contentType);
+    }
 
     if (!resp.ok || !json.success) {
       throw new Error(json?.error || 'Credenciais inválidas');

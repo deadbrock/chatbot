@@ -5,14 +5,33 @@ const { ok, created, fail } = require('../utils/http');
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
 
 async function login(req, res) {
+  const logger = require('../utils/logger');
+  
   try {
+    logger.info('📝 Tentativa de login:', { 
+      body: req.body, 
+      ip: req.ip, 
+      origin: req.headers.origin 
+    });
+    
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      logger.warn('⚠️ Login rejeitado: email ou senha vazios');
+      return fail(res, 400, 'Email e senha são obrigatórios');
+    }
+
     const user = await User.getByEmail(email);
-    if (!user) return fail(res, 401, 'Credenciais inválidas');
+    if (!user) {
+      logger.warn(`⚠️ Login rejeitado: usuário não encontrado - ${email}`);
+      return fail(res, 401, 'Credenciais inválidas');
+    }
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) return fail(res, 401, 'Credenciais inválidas');
+    if (!isMatch) {
+      logger.warn(`⚠️ Login rejeitado: senha incorreta - ${email}`);
+      return fail(res, 401, 'Credenciais inválidas');
+    }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -22,6 +41,8 @@ async function login(req, res) {
 
     user.lastLogin = new Date();
     await user.save();
+
+    logger.info(`✅ Login bem-sucedido: ${user.email} (${user.role})`);
 
     return ok(res, {
       token,
@@ -34,6 +55,10 @@ async function login(req, res) {
       }
     });
   } catch (error) {
+    logger.error('❌ Erro ao processar login:', {
+      message: error.message,
+      stack: error.stack
+    });
     return fail(res, 500, error.message);
   }
 }

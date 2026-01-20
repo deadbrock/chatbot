@@ -22,7 +22,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalar dependências
-RUN npm ci --only=production
+# Tentar npm ci primeiro (mais rápido e determinístico)
+# Se falhar, usar npm install como fallback
+RUN npm ci --omit=dev || npm install --omit=dev --no-audit
 
 # Copiar código da aplicação
 COPY . .

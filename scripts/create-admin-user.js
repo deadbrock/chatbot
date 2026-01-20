@@ -38,8 +38,8 @@ async function createAdminUser() {
       readline.close();
       
       if (answer.toLowerCase() === 's') {
-        const hashedPassword = await bcrypt.hash('admin123', 10);
-        existingAdmin.password = hashedPassword;
+        // O hook beforeUpdate vai fazer hash automaticamente
+        existingAdmin.password = 'admin123';
         await existingAdmin.save();
         console.log('✅ Senha resetada para: admin123');
       } else {
@@ -51,12 +51,12 @@ async function createAdminUser() {
 
     // Criar novo usuário admin
     console.log('🔄 Criando usuário admin...');
-    const hashedPassword = await bcrypt.hash('admin123', 10);
     
+    // NÃO fazer hash manualmente - o hook beforeCreate do modelo faz automaticamente
     const admin = await User.create({
       name: 'Administrador',
       email: 'admin@admin.com',
-      password: hashedPassword,
+      password: 'admin123', // Senha em texto plano - o hook vai fazer hash
       role: 'admin',
       department: 'TI',
       active: true

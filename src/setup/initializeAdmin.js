@@ -2,7 +2,6 @@ const Role = require('../models/RoleSQL');
 const SystemSetting = require('../models/SystemSettingSQL');
 const FlowNode = require('../models/FlowNodeSQL');
 const User = require('../models/UserSQL');
-const bcrypt = require('bcryptjs');
 
 /**
  * Cria usuário admin padrão se não existir
@@ -19,12 +18,11 @@ async function createDefaultAdminUser() {
 
     console.log('🔄 Criando usuário admin padrão...');
     
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    
+    // NÃO fazer hash aqui - o hook beforeCreate do modelo vai fazer automaticamente
     await User.create({
       name: 'Administrador',
       email: 'admin@admin.com',
-      password: hashedPassword,
+      password: 'admin123', // Senha em texto plano - o hook vai fazer hash
       role: 'admin',
       department: 'TI',
       active: true

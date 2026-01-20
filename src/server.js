@@ -197,12 +197,20 @@ const corsOptions = {
     }
     
     // Em produção, verificar se a origem está permitida
-    // Se ALLOWED_ORIGINS não estiver configurado, permitir qualquer origem do Vercel
-    if (allowedOrigins.length > 4 || allowedOrigins.includes(origin)) {
+    // Se ALLOWED_ORIGINS não estiver configurado, permitir qualquer origem (temporário para debug)
+    const hasCustomOrigins = process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim() !== '';
+    
+    if (!hasCustomOrigins) {
+      // Se não houver ALLOWED_ORIGINS configurado, permitir todas as origens (temporário)
+      logger.warn(`⚠️ ALLOWED_ORIGINS não configurado. Permitindo todas as origens (não recomendado para produção)`);
+      callback(null, true);
+    } else if (allowedOrigins.includes(origin)) {
+      // Origem está na lista permitida
       callback(null, true);
     } else {
       // Log para debug
       logger.warn(`⚠️ CORS bloqueado para origem: ${origin}`);
+      logger.info(`💡 Origens permitidas: ${allowedOrigins.join(', ')}`);
       logger.info(`💡 Configure ALLOWED_ORIGINS no Railway para permitir esta origem`);
       callback(new Error('Not allowed by CORS'));
     }
@@ -211,6 +219,9 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
+
+// Tratar requisições OPTIONS (preflight) antes do CORS
+app.options('*', cors(corsOptions));
 
 app.use(cors(corsOptions));
 app.use(bodyParser.json());

@@ -979,7 +979,7 @@ async function loadAITab() {
         </div>
         <div class="card-body">
           <div class="row g-2">
-            ${intentList.map(intent => `
+            ${Array.isArray(intentList) && intentList.length > 0 ? intentList.map(intent => `
               <div class="col-md-6">
                 <div class="border rounded p-2">
                   <div class="d-flex justify-content-between align-items-start">
@@ -987,14 +987,14 @@ async function loadAITab() {
                       <strong>${escapeHtml(intent.id)}</strong>
                       <div class="small text-muted">→ ${escapeHtml(intent.flow)}</div>
                     </div>
-                    <span class="badge bg-secondary">${intent.keywordCount} palavras</span>
+                    <span class="badge bg-secondary">${intent.keywordCount || 0} palavras</span>
                   </div>
                   <div class="small text-muted mt-1">
-                    ${intent.keywords.slice(0, 5).join(', ')}${intent.keywords.length > 5 ? '...' : ''}
+                    ${(intent.keywords || []).slice(0, 5).join(', ')}${(intent.keywords || []).length > 5 ? '...' : ''}
                   </div>
                 </div>
               </div>
-            `).join('')}
+            `).join('') : '<div class="col-12 text-center text-muted">Nenhuma intenção configurada</div>'}
           </div>
         </div>
       </div>
@@ -1209,11 +1209,16 @@ async function loadFlowsTab() {
   if (!container) return;
 
   try {
-    const [flows, sessions, botFlows] = await Promise.all([
+    const [flowsResp, sessionsResp, botFlowsResp] = await Promise.all([
       apiFetch('/flows'),
       apiFetch('/sessions'),
       apiFetch('/conversation-flows')
     ]);
+
+    // Normalizar dados para arrays
+    const flows = Array.isArray(flowsResp) ? flowsResp : (flowsResp?.data || flowsResp?.flows || []);
+    const sessions = Array.isArray(sessionsResp) ? sessionsResp : (sessionsResp?.data || sessionsResp?.sessions || []);
+    const botFlows = Array.isArray(botFlowsResp) ? botFlowsResp : (botFlowsResp?.data || botFlowsResp?.flows || []);
 
     container.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1427,7 +1432,8 @@ async function loadTemplatesTab() {
   if (!container) return;
 
   try {
-    const templates = await apiFetch('/templates');
+    const templatesResp = await apiFetch('/templates');
+    const templates = Array.isArray(templatesResp) ? templatesResp : (templatesResp?.data || templatesResp?.templates || []);
 
     container.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-4">

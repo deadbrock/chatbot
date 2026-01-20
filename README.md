@@ -1,8 +1,8 @@
-# 🤖 Chatbot WhatsApp Empresarial - Sistema Completo
+# ⭐ AstroChat - Sistema de Atendimento WhatsApp
 
 ## 📋 Descrição
 
-Chatbot WhatsApp profissional com Inteligência Artificial, processamento de linguagem natural, reconhecimento de voz, e integração completa com todos os departamentos da empresa.
+**AstroChat** é o sistema de atendimento WhatsApp empresarial da **Aestron**, com Inteligência Artificial, processamento de linguagem natural e integração completa com todos os departamentos da empresa.
 
 ## ✨ Funcionalidades Principais
 
@@ -82,7 +82,7 @@ Chatbot WhatsApp profissional com Inteligência Artificial, processamento de lin
 ```bash
 # 1. Clone o repositório
 git clone <seu-repositorio>
-cd chatbot-whatsapp
+cd astrochat
 
 # 2. Instale as dependências
 npm install
@@ -163,7 +163,7 @@ Edite: `src/integrations/`
 ## 📊 Estrutura do Projeto
 
 ```
-chatbot-whatsapp/
+astrochat/
 ├── src/
 │   ├── server.js              # Servidor principal
 │   ├── bot/

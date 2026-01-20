@@ -19,8 +19,16 @@ function renderByDeptChart(rows) {
   if (window.__charts?.byDept) window.__charts.byDept.destroy();
   window.__charts = window.__charts || {};
 
-  const labels = rows.map((r) => r._id || '—');
-  const values = rows.map((r) => toNumber(r.count));
+  // Normalizar rows para array
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  
+  if (normalizedRows.length === 0) {
+    console.warn('Sem dados para gráfico de departamentos');
+    return;
+  }
+
+  const labels = normalizedRows.map((r) => r._id || '—');
+  const values = normalizedRows.map((r) => toNumber(r.count));
 
   window.__charts.byDept = new window.Chart(el, {
     type: 'bar',
@@ -48,8 +56,16 @@ function renderRatingsChart(rows) {
   if (window.__charts?.ratings) window.__charts.ratings.destroy();
   window.__charts = window.__charts || {};
 
-  const labels = rows.map((r) => `${r._id}★`);
-  const values = rows.map((r) => toNumber(r.count));
+  // Normalizar rows para array
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  
+  if (normalizedRows.length === 0) {
+    console.warn('Sem dados para gráfico de avaliações');
+    return;
+  }
+
+  const labels = normalizedRows.map((r) => `${r._id}★`);
+  const values = normalizedRows.map((r) => toNumber(r.count));
 
   window.__charts.ratings = new window.Chart(el, {
     type: 'doughnut',
@@ -73,12 +89,15 @@ function renderAgentsPerf(rows, escapeHtml) {
   const tbody = document.getElementById('agentsPerfTableBody');
   if (!tbody) return;
 
-  if (!rows?.length) {
+  // Normalizar rows para array
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+
+  if (!normalizedRows.length) {
     tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Sem dados.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = rows.map((r) => `
+  tbody.innerHTML = normalizedRows.map((r) => `
     <tr>
       <td class="fw-semibold">${escapeHtml(r.agentName || '—')}</td>
       <td>${escapeHtml(String(r.totalTickets ?? 0))}</td>

@@ -4,6 +4,7 @@ import { createToast } from './ui/toast.js';
 import { escapeHtml, debounce } from './ui/dom.js';
 import { initRouter, navigateToSection } from './router.js';
 import { connectSocket } from './socket.js';
+import { initMenuController } from './menuController.js';
 import { renderDashboard, renderDashboardCharts, renderRankings, renderAdditionalCharts } from './views/dashboardView.js';
 import { renderTickets, openTicketModal } from './views/ticketsView.js';
 import { renderSessions } from './views/sessionsView.js';
@@ -11,18 +12,14 @@ import { renderAgents } from './views/agentsView.js';
 import { renderAnalytics } from './views/analyticsView.js';
 import { loadSettingsView } from './views/settingsView.js';
 import { renderKanban } from './views/kanbanView.js';
-import { renderQuickReplies } from './views/quickRepliesView.js';
 import { renderTags } from './views/tagsView.js';
 import { renderSchedules } from './views/schedulesView.js';
 import { renderContacts } from './views/contactsView.js';
 import { renderTicketStatuses } from './views/ticketStatusesView.js';
 import { renderQueues } from './views/queuesView.js';
 import { initCampaignsView } from './views/campaignsView.js';
-import { initBroadcastsView } from './views/broadcastsView.js';
-import { renderAutomations } from './views/automationsView.js';
 import { initAdministrationView } from './views/administrationView.js';
 import { initChatView, cleanupChatView } from './views/chatView.js';
-import { initWebhooksView } from './views/webhooksView.js';
 import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
 import { initThemeToggle } from './theme.js';
 
@@ -140,7 +137,10 @@ async function loadDashboard() {
   ]);
 
   renderDashboard({ data: dashboardData, tickets, extendedMetrics, npsData, escapeHtml });
-  renderDashboardCharts({ timelineRows, statusRows });
+  renderDashboardCharts({ 
+    timelineRows: Array.isArray(timelineRows) ? timelineRows : (timelineRows?.data || []), 
+    statusRows: Array.isArray(statusRows) ? statusRows : (statusRows?.data || [])
+  });
   
   // Renderizar rankings
   if (contactsRanking || agentsRanking) {
@@ -174,21 +174,22 @@ async function loadAgents() {
 }
 
 async function loadAnalytics() {
-  const [byDept, ratings, perf] = await Promise.all([
+  const [byDeptResp, ratingsResp, perfResp] = await Promise.all([
     apiFetch('/analytics/tickets/by-department'),
     apiFetch('/analytics/ratings'),
     apiFetch('/analytics/agents/performance')
   ]);
+
+  // Normalizar dados para arrays
+  const byDept = Array.isArray(byDeptResp) ? byDeptResp : (byDeptResp?.data || []);
+  const ratings = Array.isArray(ratingsResp) ? ratingsResp : (ratingsResp?.data || []);
+  const perf = Array.isArray(perfResp) ? perfResp : (perfResp?.data || []);
 
   renderAnalytics({ byDept, ratings, perf, createToast, escapeHtml });
 }
 
 async function loadKanban() {
   await renderKanban({ apiFetch, createToast, escapeHtml });
-}
-
-async function loadQuickReplies() {
-  await renderQuickReplies({ apiFetch, createToast, escapeHtml });
 }
 
 async function loadTags() {
@@ -217,14 +218,6 @@ async function loadQueues() {
 
 async function loadCampaigns() {
   await initCampaignsView();
-}
-
-async function loadBroadcasts() {
-  await initBroadcastsView();
-}
-
-async function loadAutomations() {
-  await renderAutomations();
 }
 
 async function loadAIPlayground() {
@@ -257,10 +250,6 @@ async function loadAIPlayground() {
 
 async function loadAdministration() {
   await initAdministrationView();
-}
-
-async function loadWebhooks() {
-  await initWebhooksView();
 }
 
 async function loadExecutiveDashboard() {
@@ -298,9 +287,6 @@ async function onSectionChange(section) {
     case 'kanban':
       await loadKanban();
       break;
-    case 'quick-replies':
-      await loadQuickReplies();
-      break;
     case 'tags':
       await loadTags();
       break;
@@ -322,20 +308,11 @@ async function onSectionChange(section) {
     case 'campaigns':
       await loadCampaigns();
       break;
-    case 'broadcasts':
-      await loadBroadcasts();
-      break;
-    case 'automations':
-      await loadAutomations();
-      break;
     case 'ai-playground':
       await loadAIPlayground();
       break;
     case 'administration':
       await loadAdministration();
-      break;
-    case 'webhooks':
-      await loadWebhooks();
       break;
     case 'executive-dashboard':
       await loadExecutiveDashboard();
@@ -349,6 +326,7 @@ async function onSectionChange(section) {
 async function init() {
   if (!ensureAuth()) return;
   initThemeToggle();
+  initMenuController();
   hydrateUser();
   wireEvents();
   initRouter(onSectionChange);

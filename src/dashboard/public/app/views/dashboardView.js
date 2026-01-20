@@ -227,6 +227,11 @@ function renderTimeMetricsChart(data) {
 
   window.__charts.timeMetrics?.destroy?.();
 
+  if (!data || typeof data.total !== 'number') {
+    console.warn('Dados de métricas de tempo inválidos:', data);
+    return;
+  }
+
   const hasData = data.total > 0;
   const emptyEl = document.getElementById('timeMetricsEmpty');
   if (emptyEl) emptyEl.classList.toggle('is-hidden', hasData);
@@ -257,6 +262,11 @@ function renderHourlyActivityChart(data) {
   if (!canvas) return;
 
   window.__charts.hourlyActivity?.destroy?.();
+
+  if (!data || !data.hourly || !Array.isArray(data.hourly)) {
+    console.warn('Dados de atividade horária inválidos:', data);
+    return;
+  }
 
   const labels = data.hourly.map(h => `${h.hour}h`);
   const values = data.hourly.map(h => h.count);
@@ -292,6 +302,11 @@ function renderChannelDistributionChart(data) {
 
   window.__charts.channelDist?.destroy?.();
 
+  if (!data || !data.channels || !Array.isArray(data.channels)) {
+    console.warn('Dados de distribuição por canal inválidos:', data);
+    return;
+  }
+
   const labels = data.channels.map(c => c.channel);
   const values = data.channels.map(c => c.count);
   const colors = ['#25D366', '#0088cc', '#E1306C', '#1877F2'];
@@ -323,6 +338,11 @@ function renderDepartmentDistributionChart(data) {
   if (!canvas) return;
 
   window.__charts.deptDist?.destroy?.();
+
+  if (!data || !data.departments || !Array.isArray(data.departments)) {
+    console.warn('Dados de distribuição por departamento inválidos:', data);
+    return;
+  }
 
   const labels = data.departments.map(d => d.department);
   const values = data.departments.map(d => d.count);
@@ -366,8 +386,9 @@ export function renderDashboardCharts({ timelineRows, statusRows }) {
   const timelineEl = document.getElementById('ticketsChart');
   if (timelineEl) {
     window.__charts.dashboardTimeline?.destroy?.();
-    const labels = (timelineRows || []).map((r) => r._id);
-    const values = (timelineRows || []).map((r) => Number(r.count || 0));
+    const timelineData = Array.isArray(timelineRows) ? timelineRows : [];
+    const labels = timelineData.map((r) => r._id || r.date || r.label || '');
+    const values = timelineData.map((r) => Number(r.count || r.value || 0));
 
     const hasData = labels.length > 0 && values.some((v) => v > 0);
     setEmptyVisible('ticketsChartEmpty', !hasData);

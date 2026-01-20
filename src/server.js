@@ -28,7 +28,7 @@ const logger = require('./utils/logger');
 const { testConnection, syncDatabase } = require('./config/database');
 const routes = require('./routes');
 const { initializeScheduledJobs } = require('./services/scheduler');
-const automationService = require('./services/automationService');
+// const automationService = require('./services/automationService'); // Removido - módulo de automações excluído
 const reportScheduler = require('./services/reportScheduler');
 const { initializeSnapshotScheduler } = require('./services/snapshotScheduler');
 const { initializeAdminDefaults } = require('./setup/initializeAdmin');
@@ -48,7 +48,42 @@ const io = socketIO(server, {
 });
 
 // Middlewares
-app.use(cors());
+// Configurar CORS para permitir requisições do frontend (Vercel)
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (mobile apps, Postman, etc)
+    if (!origin) return callback(null, true);
+    
+    // Lista de origens permitidas
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      // Adicione seu domínio Vercel aqui após o deploy
+      // 'https://seu-projeto.vercel.app',
+      // Ou use variável de ambiente
+      ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
+    ];
+    
+    // Em desenvolvimento, permitir qualquer origem
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // Em produção, verificar se a origem está permitida
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'dashboard/public')));
@@ -169,15 +204,40 @@ async function startServer() {
     if (port !== DEFAULT_PORT) {
       logger.warn(`ℹ️ Porta solicitada ${DEFAULT_PORT} indisponível. Servidor subiu na porta ${port}.`);
     }
+    
+    // Obter IP local para acesso na rede
+    const os = require('os');
+    const networkInterfaces = os.networkInterfaces();
+    let localIP = 'localhost';
+    
+    // Procurar primeiro IPv4 não interno
+    for (const interfaceName in networkInterfaces) {
+      const interfaces = networkInterfaces[interfaceName];
+      for (const iface of interfaces) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          localIP = iface.address;
+          break;
+        }
+      }
+      if (localIP !== 'localhost') break;
+    }
+    
     logger.info(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
-║     🤖 CHATBOT WHATSAPP EMPRESARIAL                  ║
+║     ⭐ ASTROCHAT - AESTRON                           ║
 ║                                                       ║
 ║     ✅ Servidor rodando na porta ${port}                 ║
+║                                                       ║
+║     📱 ACESSO LOCAL:                                  ║
 ║     ✅ Dashboard: http://localhost:${port}/admin         ║
 ║     ✅ Login:     http://localhost:${port}/login.html    ║
-║     ✅ API: http://localhost:${port}/api                 ║
+║                                                       ║
+║     🌐 ACESSO NA REDE:                                ║
+║     ✅ Dashboard: http://${localIP}:${port}/admin         ║
+║     ✅ Login:     http://${localIP}:${port}/login.html    ║
+║                                                       ║
+║     🔌 API: http://${localIP}:${port}/api                 ║
 ║                                                       ║
 ║     Status: ONLINE 🟢                                 ║
 ║                                                       ║
@@ -197,10 +257,10 @@ async function startServer() {
     logger.info('📸 Inicializando agendador de snapshots...');
     initializeSnapshotScheduler();
     
-    // Inicializar serviço de automação
-    logger.info('🤖 Inicializando Serviço de Automação...');
-    automationService.initialize();
-    logger.info('✅ Serviço de Automação inicializado');
+    // Serviço de automação removido (módulo excluído)
+    // logger.info('🤖 Inicializando Serviço de Automação...');
+    // automationService.initialize();
+    // logger.info('✅ Serviço de Automação inicializado');
 
     // Registrar whatsappClient no app para acesso nos controllers
     app.set('whatsappClient', whatsappClient);

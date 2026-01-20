@@ -1,7 +1,7 @@
 {
-  "name": "chatbot-whatsapp-empresarial",
+  "name": "astrochat",
   "version": "1.0.0",
-  "description": "Chatbot WhatsApp empresarial com múltiplos departamentos",
+  "description": "AstroChat - Sistema de atendimento WhatsApp empresarial da Aestron",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

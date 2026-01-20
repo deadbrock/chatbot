@@ -136,8 +136,13 @@ export async function renderContacts() {
     loadContactStats();
 
     // Renderizar tabela
-    renderContactsTable(data.contacts);
-    renderPagination(data.pagination);
+    const contacts = Array.isArray(data.contacts) ? data.contacts : (data.data?.contacts || data.data || []);
+    const pagination = data.pagination || data.data?.pagination || { page: 1, pages: 1, total: contacts.length };
+    
+    renderContactsTable(contacts);
+    if (pagination && pagination.page && pagination.pages) {
+      renderPagination(pagination);
+    }
 
     // Event listeners
     setupEventListeners();
@@ -244,7 +249,12 @@ function renderPagination(pagination) {
   const container = document.getElementById('contactsPagination');
   if (!container) return;
 
-  const { page, pages } = pagination;
+  if (!pagination || typeof pagination !== 'object') {
+    container.innerHTML = '';
+    return;
+  }
+
+  const { page = 1, pages = 1 } = pagination;
   let html = '';
 
   // Botão anterior

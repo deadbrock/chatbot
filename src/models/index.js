@@ -10,7 +10,6 @@ const Session = require('./SessionSQL');
 const Flow = require('./FlowSQL');
 const MessageTemplate = require('./MessageTemplateSQL');
 const Rating = require('./RatingSQL');
-const QuickReply = require('./QuickReplySQL');
 const Tag = require('./TagSQL');
 const TicketTag = require('./TicketTagSQL');
 const Schedule = require('./ScheduleSQL');
@@ -22,15 +21,7 @@ const Queue = require('./QueueSQL');
 
 // Novos modelos da Fase 2
 const Campaign = require('./CampaignSQL');
-const Broadcast = require('./BroadcastSQL');
-const BroadcastList = require('./BroadcastListSQL');
 const MessageTemplateAdvanced = require('./MessageTemplateAdvancedSQL');
-
-// Novos modelos da Fase 3A - Automações
-const CampaignFlow = require('./CampaignFlowSQL');
-const FlowExecution = require('./FlowExecutionSQL');
-const FollowUp = require('./FollowUpSQL');
-const Trigger = require('./TriggerSQL');
 
 // Novos modelos da Fase 3B - Administração
 const ApiKey = require('./ApiKeySQL');
@@ -48,10 +39,6 @@ const FlowNode = require('./FlowNodeSQL');
 
 // Novos modelos da Fase 4A - Relatórios e Exportações
 const Report = require('./ReportSQL');
-
-// Novos modelos da Fase 5A - Sistema de Webhooks
-const Webhook = require('./WebhookSQL');
-const WebhookLog = require('./WebhookLogSQL');
 
 // Novos modelos da Fase 6A - Dashboard Executivo
 const AnalyticsSnapshot = require('./AnalyticsSnapshotSQL');
@@ -74,7 +61,6 @@ module.exports = {
   Flow,
   MessageTemplate,
   Rating,
-  QuickReply,
   Tag,
   TicketTag,
   Schedule,
@@ -86,15 +72,7 @@ module.exports = {
   
   // Novos modelos Fase 2
   Campaign,
-  Broadcast,
-  BroadcastList,
   MessageTemplateAdvanced,
-  
-  // Novos modelos Fase 3A - Automações
-  CampaignFlow,
-  FlowExecution,
-  FollowUp,
-  Trigger,
   
   // Novos modelos Fase 3B - Administração
   ApiKey,
@@ -112,10 +90,6 @@ module.exports = {
   
   // Novos modelos Fase 4A - Relatórios
   Report,
-  
-  // Novos modelos Fase 5A - Webhooks
-  Webhook,
-  WebhookLog,
   
   // Novos modelos Fase 6A - Analytics
   AnalyticsSnapshot,

@@ -1,6 +1,6 @@
 const analyticsService = require('../services/analyticsService');
 const AnalyticsSnapshot = require('../models/AnalyticsSnapshotSQL');
-const { success, error: fail, notFound } = require('../utils/http');
+const { sendSuccess, sendError, notFound } = require('../utils/http');
 const logger = require('../utils/logger');
 const moment = require('moment-timezone');
 
@@ -29,10 +29,10 @@ exports.getExecutiveDashboard = async (req, res) => {
       { period }
     );
 
-    success(res, data, 'Dashboard executivo obtido com sucesso');
+    sendSuccess(res, data, 'Dashboard executivo obtido com sucesso');
   } catch (err) {
     logger.error('Erro ao obter dashboard executivo:', err);
-    fail(res, 'Erro ao obter dashboard executivo', 500);
+    sendError(res, 'Erro ao obter dashboard executivo', 500);
   }
 };
 
@@ -76,14 +76,14 @@ exports.getKPIs = async (req, res) => {
       }
     }
 
-    success(res, {
+    sendSuccess(res, {
       current: kpis,
       previous: previousKPIs,
       variations,
     }, 'KPIs obtidos com sucesso');
   } catch (err) {
     logger.error('Erro ao obter KPIs:', err);
-    fail(res, 'Erro ao obter KPIs', 500);
+    sendError(res, 'Erro ao obter KPIs', 500);
   }
 };
 
@@ -102,7 +102,7 @@ exports.getBreakdown = async (req, res) => {
     // Validar dimensão
     const validDimensions = ['queue', 'agent', 'status', 'hour', 'weekday'];
     if (!validDimensions.includes(dimension)) {
-      return fail(res, `Dimensão inválida. Use: ${validDimensions.join(', ')}`, 400);
+      return sendError(res, `Dimensão inválida. Use: ${validDimensions.join(', ')}`, 400);
     }
 
     logger.info(`Buscando breakdown por ${dimension}: ${startDate} a ${endDate}`);
@@ -126,10 +126,10 @@ exports.getBreakdown = async (req, res) => {
         break;
     }
 
-    success(res, breakdown, `Breakdown por ${dimension} obtido com sucesso`);
+    sendSuccess(res, breakdown, `Breakdown por ${dimension} obtido com sucesso`);
   } catch (err) {
     logger.error('Erro ao obter breakdown:', err);
-    fail(res, 'Erro ao obter breakdown', 500);
+    sendError(res, 'Erro ao obter breakdown', 500);
   }
 };
 
@@ -182,7 +182,7 @@ exports.getTrends = async (req, res) => {
       else if (change < -10) trend = 'declining';
     }
 
-    success(res, {
+    sendSuccess(res, {
       metric,
       data,
       trend,
@@ -191,7 +191,7 @@ exports.getTrends = async (req, res) => {
     }, 'Tendências obtidas com sucesso');
   } catch (err) {
     logger.error('Erro ao obter tendências:', err);
-    fail(res, 'Erro ao obter tendências', 500);
+    sendError(res, 'Erro ao obter tendências', 500);
   }
 };
 
@@ -209,7 +209,7 @@ exports.getComparison = async (req, res) => {
     } = req.query;
 
     if (!period1Start || !period1End || !period2Start || !period2End) {
-      return fail(res, 'Parâmetros period1Start, period1End, period2Start e period2End são obrigatórios', 400);
+      return sendError(res, 'Parâmetros period1Start, period1End, period2Start e period2End são obrigatórios', 400);
     }
 
     logger.info('Comparando períodos:', {
@@ -251,10 +251,10 @@ exports.getComparison = async (req, res) => {
       },
     };
 
-    success(res, comparison, 'Comparação realizada com sucesso');
+    sendSuccess(res, comparison, 'Comparação realizada com sucesso');
   } catch (err) {
     logger.error('Erro ao comparar períodos:', err);
-    fail(res, 'Erro ao comparar períodos', 500);
+    sendError(res, 'Erro ao comparar períodos', 500);
   }
 };
 
@@ -279,14 +279,14 @@ exports.listSnapshots = async (req, res) => {
 
     const limitedSnapshots = snapshots.slice(0, parseInt(limit));
 
-    success(res, {
+    sendSuccess(res, {
       snapshots: limitedSnapshots.map(s => s.getSummary()),
       total: snapshots.length,
       period,
     }, 'Snapshots listados com sucesso');
   } catch (err) {
     logger.error('Erro ao listar snapshots:', err);
-    fail(res, 'Erro ao listar snapshots', 500);
+    sendError(res, 'Erro ao listar snapshots', 500);
   }
 };
 
@@ -302,10 +302,10 @@ exports.generateSnapshot = async (req, res) => {
 
     const snapshot = await analyticsService.generateDailySnapshot(new Date(date));
 
-    success(res, snapshot, 'Snapshot gerado com sucesso', 201);
+    sendSuccess(res, snapshot, 'Snapshot gerado com sucesso', 201);
   } catch (err) {
     logger.error('Erro ao gerar snapshot:', err);
-    fail(res, 'Erro ao gerar snapshot', 500);
+    sendError(res, 'Erro ao gerar snapshot', 500);
   }
 };
 
@@ -317,10 +317,10 @@ exports.getGlobalStats = async (req, res) => {
   try {
     const stats = await AnalyticsSnapshot.getGlobalStats();
 
-    success(res, stats, 'Estatísticas globais obtidas com sucesso');
+    sendSuccess(res, stats, 'Estatísticas globais obtidas com sucesso');
   } catch (err) {
     logger.error('Erro ao obter estatísticas globais:', err);
-    fail(res, 'Erro ao obter estatísticas globais', 500);
+    sendError(res, 'Erro ao obter estatísticas globais', 500);
   }
 };
 
@@ -363,7 +363,7 @@ exports.getHeatmap = async (req, res) => {
 
     const weekdayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-    success(res, {
+    sendSuccess(res, {
       byHour,
       byWeekday,
       peakHours,
@@ -375,7 +375,7 @@ exports.getHeatmap = async (req, res) => {
     }, 'Heatmap gerado com sucesso');
   } catch (err) {
     logger.error('Erro ao gerar heatmap:', err);
-    fail(res, 'Erro ao gerar heatmap', 500);
+    sendError(res, 'Erro ao gerar heatmap', 500);
   }
 };
 
@@ -409,10 +409,10 @@ exports.getPerformance = async (req, res) => {
       );
     }
 
-    success(res, data, 'Performance obtida com sucesso');
+    sendSuccess(res, data, 'Performance obtida com sucesso');
   } catch (err) {
     logger.error('Erro ao obter performance:', err);
-    fail(res, 'Erro ao obter performance', 500);
+    sendError(res, 'Erro ao obter performance', 500);
   }
 };
 
@@ -428,10 +428,10 @@ exports.cleanupSnapshots = async (req, res) => {
 
     const deleted = await AnalyticsSnapshot.cleanup(parseInt(daysToKeep));
 
-    success(res, { deleted }, `${deleted} snapshot(s) deletado(s) com sucesso`);
+    sendSuccess(res, { deleted }, `${deleted} snapshot(s) deletado(s) com sucesso`);
   } catch (err) {
     logger.error('Erro ao limpar snapshots:', err);
-    fail(res, 'Erro ao limpar snapshots', 500);
+    sendError(res, 'Erro ao limpar snapshots', 500);
   }
 };
 

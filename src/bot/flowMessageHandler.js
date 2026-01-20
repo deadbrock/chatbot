@@ -111,7 +111,7 @@ class FlowMessageHandler {
       await session.updateLastInteraction();
 
       // Processar mensagem baseada no fluxo atual
-      const response = await this.processMessageFlow(session, messageBody, whatsappClient);
+      const response = await this.processMessageFlow(session, messageBody, whatsappClient, ticket, message.from);
 
       logger.info(`🎯 Resposta gerada: ${response ? (typeof response === 'object' ? JSON.stringify(response).substring(0, 100) : response.substring(0, 100)) : 'NULL'}`);
 
@@ -126,7 +126,11 @@ class FlowMessageHandler {
     } catch (error) {
       logger.error('❌ Erro no flowMessageHandler:', error);
       logger.error('❌ Stack trace:', error.stack);
-      logger.error(`❌ Contexto: Fluxo=${session?.currentFlow}, Step=${session?.currentStep}`);
+      if (typeof session !== 'undefined' && session) {
+        logger.error(`❌ Contexto: Fluxo=${session.currentFlow}, Step=${session.currentStep}`);
+      } else {
+        logger.error(`❌ Contexto: Sessão não disponível (erro ocorreu antes da criação)`);
+      }
       
       try {
         await whatsappClient.sendMessage(
@@ -142,7 +146,7 @@ class FlowMessageHandler {
   /**
    * Processa mensagem baseada no fluxo
    */
-  async processMessageFlow(session, messageBody, whatsappClient) {
+  async processMessageFlow(session, messageBody, whatsappClient, ticket = null, jid = null) {
     const currentFlow = session.currentFlow;
     const currentStep = session.currentStep;
 
@@ -180,7 +184,11 @@ class FlowMessageHandler {
         // Se IA identificou necessidade de atendente humano
         if (aiResult.needsHuman) {
           logger.info(`🤚 [MODO IA PURA] IA solicitou atendimento humano`);
-          await this.requestHumanAttendance(ticket, whatsappClient, message.from, 'Cliente solicitou atendimento humano');
+          if (ticket && jid) {
+            await this.requestHumanAttendance(ticket, whatsappClient, jid, 'Cliente solicitou atendimento humano');
+          } else {
+            logger.error('❌ Não foi possível solicitar atendimento humano: ticket ou jid não disponível');
+          }
           return null; // Mensagem já foi enviada pela requestHumanAttendance
         }
         
@@ -388,7 +396,7 @@ class FlowMessageHandler {
         // Se tem próximo fluxo, processar
         if (response.next) {
           await this.delay(1000);
-          const nextResponse = await this.processMessageFlow(session, '', whatsappClient);
+          const nextResponse = await this.processMessageFlow(session, '', whatsappClient, ticket, jid);
           if (nextResponse) {
             await this.sendResponse(whatsappClient, jid, nextResponse, session, ticket, contact);
           }

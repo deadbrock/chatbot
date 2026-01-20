@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chatbot WhatsApp - Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🤖</text></svg>">
+    <!-- Configure esta meta tag com a URL da API do Railway após o deploy -->
+    <!-- <meta name="api-url" content="https://seu-projeto.up.railway.app"> -->
+    <title>AstroChat - Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'></text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/css/theme.css">
@@ -12,7 +14,6 @@
     <link rel="stylesheet" href="/css/kanban.css">
     <link rel="stylesheet" href="/css/tags.css">
     <link rel="stylesheet" href="/css/chat.css">
-    <link rel="stylesheet" href="/css/webhooks.css">
     <link rel="stylesheet" href="/css/dashboard.css">
     <link rel="stylesheet" href="/css/whatsapp-chat.css">
     <link rel="stylesheet" href="/css/administration.css">
@@ -25,7 +26,7 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
                 <span class="brand-mark" aria-hidden="true"><i class="bi bi-robot"></i></span>
-                <span class="brand-title">Chatbot WhatsApp</span>
+                <span class="brand-title">AstroChat</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -57,108 +58,169 @@
             <!-- Sidebar -->
             <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block sidebar">
                 <div class="position-sticky pt-3">
-                    <ul class="nav flex-column">
+                    <ul class="nav flex-column sidebar-menu">
+                        <!-- Dashboard Principal -->
                         <li class="nav-item">
                             <a class="nav-link active" href="#dashboard" data-section="dashboard">
-                                <i class="bi bi-speedometer2"></i> Dashboard
+                                <i class="bi bi-speedometer2"></i> 
+                                <span>Dashboard</span>
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#tickets" data-section="tickets">
-                                <i class="bi bi-ticket-perforated"></i> Tickets
-                                <span class="badge bg-danger ms-2" id="ticketsBadge">0</span>
+
+                        <!-- Atendimento -->
+                        <li class="nav-item has-submenu">
+                            <a class="nav-link nav-dropdown-toggle" href="#" data-category="atendimento">
+                                <i class="bi bi-headset"></i> 
+                                <span>Atendimento</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </a>
+                            <ul class="nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#tickets" data-section="tickets">
+                                        <i class="bi bi-ticket-perforated"></i> 
+                                        <span>Tickets</span>
+                                        <span class="badge bg-danger ms-auto" id="ticketsBadge">0</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#sessions" data-section="sessions">
+                                        <i class="bi bi-chat-dots"></i> 
+                                        <span>Sessões Ativas</span>
+                                        <span class="badge bg-success ms-auto" id="sessionsBadge">0</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#chat" data-section="chat">
+                                        <i class="bi bi-chat-left-text"></i> 
+                                        <span>Chat em Tempo Real</span>
+                                        <span class="badge bg-primary ms-auto" id="chatBadge">0</span>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#sessions" data-section="sessions">
-                                <i class="bi bi-chat-dots"></i> Sessões Ativas
-                                <span class="badge bg-success ms-2" id="sessionsBadge">0</span>
+
+                        <!-- Gestão -->
+                        <li class="nav-item has-submenu">
+                            <a class="nav-link nav-dropdown-toggle" href="#" data-category="gestao">
+                                <i class="bi bi-briefcase"></i> 
+                                <span>Gestão</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </a>
+                            <ul class="nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#agents" data-section="agents">
+                                        <i class="bi bi-people"></i> 
+                                        <span>Atendentes</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#contacts" data-section="contacts">
+                                        <i class="bi bi-person-lines-fill"></i> 
+                                        <span>Contatos</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#queues" data-section="queues">
+                                        <i class="bi bi-diagram-3"></i> 
+                                        <span>Filas</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#ticketStatuses" data-section="ticketStatuses">
+                                        <i class="bi bi-flag"></i> 
+                                        <span>Status</span>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#agents" data-section="agents">
-                                <i class="bi bi-people"></i> Atendentes
+
+                        <!-- Analytics -->
+                        <li class="nav-item has-submenu">
+                            <a class="nav-link nav-dropdown-toggle" href="#" data-category="analytics">
+                                <i class="bi bi-graph-up-arrow"></i> 
+                                <span>Analytics</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </a>
+                            <ul class="nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#analytics" data-section="analytics">
+                                        <i class="bi bi-bar-chart"></i> 
+                                        <span>Análises</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#kanban" data-section="kanban">
+                                        <i class="bi bi-kanban"></i> 
+                                        <span>Kanban</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#executive-dashboard" data-section="executive-dashboard">
+                                        <i class="bi bi-trophy"></i> 
+                                        <span>Dashboard Executivo</span>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#analytics" data-section="analytics">
-                                <i class="bi bi-graph-up"></i> Analytics
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#kanban" data-section="kanban">
-                                <i class="bi bi-kanban"></i> Kanban
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#quick-replies" data-section="quick-replies">
-                                <i class="bi bi-lightning-charge"></i> Respostas Rápidas
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#tags" data-section="tags">
-                                <i class="bi bi-tags"></i> Tags
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#chat" data-section="chat">
-                                <i class="bi bi-chat-left-text"></i> Chat em Tempo Real
-                                <span class="badge bg-primary ms-2" id="chatBadge">0</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#schedules" data-section="schedules">
-                                <i class="bi bi-calendar-event"></i> Agendamentos
-                            </a>
-                            <a class="nav-link" href="#contacts" data-section="contacts">
-                                <i class="bi bi-people"></i> Contatos
-                            </a>
-                            <a class="nav-link" href="#ticketStatuses" data-section="ticketStatuses">
-                                <i class="bi bi-flag"></i> Status
-                            </a>
-                            <a class="nav-link" href="#queues" data-section="queues">
-                                <i class="bi bi-diagram-3"></i> Filas
-                            </a>
-                        </li>
+
+                        <!-- Campanhas -->
                         <li class="nav-item">
                             <a class="nav-link" href="#campaigns" data-section="campaigns">
-                                <i class="bi bi-megaphone"></i> Campanhas
+                                <i class="bi bi-megaphone"></i> 
+                                <span>Campanhas</span>
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#broadcasts" data-section="broadcasts">
-                                <i class="bi bi-broadcast"></i> Transmissões
+
+                        <!-- Ferramentas -->
+                        <li class="nav-item has-submenu">
+                            <a class="nav-link nav-dropdown-toggle" href="#" data-category="ferramentas">
+                                <i class="bi bi-tools"></i> 
+                                <span>Ferramentas</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </a>
+                            <ul class="nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#tags" data-section="tags">
+                                        <i class="bi bi-tags"></i> 
+                                        <span>Tags</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#schedules" data-section="schedules">
+                                        <i class="bi bi-calendar-event"></i> 
+                                        <span>Agendamentos</span>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#automations" data-section="automations">
-                                <i class="bi bi-gear-wide-connected"></i> Automações
+
+                        <!-- Sistema -->
+                        <li class="nav-item has-submenu">
+                            <a class="nav-link nav-dropdown-toggle" href="#" data-category="sistema">
+                                <i class="bi bi-gear-wide-connected"></i> 
+                                <span>Sistema</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#ai-playground" data-section="ai-playground">
-                                <i class="bi bi-robot"></i> AI Playground
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#administration" data-section="administration">
-                                <i class="bi bi-shield-lock"></i> Administração
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#webhooks" data-section="webhooks">
-                                <i class="bi bi-arrow-left-right"></i> Webhooks
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#executive-dashboard" data-section="executive-dashboard">
-                                <i class="bi bi-graph-up"></i> Dashboard Executivo
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#settings" data-section="settings">
-                                <i class="bi bi-gear"></i> Configurações
-                            </a>
+                            <ul class="nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#administration" data-section="administration">
+                                        <i class="bi bi-shield-lock"></i> 
+                                        <span>Administração</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#ai-playground" data-section="ai-playground">
+                                        <i class="bi bi-robot"></i> 
+                                        <span>AI Playground</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#settings" data-section="settings">
+                                        <i class="bi bi-sliders"></i> 
+                                        <span>Configurações</span>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
                     </ul>
 
@@ -767,69 +829,6 @@
                     </div>
                 </div>
 
-                <!-- Quick Replies Section -->
-                <div id="quickRepliesSection" class="content-section">
-                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
-                        <div>
-                            <h1 class="page-title">Respostas Rápidas</h1>
-                            <div class="page-subtitle text-muted">Gerencie atalhos e mensagens pré-definidas</div>
-                        </div>
-                        <div class="btn-toolbar mb-2 mb-md-0">
-                            <button type="button" class="btn btn-sm btn-primary" id="newQuickReplyBtn">
-                                <i class="bi bi-plus-lg"></i> Nova Resposta
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="refreshQuickRepliesBtn">
-                                <i class="bi bi-arrow-clockwise"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Filtros -->
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <input type="text" class="form-control" id="quickReplySearch" placeholder="Buscar por atalho ou mensagem...">
-                        </div>
-                        <div class="col-md-3">
-                            <select class="form-select" id="quickReplyCategoryFilter">
-                                <option value="">Todas as categorias</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <select class="form-select" id="quickReplyStatusFilter">
-                                <option value="">Todos os status</option>
-                                <option value="active">Ativas</option>
-                                <option value="inactive">Inativas</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Tabela de Respostas Rápidas -->
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Atalho</th>
-                                            <th>Mensagem</th>
-                                            <th>Categoria</th>
-                                            <th>Variáveis</th>
-                                            <th>Uso</th>
-                                            <th>Status</th>
-                                            <th class="text-end">Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="quickRepliesTable">
-                                        <tr>
-                                            <td colspan="7" class="text-center text-muted">Carregando...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Tags Section -->
                 <div id="tagsSection" class="content-section">
                     <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
@@ -1135,77 +1134,6 @@
                     </div>
                 </div>
 
-                <!-- Broadcasts Section -->
-                <div id="broadcastsSection" class="content-section">
-                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
-                        <div>
-                            <h1 class="page-title">
-                                <i class="bi bi-broadcast text-success"></i>
-                                Transmissões Rápidas
-                            </h1>
-                            <div class="page-subtitle text-muted">Envie mensagens instantâneas para listas de contatos</div>
-                        </div>
-                        <button class="btn btn-success" id="quickSendBtn">
-                            <i class="bi bi-send"></i> Envio Rápido
-                        </button>
-                    </div>
-
-                    <!-- Listas de Transmissão -->
-                    <div class="card mb-4">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="bi bi-list-ul"></i> Listas de Transmissão
-                            </h5>
-                            <button class="btn btn-primary btn-sm" id="newListBtn">
-                                <i class="bi bi-plus-circle"></i> Nova Lista
-                            </button>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3" id="broadcastListsContainer">
-                                <div class="col-12 text-center py-4">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Carregando...</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Histórico de Transmissões -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="bi bi-clock-history"></i> Histórico de Transmissões
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Transmissão</th>
-                                            <th>Status</th>
-                                            <th>Destinatários</th>
-                                            <th>Progresso</th>
-                                            <th>Estatísticas</th>
-                                            <th>Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="broadcastsTableBody">
-                                        <tr>
-                                            <td colspan="6" class="text-center py-4">
-                                                <div class="spinner-border text-primary" role="status">
-                                                    <span class="visually-hidden">Carregando...</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Chat Section -->
                 <div id="chatSection" class="content-section">
                     <div class="chat-container">
@@ -1385,62 +1313,6 @@
                     </div>
                 </div>
 
-                <!-- Automations Section -->
-                <div id="automationsSection" class="content-section">
-                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
-                        <div>
-                            <h1 class="page-title">
-                                <i class="bi bi-gear-wide-connected text-primary"></i>
-                                Automações
-                            </h1>
-                            <div class="page-subtitle text-muted">Fluxos de campanha, follow-ups e gatilhos automáticos</div>
-                        </div>
-                    </div>
-
-                    <!-- Tabs de Automação -->
-                    <ul class="nav nav-tabs mb-4" id="automationTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="flows-tab" data-bs-toggle="tab" data-bs-target="#flowsTab" type="button" role="tab">
-                                <i class="bi bi-diagram-3"></i> Fluxos de Campanha
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="followups-tab" data-bs-toggle="tab" data-bs-target="#followupsTab" type="button" role="tab">
-                                <i class="bi bi-arrow-repeat"></i> Follow-ups
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="triggers-tab" data-bs-toggle="tab" data-bs-target="#triggersTab" type="button" role="tab">
-                                <i class="bi bi-lightning-charge"></i> Gatilhos
-                            </button>
-                        </li>
-                    </ul>
-
-                    <!-- Tab Content -->
-                    <div class="tab-content" id="automationTabContent">
-                        <!-- Fluxos de Campanha -->
-                        <div class="tab-pane fade show active" id="flowsTab" role="tabpanel">
-                            <div id="flowsContent">
-                                <!-- Conteúdo carregado dinamicamente -->
-                            </div>
-                        </div>
-
-                        <!-- Follow-ups -->
-                        <div class="tab-pane fade" id="followupsTab" role="tabpanel">
-                            <div id="followupsContent">
-                                <!-- Conteúdo carregado dinamicamente -->
-                            </div>
-                        </div>
-
-                        <!-- Gatilhos -->
-                        <div class="tab-pane fade" id="triggersTab" role="tabpanel">
-                            <div id="triggersContent">
-                                <!-- Conteúdo carregado dinamicamente -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- AI Playground Section -->
                 <div id="ai-playgroundSection" class="content-section">
                     <!-- Conteúdo será renderizado via aiPlaygroundView.js -->
@@ -1573,109 +1445,6 @@
                     </div>
                 </div>
 
-                <!-- Webhooks Section -->
-                <div id="webhooksSection" class="content-section">
-                    <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
-                        <div>
-                            <h1 class="page-title">Webhooks</h1>
-                            <div class="page-subtitle text-muted">Gerencie webhooks para integração com sistemas externos</div>
-                        </div>
-                        <div>
-                            <button class="btn btn-primary" id="createWebhookBtn">
-                                <i class="bi bi-plus-lg"></i> Criar Webhook
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Estatísticas -->
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3">
-                            <div class="card text-center">
-                                <div class="card-body">
-                                    <h3 class="mb-0 text-primary" id="totalWebhooks">0</h3>
-                                    <small class="text-muted">Total de Webhooks</small>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-center">
-                                <div class="card-body">
-                                    <h3 class="mb-0 text-success" id="activeWebhooks">0</h3>
-                                    <small class="text-muted">Ativos</small>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-center">
-                                <div class="card-body">
-                                    <h3 class="mb-0 text-info" id="totalWebhookCalls">0</h3>
-                                    <small class="text-muted">Total de Chamadas</small>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-center">
-                                <div class="card-body">
-                                    <h3 class="mb-0 text-warning" id="globalSuccessRate">0%</h3>
-                                    <small class="text-muted">Taxa de Sucesso</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Filtros -->
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Buscar</label>
-                                    <input type="text" class="form-control" id="webhookSearchInput" placeholder="Buscar webhooks...">
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Status</label>
-                                    <select class="form-select" id="webhookStatusFilter">
-                                        <option value="">Todos</option>
-                                        <option value="true">Ativo</option>
-                                        <option value="false">Inativo</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Evento</label>
-                                    <select class="form-select" id="webhookEventFilter">
-                                        <option value="">Todos os eventos</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tabela de Webhooks -->
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Webhook</th>
-                                            <th>Status</th>
-                                            <th>Método</th>
-                                            <th>Eventos</th>
-                                            <th>Estatísticas</th>
-                                            <th>Último Disparo</th>
-                                            <th class="text-end">Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="webhooksTableBody">
-                                        <tr>
-                                            <td colspan="7" class="text-center">Carregando...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Settings Section -->
                 <div id="settingsSection" class="content-section">
                     <h1 class="h2 mb-4">Configurações</h1>
@@ -1690,8 +1459,8 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <!-- Socket.IO Client (apenas uma versão) -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script type="module" src="/app/app.js"></script>
 
     <!-- Toast container -->
@@ -2271,71 +2040,6 @@
       </div>
     </div>
 
-    <!-- Quick Reply Modal -->
-    <div class="modal fade" id="quickReplyModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="quickReplyModalTitle">Nova Resposta Rápida</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-          <div class="modal-body">
-            <form id="quickReplyForm">
-              <input type="hidden" id="quickReplyId" />
-              
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label">Atalho *</label>
-                  <input type="text" class="form-control" id="quickReplyShortcut" placeholder="/oi" required />
-                  <small class="text-muted">Ex: /oi, /obrigado, /horario</small>
-                </div>
-                
-                <div class="col-md-6">
-                  <label class="form-label">Categoria</label>
-                  <input type="text" class="form-control" id="quickReplyCategory" placeholder="Saudação" />
-                </div>
-                
-                <div class="col-12">
-                  <label class="form-label">Mensagem *</label>
-                  <textarea class="form-control" id="quickReplyMessage" rows="4" placeholder="Olá {{nome}}! Como posso ajudar?" required></textarea>
-                  <small class="text-muted">Use variáveis: {{nome}}, {{protocolo}}, {{data}}, {{hora}}</small>
-                </div>
-                
-                <div class="col-md-6">
-                  <label class="form-label">URL da Mídia (opcional)</label>
-                  <input type="url" class="form-control" id="quickReplyMediaUrl" placeholder="https://..." />
-                </div>
-                
-                <div class="col-md-6">
-                  <label class="form-label">Tipo de Mídia</label>
-                  <select class="form-select" id="quickReplyMediaType">
-                    <option value="">Nenhum</option>
-                    <option value="image">Imagem</option>
-                    <option value="video">Vídeo</option>
-                    <option value="audio">Áudio</option>
-                    <option value="document">Documento</option>
-                  </select>
-                </div>
-                
-                <div class="col-12">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="quickReplyIsActive" checked />
-                    <label class="form-check-label" for="quickReplyIsActive">Ativa</label>
-                  </div>
-                </div>
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button class="btn btn-primary" id="saveQuickReplyBtn">
-              <i class="bi bi-check-lg"></i> Salvar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Campaign Modal -->
     <div class="modal fade" id="campaignModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-xl">
@@ -2508,291 +2212,6 @@
       </div>
     </div>
 
-    <!-- Quick Send Modal -->
-    <div class="modal fade" id="quickSendModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">
-              <i class="bi bi-send text-success"></i>
-              Envio Rápido
-            </h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-          <div class="modal-body">
-            <form id="quickSendForm">
-              <div class="mb-3">
-                <label for="quickSendList" class="form-label">Lista de Transmissão *</label>
-                <select class="form-select" id="quickSendList" required>
-                  <option value="">Selecione uma lista...</option>
-                </select>
-              </div>
-              
-              <div class="mb-3">
-                <label for="quickSendMessage" class="form-label">Mensagem *</label>
-                <textarea class="form-control" id="quickSendMessage" rows="6" required 
-                          placeholder="Digite sua mensagem aqui..."></textarea>
-                <small class="text-muted">
-                  <i class="bi bi-info-circle"></i> A mensagem será enviada imediatamente
-                </small>
-              </div>
-              
-              <div class="mb-3">
-                <label for="quickSendMedia" class="form-label">Anexar Mídia (Opcional)</label>
-                <input type="file" class="form-control" id="quickSendMedia" 
-                       accept="image/*,video/*,audio/*,.pdf">
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-              <i class="bi bi-x-circle"></i> Cancelar
-            </button>
-            <button type="submit" form="quickSendForm" class="btn btn-success">
-              <i class="bi bi-send"></i> Enviar Agora
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Broadcast List Modal -->
-    <div class="modal fade" id="broadcastListModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="broadcastListModalLabel">Nova Lista de Transmissão</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-          <div class="modal-body">
-            <form id="broadcastListForm">
-              <input type="hidden" id="listId" />
-              
-              <div class="mb-3">
-                <label for="listName" class="form-label">Nome da Lista *</label>
-                <input type="text" class="form-control" id="listName" required>
-              </div>
-              
-              <div class="mb-3">
-                <label for="listDescription" class="form-label">Descrição</label>
-                <textarea class="form-control" id="listDescription" rows="2"></textarea>
-              </div>
-              
-              <div class="mb-3">
-                <label for="listCategory" class="form-label">Categoria</label>
-                <select class="form-select" id="listCategory">
-                  <option value="">Selecione...</option>
-                  <option value="clientes">Clientes</option>
-                  <option value="leads">Leads</option>
-                  <option value="fornecedores">Fornecedores</option>
-                  <option value="equipe">Equipe</option>
-                  <option value="outros">Outros</option>
-                </select>
-              </div>
-              
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="listIsActive" checked>
-                <label class="form-check-label" for="listIsActive">
-                  Lista ativa
-                </label>
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-              <i class="bi bi-x-circle"></i> Cancelar
-            </button>
-            <button type="submit" form="broadcastListForm" class="btn btn-primary">
-              <i class="bi bi-save"></i> Salvar Lista
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal de Webhook -->
-    <div class="modal fade" id="webhookModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Criar Webhook</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="webhookId">
-                    
-                    <!-- Informações Básicas -->
-                    <div class="mb-3">
-                        <label class="form-label">Nome *</label>
-                        <input type="text" class="form-control" id="webhookName" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Descrição</label>
-                        <textarea class="form-control" id="webhookDescription" rows="2"></textarea>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-9">
-                            <label class="form-label">URL *</label>
-                            <input type="url" class="form-control" id="webhookUrl" placeholder="https://..." required>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Método</label>
-                            <select class="form-select" id="webhookMethod">
-                                <option value="POST">POST</option>
-                                <option value="GET">GET</option>
-                                <option value="PUT">PUT</option>
-                                <option value="PATCH">PATCH</option>
-                                <option value="DELETE">DELETE</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Eventos -->
-                    <div class="mb-3">
-                        <label class="form-label">Eventos *</label>
-                        <div id="webhookEventsContainer" style="max-height: 300px; overflow-y: auto;" class="border rounded p-3">
-                            <!-- Eventos serão carregados aqui -->
-                        </div>
-                    </div>
-                    
-                    <!-- Configurações Avançadas -->
-                    <div class="accordion" id="webhookAdvanced">
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings">
-                                    Configurações Avançadas
-                                </button>
-                            </h2>
-                            <div id="advancedSettings" class="accordion-collapse collapse" data-bs-parent="#webhookAdvanced">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label class="form-label">Secret (para assinatura HMAC)</label>
-                                        <input type="text" class="form-control" id="webhookSecret" placeholder="Deixe vazio para gerar automaticamente">
-                                        <small class="text-muted">Usado para assinar o payload com HMAC-SHA256</small>
-                                    </div>
-                                    
-                                    <div class="row mb-3">
-                                        <div class="col-md-4">
-                                            <label class="form-label">Tentativas de Retry</label>
-                                            <input type="number" class="form-control" id="webhookRetryAttempts" min="0" max="10" value="3">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">Delay (segundos)</label>
-                                            <input type="number" class="form-control" id="webhookRetryDelay" min="1" max="3600" value="60">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">Timeout (segundos)</label>
-                                            <input type="number" class="form-control" id="webhookTimeout" min="5" max="300" value="30">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="webhookIsActive" checked>
-                                        <label class="form-check-label" for="webhookIsActive">
-                                            Webhook ativo
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" id="saveWebhookBtn">Salvar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal de Detalhes do Webhook -->
-    <div class="modal fade" id="webhookDetailsModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Detalhes do Webhook</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <!-- Informações -->
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <h6 class="text-primary">Informações Básicas</h6>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>Nome:</strong></td>
-                                    <td id="detailsWebhookName"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>URL:</strong></td>
-                                    <td id="detailsWebhookUrl"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Método:</strong></td>
-                                    <td id="detailsWebhookMethod"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Status:</strong></td>
-                                    <td id="detailsWebhookStatus"></td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-primary">Estatísticas</h6>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>Sucessos:</strong></td>
-                                    <td id="detailsSuccessCount"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Falhas:</strong></td>
-                                    <td id="detailsFailureCount"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Taxa de Sucesso:</strong></td>
-                                    <td id="detailsSuccessRate"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Tempo Médio:</strong></td>
-                                    <td id="detailsAvgResponseTime"></td>
-                                </tr>
-                            </table>
-                        </div>
-                    </div>
-                    
-                    <!-- Eventos -->
-                    <div class="mb-4">
-                        <h6 class="text-primary">Eventos Monitorados</h6>
-                        <div id="detailsWebhookEvents"></div>
-                    </div>
-                    
-                    <!-- Último Disparo -->
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <h6 class="text-primary">Último Disparo</h6>
-                            <p id="detailsLastTriggered" class="mb-0"></p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-primary">Status do Último Disparo</h6>
-                            <div id="detailsLastStatus"></div>
-                        </div>
-                    </div>
-                    
-                    <!-- Logs Recentes -->
-                    <div>
-                        <h6 class="text-primary">Logs Recentes</h6>
-                        <div id="detailsRecentLogs"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Bibliotecas JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/moment.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.45/builds/moment-timezone-with-data.min.js"></script>
@@ -2802,8 +2221,7 @@
     <!-- Bootstrap Bundle (inclui Popper) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Socket.IO Client -->
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- Socket.IO Client já carregado acima (linha 1571) -->
     
     <!-- AI Playground View (Global) -->
     <script src="/app/views/aiPlaygroundView.js" onerror="console.error('❌ Erro ao carregar aiPlaygroundView.js')"></script>

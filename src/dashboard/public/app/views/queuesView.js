@@ -19,7 +19,8 @@ export async function renderQueues() {
   showLoading();
 
   try {
-    const queues = await apiFetch('/queues');
+    const response = await apiFetch('/queues');
+    const queues = Array.isArray(response) ? response : (response.data || response.queues || []);
     const agents = await apiFetch('/users').catch(() => []);
 
     container.innerHTML = `
@@ -43,7 +44,7 @@ export async function renderQueues() {
 
       <!-- Grid de Filas -->
       <div class="row g-3">
-        ${queues.map(queue => renderQueueCard(queue)).join('')}
+        ${Array.isArray(queues) ? queues.map(queue => renderQueueCard(queue)).join('') : ''}
       </div>
     `;
 

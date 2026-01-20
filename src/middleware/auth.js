@@ -12,6 +12,7 @@ function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+      logger.warn('⚠️ [authMiddleware] Token não fornecido:', { path: req.path });
       return res.status(401).json({
         success: false,
         error: 'Token não fornecido'
@@ -40,9 +41,18 @@ function authMiddleware(req, res, next) {
     // Verificar token
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
       if (err) {
+        logger.warn('⚠️ [authMiddleware] Token inválido:', {
+          path: req.path,
+          error: err.message,
+          errorName: err.name
+        });
         return res.status(401).json({
           success: false,
           error: 'Token inválido ou expirado'
+        });
+      }
+
+      req.user = decoded;
         });
       }
 

@@ -83,13 +83,36 @@ body {
     overflow-y: auto;
 }
 
+/* Menu principal */
+.sidebar-menu {
+    padding: 0.5rem 0;
+}
+
+.sidebar .nav-item {
+    margin-bottom: 0.25rem;
+}
+
 .sidebar .nav-link {
     font-weight: 500;
     color: var(--text);
     padding: 0.75rem 1rem;
-    transition: all 0.3s;
-    border-radius: 12px;
-    margin: 0 10px;
+    transition: all 0.2s ease;
+    border-radius: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+}
+
+.sidebar .nav-link i:first-child {
+    font-size: 1.1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.sidebar .nav-link span {
+    flex: 1;
 }
 
 .sidebar .nav-link:hover {
@@ -99,13 +122,86 @@ body {
 
 .sidebar .nav-link.active {
     color: var(--primary);
-    background-color: rgba(13,110,253,0.12);
-    border-left: none;
-    outline: 1px solid rgba(13,110,253,0.18);
+    background: rgba(13,110,253,0.12);
+    font-weight: 600;
 }
 
-.sidebar .nav-link i {
-    margin-right: 0.5rem;
+/* Dropdown Menu */
+.nav-item.has-submenu {
+    position: relative;
+}
+
+.nav-dropdown-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+
+.dropdown-arrow {
+    font-size: 0.75rem;
+    transition: transform 0.3s ease;
+    margin-left: auto;
+}
+
+.nav-item.has-submenu.open > .nav-dropdown-toggle .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+/* Submenu */
+.nav-submenu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background: rgba(0, 0, 0, 0.03);
+}
+
+[data-bs-theme="dark"] .nav-submenu {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-item.has-submenu.open > .nav-submenu {
+    max-height: 500px;
+}
+
+.nav-submenu .nav-item {
+    margin-bottom: 0;
+}
+
+.nav-submenu .nav-link {
+    padding: 0.625rem 1rem 0.625rem 3rem;
+    font-size: 0.875rem;
+    font-weight: 400;
+    border-left: 2px solid transparent;
+}
+
+.nav-submenu .nav-link:hover {
+    background-color: rgba(13,110,253,0.06);
+    border-left-color: var(--primary);
+}
+
+.nav-submenu .nav-link.active {
+    background: rgba(13,110,253,0.10);
+    border-left-color: var(--primary);
+    font-weight: 500;
+}
+
+.nav-submenu .nav-link i {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.nav-submenu .badge {
+    font-size: 0.7rem;
+    padding: 0.25em 0.5em;
+}
+
+/* Destaque no menu pai quando há item ativo */
+.nav-dropdown-toggle.has-active-child {
+    color: var(--primary);
+    font-weight: 600;
+    background: rgba(13,110,253,0.05);
 }
 
 .sidebar-heading {

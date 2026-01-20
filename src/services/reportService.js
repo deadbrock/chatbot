@@ -356,7 +356,7 @@ class ReportService {
     const filepath = path.join(this.reportsDir, filename);
     
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Chatbot WhatsApp';
+    workbook.creator = 'AstroChat - Aestron';
     workbook.created = new Date();
     
     // Adicionar sheets baseado no tipo

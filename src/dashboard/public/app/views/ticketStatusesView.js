@@ -19,7 +19,8 @@ export async function renderTicketStatuses() {
   showLoading();
 
   try {
-    const statuses = await apiFetch('/ticket-statuses');
+    const response = await apiFetch('/ticket-statuses');
+    const statuses = Array.isArray(response) ? response : (response.data || response.statuses || []);
     const stats = await apiFetch('/ticket-statuses/stats').catch(() => []);
 
     container.innerHTML = `
@@ -43,7 +44,7 @@ export async function renderTicketStatuses() {
 
       <!-- Grid de Status -->
       <div class="row g-3" id="statusGrid">
-        ${statuses.map(status => renderStatusCard(status, stats)).join('')}
+        ${Array.isArray(statuses) ? statuses.map(status => renderStatusCard(status, stats)).join('') : ''}
       </div>
     `;
 

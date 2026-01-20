@@ -263,13 +263,14 @@ class AnalyticsService {
   }
 
   async countActiveContacts(startDate, endDate) {
-    // Contatos que tiveram tickets no período
+    // Contatos que tiveram tickets no período (usando userPhone como identificador)
     const tickets = await Ticket.findAll({
       where: {
         createdAt: { [Op.between]: [startDate, endDate] },
+        userPhone: { [Op.ne]: null },
       },
-      attributes: ['contactId'],
-      group: ['contactId'],
+      attributes: ['userPhone'],
+      group: ['userPhone'],
     });
 
     return tickets.length;
@@ -423,21 +424,22 @@ class AnalyticsService {
   }
 
   async breakdownByQueue(startDate, endDate) {
+    // Tickets não têm queueId, usando department como alternativa
     const tickets = await Ticket.findAll({
       where: {
         createdAt: { [Op.between]: [startDate, endDate] },
       },
       attributes: [
-        'queueId',
+        'department',
         [Ticket.sequelize.fn('COUNT', Ticket.sequelize.col('id')), 'count'],
       ],
-      group: ['queueId'],
+      group: ['department'],
       raw: true,
     });
 
     const breakdown = {};
     for (const ticket of tickets) {
-      breakdown[ticket.queueId || 'sem-fila'] = parseInt(ticket.count);
+      breakdown[ticket.department || 'sem-departamento'] = parseInt(ticket.count);
     }
 
     return breakdown;
@@ -500,8 +502,15 @@ class AnalyticsService {
     }
 
     for (const ticket of tickets) {
-      const hour = moment(ticket.createdAt).tz(this.timezone).hour();
-      breakdown[hour]++;
+      // Garantir que createdAt seja uma data válida
+      const createdAt = ticket.createdAt instanceof Date 
+        ? ticket.createdAt 
+        : new Date(ticket.createdAt);
+      
+      if (!isNaN(createdAt.getTime())) {
+        const hour = moment(createdAt).tz(this.timezone).hour();
+        breakdown[hour]++;
+      }
     }
 
     return breakdown;
@@ -522,8 +531,15 @@ class AnalyticsService {
     }
 
     for (const ticket of tickets) {
-      const weekday = moment(ticket.createdAt).tz(this.timezone).day();
-      breakdown[weekday]++;
+      // Garantir que createdAt seja uma data válida
+      const createdAt = ticket.createdAt instanceof Date 
+        ? ticket.createdAt 
+        : new Date(ticket.createdAt);
+      
+      if (!isNaN(createdAt.getTime())) {
+        const weekday = moment(createdAt).tz(this.timezone).day();
+        breakdown[weekday]++;
+      }
     }
 
     return breakdown;

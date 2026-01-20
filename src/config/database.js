@@ -46,9 +46,7 @@ function buildSequelize() {
       });
     }
 
-    // Alternativa: variáveis separadas
-    const isProduction = process.env.NODE_ENV === 'production';
-    const sslEnabled = parseBool(process.env.DB_SSL, isProduction);
+    // Alternativa: variáveis separadas (reutilizar isProduction e sslEnabled já declarados acima)
     
     return new Sequelize(
       process.env.DB_NAME,

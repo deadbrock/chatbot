@@ -294,6 +294,8 @@ async function listenWithFallback(startPort) {
 }
 
 async function startServer() {
+  const startTime = Date.now();
+  
   try {
     logger.info('🚀 Iniciando servidor...');
     logger.info(`📋 Ambiente: ${process.env.NODE_ENV || 'development'}`);

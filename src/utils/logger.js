@@ -22,8 +22,10 @@ const customFormat = winston.format.combine(
 );
 
 // Configuração do logger
+// Em produção, usar 'info' mas permitir 'debug' via variável de ambiente
+const logLevel = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  level: logLevel,
   format: customFormat,
   transports: [
     // Console

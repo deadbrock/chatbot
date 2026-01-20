@@ -17,7 +17,9 @@ function buildSequelize() {
 
   // Postgres: prefer DATABASE_URL (padrão em deploys/CI)
   if (dialect === 'postgres') {
-    const sslEnabled = parseBool(process.env.DB_SSL, false);
+    // Em produção (Railway), sempre usar SSL
+    const isProduction = process.env.NODE_ENV === 'production';
+    const sslEnabled = parseBool(process.env.DB_SSL, isProduction);
 
     if (process.env.DATABASE_URL) {
       return new Sequelize(process.env.DATABASE_URL, {
@@ -34,11 +36,20 @@ function buildSequelize() {
         define: {
           timestamps: true,
           underscored: false
+        },
+        pool: {
+          max: 5,
+          min: 0,
+          acquire: 30000,
+          idle: 10000
         }
       });
     }
 
     // Alternativa: variáveis separadas
+    const isProduction = process.env.NODE_ENV === 'production';
+    const sslEnabled = parseBool(process.env.DB_SSL, isProduction);
+    
     return new Sequelize(
       process.env.DB_NAME,
       process.env.DB_USER,
@@ -59,6 +70,12 @@ function buildSequelize() {
         define: {
           timestamps: true,
           underscored: false
+        },
+        pool: {
+          max: 5,
+          min: 0,
+          acquire: 30000,
+          idle: 10000
         }
       }
     );
@@ -83,11 +100,48 @@ const sequelize = buildSequelize();
 // Testar conexão
 async function testConnection() {
   try {
+    logger.info(`🔍 Tentando conectar ao banco (dialect=${sequelize.getDialect()})...`);
+    
+    if (sequelize.getDialect() === 'postgres') {
+      logger.info(`   Host: ${sequelize.config.host || 'DATABASE_URL'}`);
+      logger.info(`   Database: ${sequelize.config.database || 'DATABASE_URL'}`);
+      logger.info(`   Port: ${sequelize.config.port || 'DATABASE_URL'}`);
+      logger.info(`   SSL: ${sequelize.config.dialectOptions?.ssl ? 'habilitado' : 'desabilitado'}`);
+    }
+    
+    const startTime = Date.now();
     await sequelize.authenticate();
-    logger.info(`✅ Banco conectado com sucesso (dialect=${sequelize.getDialect()})`);
+    const connectionTime = Date.now() - startTime;
+    
+    logger.info(`✅ Banco conectado com sucesso (dialect=${sequelize.getDialect()}, ${connectionTime}ms)`);
     return true;
   } catch (error) {
-    logger.error(`❌ Erro ao conectar banco (dialect=${sequelize.getDialect()}):`, error);
+    logger.error(`❌ ERRO ao conectar banco (dialect=${sequelize.getDialect()}):`);
+    logger.error(`   Mensagem: ${error.message}`);
+    logger.error(`   Código: ${error.code || 'N/A'}`);
+    logger.error(`   Nome: ${error.name || 'N/A'}`);
+    
+    if (error.original) {
+      logger.error(`   Erro original: ${error.original.message}`);
+      logger.error(`   Código original: ${error.original.code || 'N/A'}`);
+    }
+    
+    if (error.stack) {
+      logger.error(`   Stack:`);
+      logger.error(error.stack);
+    }
+    
+    // Log detalhado para PostgreSQL
+    if (sequelize.getDialect() === 'postgres') {
+      logger.error(`   Configuração de conexão:`);
+      logger.error(`   - DATABASE_URL: ${process.env.DATABASE_URL ? 'configurado' : 'não configurado'}`);
+      logger.error(`   - DB_HOST: ${process.env.DB_HOST || 'não configurado'}`);
+      logger.error(`   - DB_NAME: ${process.env.DB_NAME || 'não configurado'}`);
+      logger.error(`   - DB_USER: ${process.env.DB_USER || 'não configurado'}`);
+      logger.error(`   - DB_PORT: ${process.env.DB_PORT || 'não configurado'}`);
+      logger.error(`   - DB_SSL: ${process.env.DB_SSL || 'não configurado'}`);
+    }
+    
     return false;
   }
 }
@@ -95,12 +149,30 @@ async function testConnection() {
 // Sincronizar modelos
 async function syncDatabase() {
   try {
+    logger.info(`🔄 Sincronizando modelos (dialect=${sequelize.getDialect()})...`);
+    const startTime = Date.now();
+    
     // Usar force: false para não recriar tabelas existentes
     await sequelize.sync({ force: false });
-    logger.info('✅ Banco de dados sincronizado');
+    
+    const syncTime = Date.now() - startTime;
+    logger.info(`✅ Banco de dados sincronizado (${syncTime}ms)`);
     return true;
   } catch (error) {
-    logger.error('❌ Erro ao sincronizar banco:', error);
+    logger.error('❌ ERRO ao sincronizar banco:');
+    logger.error(`   Mensagem: ${error.message}`);
+    logger.error(`   Código: ${error.code || 'N/A'}`);
+    logger.error(`   Nome: ${error.name || 'N/A'}`);
+    
+    if (error.original) {
+      logger.error(`   Erro original: ${error.original.message}`);
+    }
+    
+    if (error.stack) {
+      logger.error(`   Stack:`);
+      logger.error(error.stack);
+    }
+    
     return false;
   }
 }

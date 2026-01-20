@@ -36,10 +36,34 @@ export async function initChatView() {
  * Conecta ao Socket.IO
  */
 function connectSocket() {
-  // Obter URL do servidor
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const socketUrl = `${protocol}//${host}`;
+  // Obter URL do servidor (mesma lógica do api.js)
+  let serverUrl = window.location.origin;
+  
+  // Tentar ler de meta tag (configurado para produção)
+  const apiUrlMeta = document.querySelector('meta[name="api-url"]');
+  if (apiUrlMeta) {
+    const url = apiUrlMeta.getAttribute('content');
+    if (url && url.trim()) {
+      // Remover /api do final se existir
+      serverUrl = url.replace(/\/api\/?$/, '');
+    }
+  }
+  
+  // Tentar ler de script tag
+  const apiConfigScript = document.getElementById('api-config');
+  if (apiConfigScript && apiConfigScript.textContent) {
+    try {
+      const config = JSON.parse(apiConfigScript.textContent);
+      if (config.apiUrl) {
+        serverUrl = config.apiUrl.replace(/\/api\/?$/, '');
+      }
+    } catch (e) {
+      // Ignorar erro
+    }
+  }
+  
+  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+  const socketUrl = serverUrl.startsWith('http') ? serverUrl : `${protocol}//${serverUrl}`;
   
   console.log('🔌 Conectando ao Socket.IO:', socketUrl);
   

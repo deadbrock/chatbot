@@ -4,37 +4,71 @@ import { getToken, logout } from './auth.js';
 // Em produção (Vercel), usar variável de ambiente ou detectar automaticamente
 // Em desenvolvimento, usar /api (proxy local)
 function getApiBaseUrl() {
-  // Se estiver em produção (domínio Vercel), usar URL do Railway
-  const hostname = window.location.hostname;
-  
-  // Se não for localhost, assumir que está em produção
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168')) {
-    // IMPORTANTE: Configure esta variável no Vercel!
-    // Vá em Settings > Environment Variables e adicione:
-    // NOME: API_URL
-    // VALOR: https://seu-projeto.up.railway.app/api
-    
-    // Tentar ler de um script tag ou meta tag (configurado no HTML)
-    const apiUrlMeta = document.querySelector('meta[name="api-url"]');
-    if (apiUrlMeta) {
-      const url = apiUrlMeta.getAttribute('content');
+  // 1. Tentar ler de variável de ambiente do Vercel (via script injetado)
+  // O Vercel injeta variáveis de ambiente em window.__ENV__ ou similar
+  if (typeof window !== 'undefined') {
+    // Tentar window.ENV (comum em alguns setups)
+    if (window.ENV && window.ENV.API_URL) {
+      const url = window.ENV.API_URL;
       return url.endsWith('/api') ? url : `${url}/api`;
     }
     
-    // Fallback: você precisará configurar manualmente aqui
-    // Substitua pela URL do seu Railway após o deploy
-    // Descomente e substitua:
-    // return 'https://seu-projeto.up.railway.app/api';
-    
-    // Por enquanto, retornar relativo (não funcionará em produção até configurar)
-    console.warn('⚠️ API_URL não configurada. Configure no Vercel ou descomente a linha acima.');
+    // Tentar process.env (se disponível no browser)
+    if (typeof process !== 'undefined' && process.env && process.env.API_URL) {
+      const url = process.env.API_URL;
+      return url.endsWith('/api') ? url : `${url}/api`;
+    }
   }
   
-  // Desenvolvimento local: usar proxy relativo
+  // 2. Tentar ler de meta tag (configurado no HTML)
+  const apiUrlMeta = document.querySelector('meta[name="api-url"]');
+  if (apiUrlMeta) {
+    const url = apiUrlMeta.getAttribute('content');
+    if (url && url.trim()) {
+      return url.endsWith('/api') ? url : `${url}/api`;
+    }
+  }
+  
+  // 3. Tentar ler de script tag com id="api-config"
+  const apiConfigScript = document.getElementById('api-config');
+  if (apiConfigScript && apiConfigScript.textContent) {
+    try {
+      const config = JSON.parse(apiConfigScript.textContent);
+      if (config.apiUrl) {
+        const url = config.apiUrl;
+        return url.endsWith('/api') ? url : `${url}/api`;
+      }
+    } catch (e) {
+      console.warn('Erro ao parsear api-config:', e);
+    }
+  }
+  
+  // 4. Detectar automaticamente baseado no hostname
+  const hostname = window.location.hostname;
+  const isProduction = hostname !== 'localhost' && 
+                       hostname !== '127.0.0.1' && 
+                       !hostname.includes('192.168') &&
+                       !hostname.includes('.local');
+  
+  if (isProduction) {
+    // Em produção, tentar construir URL baseado no domínio atual
+    // Se estiver em vercel.app, assumir que a API está em Railway
+    // Você pode configurar isso via meta tag ou variável de ambiente
+    console.warn('⚠️ API_URL não configurada. Configure via meta tag ou variável de ambiente.');
+    console.warn('   Adicione no HTML: <meta name="api-url" content="https://seu-projeto.up.railway.app">');
+    // Retornar relativo pode funcionar se houver proxy reverso configurado
+  }
+  
+  // 5. Desenvolvimento local: usar proxy relativo
   return '/api';
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+// Log da URL detectada (apenas em desenvolvimento)
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+}
 
 // Flag para evitar múltiplos logouts simultâneos
 let isLoggingOut = false;

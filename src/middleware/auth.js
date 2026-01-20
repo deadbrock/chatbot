@@ -52,10 +52,6 @@ function authMiddleware(req, res, next) {
         });
       }
 
-      req.user = decoded;
-        });
-      }
-
       // Adicionar dados do usuário à requisição
       req.user = decoded;
       next();

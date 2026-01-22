@@ -18,7 +18,7 @@ const AgentPerformance = sequelize.define('AgentPerformance', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: 'users',
+      model: 'Users',
       key: 'id',
     },
     comment: 'ID do agente',

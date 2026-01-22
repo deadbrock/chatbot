@@ -264,7 +264,30 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         })
       });
 
-      const data = await response.json();
+      // Verificar se a resposta tem conteúdo
+      const contentType = response.headers.get('content-type');
+      const responseText = await response.text();
+      
+      console.log('📊 AI Playground - Resposta recebida:', {
+        status: response.status,
+        contentType,
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 200)
+      });
+
+      // Tentar fazer parse do JSON
+      let data;
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        console.error('❌ Erro ao fazer parse do JSON:', parseError);
+        throw new Error(`Resposta inválida do servidor (${response.status}): ${responseText.substring(0, 100)}`);
+      }
+
+      // Verificar se a requisição foi bem-sucedida
+      if (!response.ok) {
+        throw new Error(data.message || `Erro ${response.status}: ${response.statusText}`);
+      }
 
       if (data.success) {
         // Adicionar resposta da IA ao chat
@@ -281,12 +304,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
           timestamp: new Date()
         });
       } else {
-        this.showError('Erro ao processar mensagem: ' + data.error);
+        this.showError('Erro ao processar mensagem: ' + (data.error || 'Erro desconhecido'));
       }
 
     } catch (error) {
-      console.error('Erro:', error);
-      this.showError('Erro de conexão com a API');
+      console.error('❌ Erro no AI Playground:', error);
+      this.showError('Erro de conexão com a API: ' + error.message);
     } finally {
       this.hideLoading();
     }
@@ -419,7 +442,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         })
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
+
+      if (!response.ok) {
+        throw new Error(data.message || `Erro ${response.status}`);
+      }
 
       if (data.success) {
         this.showSuccess('Exemplo salvo com sucesso!');
@@ -451,9 +479,10 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         }
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
 
-      if (data.success) {
+      if (response.ok && data.success) {
         document.getElementById('examplesCount').innerHTML = `
           <p><strong>${data.examples.length}</strong> exemplos salvos</p>
         `;
@@ -475,9 +504,10 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         }
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
 
-      if (data.success) {
+      if (response.ok && data.success) {
         const examplesList = document.getElementById('examplesList');
         
         if (data.examples.length === 0) {
@@ -524,9 +554,10 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         }
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
 
-      if (data.success) {
+      if (response.ok && data.success) {
         this.showSuccess('Exemplo removido!');
         this.showExamples(); // Recarregar lista
         this.loadExamplesCount();
@@ -549,9 +580,10 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
         }
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
 
-      if (data.success) {
+      if (response.ok && data.success) {
         const statsContent = document.getElementById('statsContent');
         
         if (data.stats.length === 0) {

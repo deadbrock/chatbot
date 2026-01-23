@@ -15,7 +15,7 @@ const AgentPerformance = sequelize.define('AgentPerformance', {
   },
   
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER, // CORRIGIDO: User usa INTEGER, não UUID
     allowNull: false,
     references: {
       model: 'Users',

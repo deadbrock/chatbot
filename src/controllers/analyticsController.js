@@ -3,7 +3,7 @@ const Ticket = require('../models/TicketSQL');
 const Session = require('../models/SessionSQL');
 const User = require('../models/UserSQL');
 const { ok, fail } = require('../utils/http');
-const { formatDateStr, dateDiffMinutes, dateDiffMillis } = require('../utils/dbHelpers');
+const { formatDateStr, dateDiffMinutes, dateDiffMillis, rawExtractHourSQL } = require('../utils/dbHelpers');
 
 async function dashboard(req, res) {
   try {
@@ -256,7 +256,7 @@ async function contactsRanking(req, res) {
       ],
       where: { userId: { [Op.ne]: null } },
       group: ['userId', 'department'],
-      order: [[literal('ticketCount'), 'DESC']],
+      order: [[col('ticketCount'), 'DESC']],
       limit: parseInt(limit),
       raw: true
     });
@@ -289,7 +289,7 @@ async function agentsRanking(req, res) {
       ],
       where: { assignedTo: { [Op.ne]: null } },
       group: ['assignedTo'],
-      order: [[literal('ticketCount'), 'DESC']],
+      order: [[col('ticketCount'), 'DESC']],
       raw: true
     });
 
@@ -325,13 +325,13 @@ async function agentsRanking(req, res) {
 async function timeMetrics(req, res) {
   try {
     const avgAtendimentoRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMinutes('closedAt', 'assignedAt')), 'avg']],
       where: { closedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
       raw: true
     });
 
     const avgEsperaRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(assignedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMinutes('assignedAt', 'createdAt')), 'avg']],
       where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
       raw: true
     });
@@ -367,13 +367,14 @@ async function hourlyActivity(req, res) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const hourExpr = literal(rawExtractHourSQL('createdAt'));
     const hourlyData = await Ticket.findAll({
       attributes: [
-        [literal("CAST(strftime('%H', createdAt) AS INTEGER)"), 'hour'],
+        [hourExpr, 'hour'],
         [fn('COUNT', col('id')), 'count']
       ],
       where: { createdAt: { [Op.gte]: today } },
-      group: [literal("strftime('%H', createdAt)")],
+      group: [hourExpr],
       order: [[literal('hour'), 'ASC']],
       raw: true
     });

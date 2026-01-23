@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const logger = require('../utils/logger');
 const moment = require('moment-timezone');
+const { rawDateDiffMinutesSQL } = require('../utils/dbHelpers');
 
 /**
  * ================================================================================

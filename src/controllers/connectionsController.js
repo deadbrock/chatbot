@@ -33,23 +33,31 @@ async function listConnections(req, res) {
       qrCode: conn.qrCode ? '***' : null
     }));
     
-    // Se não há conexões no banco, adicionar a conexão WPPConnect atual
-    if (connections.length === 0) {
-      const whatsappClient = req.app.get('whatsappClient');
-      if (whatsappClient && whatsappClient.isReady) {
+    // SEMPRE verificar a conexão WPPConnect ativa, mesmo que não esteja no banco
+    const whatsappClient = req.app.get('whatsappClient');
+    if (whatsappClient && whatsappClient.isReady) {
+      // Verificar se já existe uma conexão com este instanceId no banco
+      const existsInDb = connections.some(conn => conn.instanceId === 'wppconnect-default');
+      
+      if (!existsInDb) {
+        // Adicionar conexão ativa que não está no banco
         sanitized.push({
           id: 'wppconnect-default',
-          name: 'WhatsApp WPPConnect (Padrão)',
-          instanceId: 'wppconnect-1',
-          phoneNumber: 'Conectado',
-          phoneNumberFormatted: 'Conectado',
-          status: whatsappClient.isReady ? 'connected' : 'disconnected',
+          name: 'WhatsApp Principal (Conectado)',
+          instanceId: 'wppconnect-default',
+          phoneNumber: whatsappClient.info?.wid?.user || 'Conectado',
+          phoneNumberFormatted: whatsappClient.info?.formattedNumber || 'Conectado',
+          status: 'connected',
           isActive: true,
           isDefault: true,
           priority: 100,
-          deviceInfo: { platform: 'Baileys' },
+          deviceInfo: whatsappClient.info ? {
+            platform: whatsappClient.info.platform || 'WPPConnect',
+            pushname: whatsappClient.info.pushname || null
+          } : { platform: 'WPPConnect' },
           lastConnectedAt: new Date(),
-          createdAt: new Date()
+          createdAt: new Date(),
+          _isLive: true // Flag para indicar que é uma conexão ao vivo
         });
       }
     }

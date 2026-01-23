@@ -2,6 +2,8 @@
  * AI Playground View - Tela de Desenvolvimento e Treinamento da IA
  */
 
+import { apiFetch } from '../api.js';
+
 class AIPlaygroundView {
   constructor() {
     this.container = null;

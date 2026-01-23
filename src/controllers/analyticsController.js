@@ -3,6 +3,7 @@ const Ticket = require('../models/TicketSQL');
 const Session = require('../models/SessionSQL');
 const User = require('../models/UserSQL');
 const { ok, fail } = require('../utils/http');
+const { formatDateStr, dateDiffMinutes, dateDiffMillis } = require('../utils/dbHelpers');
 
 async function dashboard(req, res) {
   try {
@@ -25,7 +26,7 @@ async function dashboard(req, res) {
     });
 
     const avgResponseTimeRow = await Ticket.findOne({
-      attributes: [[literal("(AVG((strftime('%s', assignedAt) - strftime('%s', createdAt))) * 1000)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMillis('assignedAt', 'createdAt')), 'avg']],
       where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
       raw: true
     });
@@ -82,7 +83,7 @@ async function ticketsTimeline(req, res) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const groupExpr = literal("strftime('%Y-%m-%d', createdAt)");
+    const groupExpr = formatDateStr('createdAt');
     const rows = await Ticket.findAll({
       attributes: [[groupExpr, '_id'], [fn('COUNT', col('id')), 'count']],
       where: { createdAt: { [Op.gte]: startDate } },
@@ -192,14 +193,14 @@ async function extendedMetrics(req, res) {
 
     // Tempo médio de atendimento
     const avgAtendimentoRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMinutes('closedAt', 'assignedAt')), 'avg']],
       where: { closedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
       raw: true
     });
 
     // Tempo médio de espera
     const avgEsperaRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(assignedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMinutes('assignedAt', 'createdAt')), 'avg']],
       where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
       raw: true
     });
@@ -251,7 +252,7 @@ async function contactsRanking(req, res) {
         'userId',
         [fn('COUNT', col('id')), 'ticketCount'],
         [col('department'), 'department'],
-        [literal("SUM((julianday(closedAt) - julianday(createdAt)) * 1440)"), 'totalTime']
+        [fn('SUM', dateDiffMinutes('closedAt', 'createdAt')), 'totalTime']
       ],
       where: { userId: { [Op.ne]: null } },
       group: ['userId', 'department'],
@@ -284,7 +285,7 @@ async function agentsRanking(req, res) {
         'assignedTo',
         [fn('COUNT', col('id')), 'ticketCount'],
         [fn('AVG', col('rating')), 'avgRating'],
-        [literal("AVG((julianday(closedAt) - julianday(assignedAt)) * 1440)"), 'avgTime']
+        [fn('AVG', dateDiffMinutes('closedAt', 'assignedAt')), 'avgTime']
       ],
       where: { assignedTo: { [Op.ne]: null } },
       group: ['assignedTo'],

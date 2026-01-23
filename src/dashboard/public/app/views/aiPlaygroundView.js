@@ -319,16 +319,26 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
 
       if (data.success) {
         // Adicionar resposta da IA ao chat
-        this.addMessageToChat('ai', data.output.response, data.output);
+        this.addMessageToChat('ai', data.response, {
+          intent: data.intent,
+          confidence: data.confidence,
+          sentiment: data.sentiment
+        });
         
         // Atualizar detalhes da resposta
-        this.updateResponseDetails(data.output, data.performance);
+        this.updateResponseDetails({
+          intent: data.intent,
+          confidence: data.confidence,
+          sentiment: data.sentiment
+        }, {
+          responseTime: data.responseTime
+        });
         
         // Salvar no histórico
         this.conversationHistory.push({
           message,
-          response: data.output.response,
-          intent: data.output.intent,
+          response: data.response,
+          intent: data.intent,
           timestamp: new Date()
         });
       } else {

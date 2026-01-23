@@ -357,7 +357,17 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    * Adicionar mensagem ao chat
    */
   addMessageToChat(sender, message, details = null) {
+    console.log('🔷 addMessageToChat chamado:', { sender, message: message?.substring(0, 50), details });
+    
     const chatMessages = document.getElementById('chatMessages');
+    
+    if (!chatMessages) {
+      console.error('❌ Elemento chatMessages não encontrado!');
+      return;
+    }
+    
+    console.log('✅ Elemento chatMessages encontrado:', chatMessages);
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${sender}`;
 
@@ -372,8 +382,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     if (details) {
       html += `
         <div class="message-details">
-          <span class="badge badge-intent">${details.intent}</span>
-          <span class="badge badge-confidence">${(details.confidence * 100).toFixed(0)}%</span>
+          <span class="badge badge-intent">${details.intent || 'N/A'}</span>
+          <span class="badge badge-confidence">${details.confidence ? (details.confidence * 100).toFixed(0) : '0'}%</span>
         </div>
       `;
     }
@@ -381,8 +391,13 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     html += `</div>`;
     messageDiv.innerHTML = html;
 
+    console.log('📝 HTML da mensagem:', html);
+    console.log('📦 Adicionando ao chatMessages...', messageDiv);
+    
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    console.log('✅ Mensagem adicionada! Total de mensagens:', chatMessages.children.length);
   }
 
   /**

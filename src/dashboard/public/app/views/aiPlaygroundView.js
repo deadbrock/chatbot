@@ -278,8 +278,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     try {
       const context = document.getElementById('contextInput').value;
       
-      const apiBaseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/ai-playground/test`, {
+      // ✅ apiFetch já adiciona o baseUrl automaticamente!
+      const response = await window.apiFetch('/ai-playground/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -442,15 +442,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
       }
       
       // Salvar no banco de dados
-      const apiBaseUrl = this.getApiBaseUrl();
-      const response = await window.apiFetch(`${apiBaseUrl}/ai-playground/config`, {
+      // ✅ apiFetch já adiciona o baseUrl automaticamente!
+      const response = await window.apiFetch('/ai-playground/config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+        body: {
           systemPrompt: context
-        })
+        }
       });
       
       if (response.success) {
@@ -509,8 +506,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     }
 
     try {
-      const apiBaseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
+      // ✅ apiFetch já adiciona o baseUrl automaticamente!
+      const response = await window.apiFetch('/ai-playground/examples', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -555,11 +552,9 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async loadExamplesCount() {
     try {
-      const apiBaseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
+      const response = await window.apiFetch('/ai-playground/examples', {
+        method: 'GET'
       });
 
       const responseText = await response.text();
@@ -581,11 +576,9 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async showExamples() {
     try {
-      const apiBaseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
+      const response = await window.apiFetch('/ai-playground/examples', {
+        method: 'GET'
       });
 
       const responseText = await response.text();
@@ -631,11 +624,9 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     if (!confirm('Deseja realmente deletar este exemplo?')) return;
 
     try {
-      const response = await fetch(`/api/ai-playground/examples/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
+      const response = await window.apiFetch(`/ai-playground/examples/${id}`, {
+        method: 'DELETE'
       });
 
       const responseText = await response.text();
@@ -658,10 +649,9 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async showStats() {
     try {
-      const response = await fetch('/api/ai-playground/stats', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
+      const response = await window.apiFetch('/ai-playground/stats', {
+        method: 'GET'
       });
 
       const responseText = await response.text();

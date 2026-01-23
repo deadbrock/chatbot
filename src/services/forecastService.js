@@ -143,7 +143,7 @@ class ForecastService {
               AVG(
                 CASE 
                   WHEN t.firstResponseAt IS NOT NULL 
-                  THEN (julianday(t.firstResponseAt) - julianday(t.createdAt)) * 24 * 60 
+                  THEN ${rawDateDiffMinutesSQL('t.firstResponseAt', 't.createdAt')}
                 END
               ) as value
             FROM tickets t

@@ -338,7 +338,7 @@ async function timeMetrics(req, res) {
 
     // firstResponseAt não existe na tabela, usar uma estimativa baseada em createdAt
     const avgPrimeiraRespostaRow = await Ticket.findOne({
-      attributes: [[literal("AVG((julianday(updatedAt) - julianday(createdAt)) * 1440)"), 'avg']],
+      attributes: [[fn('AVG', dateDiffMinutes('updatedAt', 'createdAt')), 'avg']],
       where: { updatedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null }, status: { [Op.ne]: 'open' } },
       raw: true
     });

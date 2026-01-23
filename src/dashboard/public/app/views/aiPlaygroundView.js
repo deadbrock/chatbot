@@ -10,6 +10,33 @@ class AIPlaygroundView {
   }
 
   /**
+   * Obter URL base da API (detecta Railway em produção)
+   */
+  getApiBaseUrl() {
+    // Tentar ler de meta tag
+    const apiUrlMeta = document.querySelector('meta[name="api-url"]');
+    if (apiUrlMeta) {
+      const url = apiUrlMeta.getAttribute('content');
+      if (url && url.trim()) {
+        return url.endsWith('/api') ? url : `${url}/api`;
+      }
+    }
+    
+    // Detectar automaticamente
+    const hostname = window.location.hostname;
+    const isProduction = hostname !== 'localhost' && 
+                         hostname !== '127.0.0.1' && 
+                         !hostname.includes('192.168');
+    
+    if (isProduction) {
+      console.warn('⚠️ API_URL não configurada na meta tag!');
+    }
+    
+    // Fallback para URL relativa
+    return '/api';
+  }
+
+  /**
    * Renderizar a view
    */
   render() {
@@ -251,7 +278,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     try {
       const context = document.getElementById('contextInput').value;
       
-      const response = await fetch('/api/ai-playground/test', {
+      const apiBaseUrl = this.getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ai-playground/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -428,7 +456,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     }
 
     try {
-      const response = await fetch('/api/ai-playground/examples', {
+      const apiBaseUrl = this.getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -473,7 +502,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async loadExamplesCount() {
     try {
-      const response = await fetch('/api/ai-playground/examples', {
+      const apiBaseUrl = this.getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -498,7 +528,8 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async showExamples() {
     try {
-      const response = await fetch('/api/ai-playground/examples', {
+      const apiBaseUrl = this.getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ai-playground/examples`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

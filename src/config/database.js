@@ -35,8 +35,12 @@ function buildSequelize() {
           : undefined,
         define: {
           timestamps: true,
-          underscored: false
+          underscored: false,
+          // IMPORTANTE: Não converter nomes de colunas para snake_case
+          freezeTableName: false
         },
+        // IMPORTANTE: Garantir que o Sequelize use aspas duplas para case-sensitivity
+        quoteIdentifiers: true,
         pool: {
           max: 5,
           min: 0,
@@ -67,8 +71,12 @@ function buildSequelize() {
           : undefined,
         define: {
           timestamps: true,
-          underscored: false
+          underscored: false,
+          // IMPORTANTE: Não converter nomes de colunas para snake_case
+          freezeTableName: false
         },
+        // IMPORTANTE: Garantir que o Sequelize use aspas duplas para case-sensitivity
+        quoteIdentifiers: true,
         pool: {
           max: 5,
           min: 0,

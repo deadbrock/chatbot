@@ -23,6 +23,9 @@ import { initChatView, cleanupChatView } from './views/chatView.js';
 import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
 import { initThemeToggle } from './theme.js';
 
+// 🌐 EXPORTAR apiFetch para window (para scripts não-módulos como aiPlaygroundView.js)
+window.apiFetch = apiFetch;
+
 const state = {
   tickets: [],
   sessions: [],

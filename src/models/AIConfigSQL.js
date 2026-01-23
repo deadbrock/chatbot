@@ -50,7 +50,7 @@ const AIConfig = sequelize.define('AIConfig', {
   },
   
   updatedBy: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER, // CORRIGIDO: User usa INTEGER, não UUID
     allowNull: true,
     comment: 'ID do usuário que atualizou por último'
   }

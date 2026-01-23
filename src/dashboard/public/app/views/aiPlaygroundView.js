@@ -552,15 +552,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async loadExamplesCount() {
     try {
-      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
-      const response = await window.apiFetch('/ai-playground/examples', {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch('/ai-playground/examples', {
         method: 'GET'
       });
 
-      const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
-
-      if (response.ok && data.success) {
+      if (data.success) {
         document.getElementById('examplesCount').innerHTML = `
           <p><strong>${data.examples.length}</strong> exemplos salvos</p>
         `;
@@ -576,15 +573,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async showExamples() {
     try {
-      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
-      const response = await window.apiFetch('/ai-playground/examples', {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch('/ai-playground/examples', {
         method: 'GET'
       });
 
-      const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
-
-      if (response.ok && data.success) {
+      if (data.success) {
         const examplesList = document.getElementById('examplesList');
         
         if (data.examples.length === 0) {
@@ -624,15 +618,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     if (!confirm('Deseja realmente deletar este exemplo?')) return;
 
     try {
-      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
-      const response = await window.apiFetch(`/ai-playground/examples/${id}`, {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch(`/ai-playground/examples/${id}`, {
         method: 'DELETE'
       });
 
-      const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
-
-      if (response.ok && data.success) {
+      if (data.success) {
         this.showSuccess('Exemplo removido!');
         this.showExamples(); // Recarregar lista
         this.loadExamplesCount();
@@ -649,15 +640,12 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   async showStats() {
     try {
-      // ✅ apiFetch já adiciona o baseUrl e token automaticamente!
-      const response = await window.apiFetch('/ai-playground/stats', {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch('/ai-playground/stats', {
         method: 'GET'
       });
 
-      const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
-
-      if (response.ok && data.success) {
+      if (data.success) {
         const statsContent = document.getElementById('statsContent');
         
         if (data.stats.length === 0) {

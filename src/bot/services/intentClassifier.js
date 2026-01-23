@@ -18,12 +18,13 @@ class IntentClassifier {
     this.configPath = path.join(__dirname, '../../../data/ai-config.json');
     this.config = this.loadConfig();
     
-    // Sempre usar API Key do .env se disponível
-    if (process.env.AI_API_KEY) {
-      this.config.apiKey = process.env.AI_API_KEY;
-      logger.info(`🔑 API Key carregada do .env: ***${process.env.AI_API_KEY.slice(-6)}`);
+    // Sempre usar API Key do .env se disponível (suporta ambas as variáveis para compatibilidade)
+    const apiKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY;
+    if (apiKey) {
+      this.config.apiKey = apiKey;
+      logger.info(`🔑 Groq API Key carregada do .env: ***${apiKey.slice(-6)}`);
     } else {
-      logger.warn('⚠️ API Key não encontrada no .env');
+      logger.warn('⚠️ API Key não encontrada no .env (configure GROQ_API_KEY)');
     }
 
     // Mapeamento de intenções para fluxos

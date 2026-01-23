@@ -1,21 +1,109 @@
 const logger = require('../utils/logger');
-// const Groq = require('groq-sdk'); // ⚠️ Desabilitado: groq-sdk não instalado (IA aguardando aprovação)
+const Groq = require('groq-sdk');
 
 /**
  * Controller para playground de testes e treinamento da IA
- * ⚠️ TEMPORARIAMENTE DESABILITADO: aguardando aprovação da diretoria + instalação do groq-sdk
+ * Usa Groq (Llama 3.1) para processamento de linguagem natural
  */
+
+// Inicializar cliente Groq
+let groqClient = null;
+
+function getGroqClient() {
+  if (!groqClient && process.env.GROQ_API_KEY) {
+    groqClient = new Groq({
+      apiKey: process.env.GROQ_API_KEY
+    });
+    logger.info('✅ Cliente Groq inicializado');
+  }
+  return groqClient;
+}
 
 /**
  * Testar mensagem com a IA
  */
 async function testMessage(req, res) {
-  logger.warn('⚠️ [AI PLAYGROUND] Tentativa de uso com IA desabilitada');
-  return res.status(503).json({
-    success: false,
-    error: 'Serviço de IA temporariamente indisponível',
-    message: 'O playground de IA requer o pacote groq-sdk. Instale com: npm install groq-sdk'
-  });
+  try {
+    const { message, context } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mensagem é obrigatória'
+      });
+    }
+
+    // Verificar se API key está configurada
+    if (!process.env.GROQ_API_KEY) {
+      logger.warn('⚠️ [AI PLAYGROUND] GROQ_API_KEY não configurada');
+      return res.status(503).json({
+        success: false,
+        error: 'API de IA não configurada',
+        message: 'Configure a variável GROQ_API_KEY no ambiente'
+      });
+    }
+
+    const client = getGroqClient();
+    
+    logger.info(`🤖 [AI PLAYGROUND] Testando mensagem: "${message.substring(0, 50)}..."`);
+
+    // Construir prompt do sistema
+    const systemPrompt = `Você é um assistente virtual inteligente da empresa Aestron.
+Sua função é ajudar funcionários com dúvidas sobre:
+- Departamento Pessoal (férias, benefícios, holerite)
+- Recursos Humanos (vagas, contratação)
+- Financeiro (pagamentos, reembolsos)
+- Manutenção (equipamentos, reparos)
+- Logística (entregas, transportes)
+
+Analise a mensagem do usuário e:
+1. Identifique a intenção principal
+2. Forneça uma resposta útil e profissional
+3. Se necessário, sugira o departamento adequado
+
+${context ? `Contexto adicional: ${context}` : ''}`;
+
+    // Chamar API Groq
+    const startTime = Date.now();
+    const chatCompletion = await client.chat.completions.create({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.7,
+      max_tokens: 500,
+      top_p: 1,
+    });
+
+    const responseTime = Date.now() - startTime;
+    const aiResponse = chatCompletion.choices[0]?.message?.content || 'Sem resposta';
+
+    // Detectar intenção e sentimento
+    const intent = detectSimpleIntent(message);
+    const sentiment = detectSentiment(message);
+
+    logger.info(`✅ [AI PLAYGROUND] Resposta gerada em ${responseTime}ms`);
+
+    res.json({
+      success: true,
+      response: aiResponse,
+      intent,
+      sentiment,
+      confidence: chatCompletion.choices[0]?.finish_reason === 'stop' ? 0.85 : 0.5,
+      responseTime,
+      model: 'llama-3.1-8b-instant',
+      usage: chatCompletion.usage
+    });
+
+  } catch (error) {
+    logger.error('❌ [AI PLAYGROUND] Erro ao testar mensagem:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao processar mensagem',
+      details: error.message
+    });
+  }
 }
 
 /**

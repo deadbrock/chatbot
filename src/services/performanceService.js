@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const logger = require('../utils/logger');
 const moment = require('moment-timezone');
+const { rawDateDiffMinutesSQL } = require('../utils/dbHelpers');
 
 /**
  * ================================================================================
@@ -58,11 +59,11 @@ class PerformanceService {
           COUNT(DISTINCT CASE WHEN t.status = 'open' THEN t.id END) as ticketsActive,
           AVG(CASE 
             WHEN t.status = 'closed' AND t.closedAt IS NOT NULL 
-            THEN (julianday(t.closedAt) - julianday(t.createdAt)) * 24 * 60 
+            THEN ${rawDateDiffMinutesSQL('t.closedAt', 't.createdAt')}
           END) as avgResolutionTimeMinutes,
           AVG(CASE 
             WHEN t.firstResponseAt IS NOT NULL 
-            THEN (julianday(t.firstResponseAt) - julianday(t.createdAt)) * 24 * 60 
+            THEN ${rawDateDiffMinutesSQL('t.firstResponseAt', 't.createdAt')}
           END) as avgFirstResponseMinutes,
           COUNT(DISTINCT CASE WHEN r.rating >= 4 THEN r.id END) as positiveRatings,
           COUNT(DISTINCT CASE WHEN r.rating <= 2 THEN r.id END) as negativeRatings,
@@ -146,15 +147,15 @@ class PerformanceService {
           COUNT(DISTINCT CASE WHEN t.status = 'waiting' THEN t.id END) as ticketsWaiting,
           AVG(CASE 
             WHEN t.status = 'closed' AND t.closedAt IS NOT NULL 
-            THEN (julianday(t.closedAt) - julianday(t.createdAt)) * 24 * 60 
+            THEN ${rawDateDiffMinutesSQL('t.closedAt', 't.createdAt')}
           END) as avgHandlingTimeMinutes,
           AVG(CASE 
             WHEN t.firstResponseAt IS NOT NULL 
-            THEN (julianday(t.firstResponseAt) - julianday(t.createdAt)) * 24 * 60 
+            THEN ${rawDateDiffMinutesSQL('t.firstResponseAt', 't.createdAt')}
           END) as avgWaitTimeMinutes,
           MAX(CASE 
             WHEN t.firstResponseAt IS NOT NULL 
-            THEN (julianday(t.firstResponseAt) - julianday(t.createdAt)) * 24 * 60 
+            THEN ${rawDateDiffMinutesSQL('t.firstResponseAt', 't.createdAt')}
           END) as maxWaitTimeMinutes,
           COUNT(DISTINCT t.contactId) as uniqueContacts,
           AVG(r.rating) as avgRating,

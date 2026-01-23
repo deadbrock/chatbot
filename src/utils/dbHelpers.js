@@ -96,11 +96,47 @@ function quoteIdentifier(identifier) {
   return identifier;
 }
 
+/**
+ * Gera SQL para diferença de datas em minutos (para queries raw)
+ * @param {string} endColumn - Nome da coluna de data final
+ * @param {string} startColumn - Nome da coluna de data inicial
+ * @returns {string}
+ */
+function rawDateDiffMinutesSQL(endColumn, startColumn) {
+  const dialect = getDialect();
+  
+  if (dialect === 'postgres') {
+    return `EXTRACT(EPOCH FROM (${endColumn} - ${startColumn})) / 60`;
+  }
+  
+  // SQLite
+  return `(julianday(${endColumn}) - julianday(${startColumn})) * 24 * 60`;
+}
+
+/**
+ * Gera SQL para formatação de data (para queries raw)
+ * @param {string} column - Nome da coluna
+ * @param {string} format - Formato (YYYY-MM-DD por padrão)
+ * @returns {string}
+ */
+function rawFormatDateSQL(column, format = 'YYYY-MM-DD') {
+  const dialect = getDialect();
+  
+  if (dialect === 'postgres') {
+    return `TO_CHAR(${column}, '${format}')`;
+  }
+  
+  // SQLite
+  return `strftime('%Y-%m-%d', ${column})`;
+}
+
 module.exports = {
   getDialect,
   formatDateStr,
   dateDiffSeconds,
   dateDiffMinutes,
   dateDiffMillis,
-  quoteIdentifier
+  quoteIdentifier,
+  rawDateDiffMinutesSQL,
+  rawFormatDateSQL
 };

@@ -424,6 +424,139 @@ function detectSentiment(message) {
   return 'neutral';
 }
 
+/**
+ * Salvar contexto/configuração da IA
+ * POST /api/ai-playground/config
+ */
+async function saveConfig(req, res) {
+  try {
+    const { systemPrompt, temperature, maxTokens } = req.body;
+    const userId = req.user?.id;
+
+    if (!systemPrompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Sistema prompt é obrigatório'
+      });
+    }
+
+    logger.info(`💾 Salvando configuração da IA (usuário: ${userId})`);
+
+    // Salvar system prompt
+    await AIConfig.setConfig('playground_system_prompt', systemPrompt, {
+      type: 'string',
+      category: 'playground',
+      description: 'Contexto/Prompt do sistema para AI Playground',
+      updatedBy: userId
+    });
+
+    // Salvar temperature (opcional)
+    if (temperature !== undefined) {
+      await AIConfig.setConfig('playground_temperature', temperature, {
+        type: 'number',
+        category: 'playground',
+        description: 'Temperatura para geração de respostas',
+        updatedBy: userId
+      });
+    }
+
+    // Salvar maxTokens (opcional)
+    if (maxTokens !== undefined) {
+      await AIConfig.setConfig('playground_max_tokens', maxTokens, {
+        type: 'number',
+        category: 'playground',
+        description: 'Máximo de tokens por resposta',
+        updatedBy: userId
+      });
+    }
+
+    logger.info('✅ Configuração da IA salva com sucesso');
+
+    return res.json({
+      success: true,
+      message: 'Configuração salva com sucesso'
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao salvar configuração:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erro ao salvar configuração',
+      message: error.message
+    });
+  }
+}
+
+/**
+ * Carregar configuração da IA
+ * GET /api/ai-playground/config
+ */
+async function getConfig(req, res) {
+  try {
+    logger.info('📋 Carregando configuração da IA');
+
+    // Buscar todas as configs da categoria playground
+    const configs = await AIConfig.getByCategory('playground');
+
+    // Se não houver config salva, retornar padrões
+    const defaultSystemPrompt = await getSavedContext();
+
+    const config = {
+      systemPrompt: configs.playground_system_prompt || defaultSystemPrompt,
+      temperature: configs.playground_temperature || 0.7,
+      maxTokens: configs.playground_max_tokens || 1000
+    };
+
+    logger.info('✅ Configuração carregada');
+
+    return res.json({
+      success: true,
+      data: config
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao carregar configuração:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erro ao carregar configuração',
+      message: error.message
+    });
+  }
+}
+
+/**
+ * Resetar configuração para padrão
+ * POST /api/ai-playground/config/reset
+ */
+async function resetConfig(req, res) {
+  try {
+    const userId = req.user?.id;
+
+    logger.info(`🔄 Resetando configuração da IA (usuário: ${userId})`);
+
+    // Remover configs (marcar como inativas)
+    await AIConfig.update(
+      { isActive: false },
+      { where: { category: 'playground' } }
+    );
+
+    logger.info('✅ Configuração resetada para padrão');
+
+    return res.json({
+      success: true,
+      message: 'Configuração resetada para padrão'
+    });
+
+  } catch (error) {
+    logger.error('❌ Erro ao resetar configuração:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erro ao resetar configuração',
+      message: error.message
+    });
+  }
+}
+
 module.exports = {
   testMessage,
   saveTrainingExample,

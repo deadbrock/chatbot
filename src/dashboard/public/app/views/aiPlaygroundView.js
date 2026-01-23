@@ -2,8 +2,6 @@
  * AI Playground View - Tela de Desenvolvimento e Treinamento da IA
  */
 
-import { apiFetch } from '../api.js';
-
 class AIPlaygroundView {
   constructor() {
     this.container = null;
@@ -445,7 +443,7 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
       
       // Salvar no banco de dados
       const apiBaseUrl = this.getApiBaseUrl();
-      const response = await apiFetch(`${apiBaseUrl}/ai-playground/config`, {
+      const response = await window.apiFetch(`${apiBaseUrl}/ai-playground/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

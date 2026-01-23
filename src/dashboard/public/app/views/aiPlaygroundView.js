@@ -62,7 +62,7 @@ class AIPlaygroundView {
                 </button>
               </div>
               
-              <div id="chatMessages" class="chat-messages"></div>
+              <div id="aiPlaygroundChatMessages" class="chat-messages"></div>
               
               <div class="chat-input-area">
                 <textarea 
@@ -359,7 +359,7 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
   addMessageToChat(sender, message, details = null) {
     console.log('🔷 addMessageToChat chamado:', { sender, message: message?.substring(0, 50), details });
     
-    const chatMessages = document.getElementById('chatMessages');
+    const chatMessages = document.getElementById('aiPlaygroundChatMessages');
     
     if (!chatMessages) {
       console.error('❌ Elemento chatMessages não encontrado!');
@@ -421,7 +421,7 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    */
   clearChat() {
     if (confirm('Deseja limpar o histórico de conversa?')) {
-      document.getElementById('chatMessages').innerHTML = '';
+      document.getElementById('aiPlaygroundChatMessages').innerHTML = '';
       this.conversationHistory = [];
       document.getElementById('detectedIntent').textContent = '-';
       document.getElementById('confidence').textContent = '-';
@@ -672,7 +672,7 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
    * Helpers de UI
    */
   showLoading() {
-    const chatMessages = document.getElementById('chatMessages');
+    const chatMessages = document.getElementById('aiPlaygroundChatMessages');
     const loadingDiv = document.createElement('div');
     loadingDiv.id = 'loadingMessage';
     loadingDiv.className = 'chat-message ai';

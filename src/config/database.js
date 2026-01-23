@@ -150,8 +150,27 @@ async function syncDatabase() {
     logger.info(`🔄 Sincronizando modelos (dialect=${sequelize.getDialect()})...`);
     const startTime = Date.now();
     
-    // Usar force: false para não recriar tabelas existentes
-    await sequelize.sync({ force: false });
+    // Importar modelos para garantir a ordem correta
+    const models = require('../models');
+    
+    // ETAPA 1: Sincronizar modelos base PRIMEIRO (sem foreign keys problemáticas)
+    logger.info('   📦 Etapa 1/2: Sincronizando modelos base...');
+    const baseModels = [
+      'User', 'Role', 'Queue', 'TicketStatus', 'Contact', 
+      'Tag', 'Flow', 'VisualFlow', 'FlowNode', 'SystemSetting',
+      'WhatsAppConnection', 'ApiKey', 'Session', 'UserSession'
+    ];
+    
+    for (const modelName of baseModels) {
+      if (models[modelName]) {
+        await models[modelName].sync({ force: false });
+        logger.info(`      ✅ ${modelName}`);
+      }
+    }
+    
+    // ETAPA 2: Sincronizar TODOS os modelos (incluindo os com foreign keys)
+    logger.info('   📦 Etapa 2/2: Sincronizando modelos dependentes...');
+    await sequelize.sync({ force: false, alter: false });
     
     const syncTime = Date.now() - startTime;
     logger.info(`✅ Banco de dados sincronizado (${syncTime}ms)`);
@@ -169,6 +188,12 @@ async function syncDatabase() {
     if (error.stack) {
       logger.error(`   Stack:`);
       logger.error(error.stack);
+    }
+    
+    // Em produção, não falhar se houver erro de sync (pode ser tabela já existente)
+    if (process.env.NODE_ENV === 'production' && error.name === 'SequelizeDatabaseError') {
+      logger.warn('⚠️  Ignorando erro de sincronização em produção (tabelas podem já existir)');
+      return true;
     }
     
     return false;

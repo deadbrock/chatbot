@@ -39,7 +39,7 @@ class AIPlaygroundView {
   /**
    * Renderizar a view
    */
-  render() {
+  async render() {
     const container = document.getElementById('main-content');
     
     container.innerHTML = `
@@ -432,10 +432,38 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
   /**
    * Atualizar contexto
    */
-  updateContext() {
-    const context = document.getElementById('contextInput').value;
-    this.currentContext = context;
-    this.showSuccess('Contexto atualizado!');
+  async updateContext() {
+    try {
+      const context = document.getElementById('contextInput').value;
+      
+      if (!context || context.trim() === '') {
+        this.showError('Por favor, insira um contexto válido');
+        return;
+      }
+      
+      // Salvar no banco de dados
+      const apiBaseUrl = this.getApiBaseUrl();
+      const response = await apiFetch(`${apiBaseUrl}/ai-playground/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          systemPrompt: context
+        })
+      });
+      
+      if (response.success) {
+        this.currentContext = context;
+        this.showSuccess('✅ Contexto salvo no banco de dados! Será mantido após recarregar a página.');
+      } else {
+        throw new Error(response.error || 'Erro ao salvar contexto');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao salvar contexto:', error);
+      this.showError('Erro ao salvar contexto: ' + error.message);
+    }
   }
 
   /**

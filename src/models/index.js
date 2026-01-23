@@ -56,6 +56,7 @@ const UserSession = require('./UserSessionSQL');
 // Novos modelos de Automação Inteligente
 const AutomationRule = require('./AutomationRuleSQL');
 const AutomationExecution = require('./AutomationExecutionSQL');
+const AIConfig = require('./AIConfigSQL');
 
 module.exports = {
   // Modelos antigos
@@ -110,7 +111,8 @@ module.exports = {
   
   // Automação Inteligente
   AutomationRule,
-  AutomationExecution
+  AutomationExecution,
+  AIConfig
 };
 
 // Relacionamentos para Fase 3C

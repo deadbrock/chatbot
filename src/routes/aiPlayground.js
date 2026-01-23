@@ -23,5 +23,10 @@ router.delete('/examples/:id', authenticate, checkRole('admin', 'manager'), aiPl
 // Obter estatísticas de intenções
 router.get('/stats', authenticate, checkRole('admin', 'manager'), aiPlaygroundController.getIntentStats);
 
+// Configurações da IA
+router.get('/config', authenticate, checkRole('admin', 'manager'), aiPlaygroundController.getConfig);
+router.post('/config', authenticate, checkRole('admin', 'manager'), aiPlaygroundController.saveConfig);
+router.post('/config/reset', authenticate, checkRole('admin', 'manager'), aiPlaygroundController.resetConfig);
+
 module.exports = router;
 

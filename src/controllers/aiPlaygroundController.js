@@ -2,6 +2,7 @@ const logger = require('../utils/logger');
 const Groq = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
+const AIConfig = require('../models/AIConfigSQL');
 
 /**
  * Controller para playground de testes e treinamento da IA
@@ -45,11 +46,18 @@ function loadTrainingExamples() {
 }
 
 /**
- * Construir prompt com Few-Shot Learning
- * Inclui exemplos de treinamento para melhorar as respostas
+ * Obter contexto salvo ou usar padrão
  */
-function buildFewShotPrompt(userMessage, context, examples) {
-  let systemPrompt = `Você é um assistente virtual inteligente da empresa Aestron.
+async function getSavedContext() {
+  try {
+    const savedContext = await AIConfig.getByKey('playground_system_prompt');
+    
+    if (savedContext) {
+      return savedContext;
+    }
+    
+    // Contexto padrão
+    return `Você é um assistente virtual inteligente da empresa Aestron.
 Sua função é ajudar funcionários com dúvidas sobre:
 - Departamento Pessoal (férias, benefícios, holerite)
 - Recursos Humanos (vagas, contratação)
@@ -60,9 +68,22 @@ Sua função é ajudar funcionários com dúvidas sobre:
 Analise a mensagem do usuário e:
 1. Identifique a intenção principal
 2. Forneça uma resposta útil e profissional
-3. Se necessário, sugira o departamento adequado
+3. Se necessário, sugira o departamento adequado`;
+  } catch (error) {
+    logger.error('❌ Erro ao buscar contexto salvo:', error);
+    return `Você é um assistente virtual inteligente da empresa Aestron.`;
+  }
+}
 
-${context ? `Contexto adicional: ${context}` : ''}`;
+/**
+ * Construir prompt com Few-Shot Learning
+ * Inclui exemplos de treinamento para melhorar as respostas
+ */
+async function buildFewShotPrompt(userMessage, customContext, examples) {
+  // Buscar contexto salvo se não houver customContext
+  const baseContext = customContext || await getSavedContext();
+  
+  let systemPrompt = baseContext;
 
   // Adicionar exemplos de treinamento (Few-Shot Learning)
   if (examples && examples.length > 0) {
@@ -122,8 +143,8 @@ async function testMessage(req, res) {
     // 🎓 CARREGAR EXEMPLOS DE TREINAMENTO (Few-Shot Learning)
     const trainingExamples = loadTrainingExamples();
     
-    // Construir prompt com exemplos de treinamento
-    const systemPrompt = buildFewShotPrompt(message, context, trainingExamples);
+    // Construir prompt com exemplos de treinamento (agora é async!)
+    const systemPrompt = await buildFewShotPrompt(message, context, trainingExamples);
     
     if (trainingExamples.length > 0) {
       logger.info(`📚 [AI PLAYGROUND] Usando ${Math.min(5, trainingExamples.length)} exemplos de treinamento`);
@@ -408,6 +429,9 @@ module.exports = {
   saveTrainingExample,
   getTrainingExamples,
   deleteTrainingExample,
-  getIntentStats
+  getIntentStats,
+  saveConfig,
+  getConfig,
+  resetConfig
 };
 

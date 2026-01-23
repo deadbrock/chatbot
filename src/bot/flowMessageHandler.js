@@ -8,6 +8,7 @@ const UserSession = require('../models/UserSessionSQL');
 const flowManager = require('./services/flowManager');
 const scheduleService = require('./services/scheduleService');
 const intentClassifier = require('./services/intentClassifier');
+const automationService = require('../services/automationService');
 const Ticket = require('../models/TicketSQL');
 const ChatMessage = require('../models/ChatMessageSQL');
 const Contact = require('../models/ContactSQL');
@@ -105,6 +106,76 @@ class FlowMessageHandler {
       if (session.expiresAt && new Date() > session.expiresAt) {
         logger.info(`⏰ Sessão expirada para ${phone}, resetando...`);
         await session.reset();
+      }
+
+      // 🤖 VERIFICAR AUTOMAÇÕES INTELIGENTES
+      // Verificar se há automação ativa para este contato
+      if (automationService.hasActiveExecution(contactRecord.id)) {
+        logger.info(`🤖 [AUTOMAÇÃO] Continuando execução ativa para ${name}`);
+        const automationResult = await automationService.continueExecution(contactRecord.id, messageBody);
+        
+        if (automationResult) {
+          // Enviar resposta da automação
+          await whatsappClient.sendMessage(message.from, automationResult.response.message);
+          
+          // Salvar resposta no banco
+          await this.saveOutgoingMessage(
+            ticket.id,
+            contactRecord.id,
+            phone,
+            name,
+            automationResult.response.message
+          );
+          
+          // Notificar dashboard
+          this.notifyDashboard(ticket, contactRecord, automationResult.response.message, 'outgoing');
+          
+          // Se completou e criou ticket, atualizar status
+          if (automationResult.execution.status === 'completed' && automationResult.execution.ticketId) {
+            logger.info(`✅ [AUTOMAÇÃO] Execução completada com sucesso`);
+          }
+          
+          return;
+        }
+      } else {
+        // Verificar se deve iniciar nova automação
+        logger.info(`🎯 [AUTOMAÇÃO] Verificando se mensagem aciona alguma regra...`);
+        const automationResult = await automationService.processMessage(contactRecord.id, messageBody, ticket.id);
+        
+        if (automationResult) {
+          logger.info(`🤖 [AUTOMAÇÃO] Regra acionada: ${automationResult.response.message}`);
+          
+          // Enviar resposta da automação
+          await whatsappClient.sendMessage(message.from, automationResult.response.message);
+          
+          // Salvar resposta no banco
+          await this.saveOutgoingMessage(
+            ticket.id,
+            contactRecord.id,
+            phone,
+            name,
+            automationResult.response.message
+          );
+          
+          // Notificar dashboard
+          this.notifyDashboard(ticket, contactRecord, automationResult.response.message, 'outgoing');
+          
+          // Se precisa de input adicional, aguardar próxima mensagem
+          if (automationResult.response.needsInput) {
+            const slotPrompt = automationResult.response.slotPrompt || `Por favor, informe ${automationResult.response.nextSlot}:`;
+            await whatsappClient.sendMessage(message.from, slotPrompt);
+            
+            await this.saveOutgoingMessage(
+              ticket.id,
+              contactRecord.id,
+              phone,
+              name,
+              slotPrompt
+            );
+          }
+          
+          return; // Não processar fluxo padrão
+        }
       }
 
       // Atualizar última interação

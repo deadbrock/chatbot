@@ -248,6 +248,34 @@ async function loadAIPlayground() {
   }
 }
 
+async function loadAutomations() {
+  console.log('🔍 Tentando carregar Automações...');
+  console.log('🔍 window.automationsView existe?', !!window.automationsView);
+  
+  // Aguardar um pouco caso o script ainda esteja carregando
+  if (!window.automationsView) {
+    console.log('⏳ Aguardando carregamento de Automações...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  
+  // Usar a instância global do automationsView
+  if (window.automationsView) {
+    console.log('✅ Automações encontrado, renderizando...');
+    const automationsSection = document.getElementById('automationsSection');
+    if (automationsSection) {
+      automationsSection.innerHTML = '<div id="content"></div>';
+      await window.automationsView.render();
+      console.log('✅ Automações renderizado com sucesso!');
+    } else {
+      console.error('❌ Seção #automationsSection não encontrada no DOM');
+    }
+  } else {
+    console.error('❌ Automations View não está disponível após aguardar');
+    console.error('❌ Verifique se o script /app/views/automationsView.js foi carregado');
+    createToast({ title: 'Erro', message: 'Automações não está disponível. Recarregue a página.', variant: 'danger' });
+  }
+}
+
 async function loadAdministration() {
   await initAdministrationView();
 }
@@ -310,6 +338,9 @@ async function onSectionChange(section) {
       break;
     case 'ai-playground':
       await loadAIPlayground();
+      break;
+    case 'automations':
+      await loadAutomations();
       break;
     case 'administration':
       await loadAdministration();

@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="/css/whatsapp-chat.css">
     <link rel="stylesheet" href="/css/administration.css">
     <link rel="stylesheet" href="/app/views/aiPlayground.css">
+    <link rel="stylesheet" href="/css/automations.css">
     <link rel="stylesheet" href="/css/modal-fix.css">
 </head>
 <body>
@@ -217,6 +218,12 @@
                                     <a class="nav-link" href="#ai-playground" data-section="ai-playground">
                                         <i class="bi bi-robot"></i> 
                                         <span>AI Playground</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="#automations" data-section="automations">
+                                        <i class="bi bi-gear-wide-connected"></i> 
+                                        <span>Automações</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
@@ -1323,6 +1330,11 @@
                     <!-- Conteúdo será renderizado via aiPlaygroundView.js -->
                 </div>
 
+                <!-- Automations Section -->
+                <div id="automationsSection" class="content-section">
+                    <!-- Conteúdo será renderizado via automationsView.js -->
+                </div>
+
                 <!-- Administration Section -->
                 <div id="administrationSection" class="content-section">
                     <div class="page-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
@@ -2230,6 +2242,9 @@
     
     <!-- AI Playground View (Global) -->
     <script src="/app/views/aiPlaygroundView.js" onerror="console.error('❌ Erro ao carregar aiPlaygroundView.js')"></script>
+    
+    <!-- Automations View (Global) -->
+    <script src="/app/views/automationsView.js" onerror="console.error('❌ Erro ao carregar automationsView.js')"></script>
     
     <!-- App JavaScript (Módulos ES6) -->
     <script type="module" src="/app/app.js"></script>

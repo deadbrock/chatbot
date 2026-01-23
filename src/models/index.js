@@ -53,6 +53,10 @@ const CustomReport = require('./CustomReportSQL');
 // Novo modelo para Sistema de Fluxo de Chatbot
 const UserSession = require('./UserSessionSQL');
 
+// Novos modelos de Automação Inteligente
+const AutomationRule = require('./AutomationRuleSQL');
+const AutomationExecution = require('./AutomationExecutionSQL');
+
 module.exports = {
   // Modelos antigos
   User,
@@ -102,7 +106,11 @@ module.exports = {
   CustomReport,
   
   // Sistema de Fluxo de Chatbot
-  UserSession
+  UserSession,
+  
+  // Automação Inteligente
+  AutomationRule,
+  AutomationExecution
 };
 
 // Relacionamentos para Fase 3C

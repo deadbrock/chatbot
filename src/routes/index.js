@@ -32,6 +32,7 @@ const conversationFlowsRoutes = require('./conversationFlows'); // Fluxos intern
 const botFlowsRoutes = require('./botFlows'); // Editor do fluxo do bot (base + overrides)
 const aiRoutes = require('./ai'); // IA e Classificação de Intenções
 const aiPlaygroundRoutes = require('./aiPlayground'); // AI Playground (Treinamento e Testes)
+const automationsRoutes = require('./automations'); // Automações Inteligentes
 
 // Middleware de autenticação (implementar conforme necessário)
 const authMiddleware = require('../middleware/auth');
@@ -69,6 +70,7 @@ router.use('/conversation-flows', authMiddleware, conversationFlowsRoutes);
 router.use('/bot-flows', authMiddleware, botFlowsRoutes);
 router.use('/ai', authMiddleware, aiRoutes); // IA e Classificação de Intenções
 router.use('/ai-playground', aiPlaygroundRoutes); // AI Playground (Treinamento e Testes) - auth dentro das rotas
+router.use('/automations', automationsRoutes); // Automações Inteligentes - auth dentro das rotas
 
 // Rota de status
 router.get('/status', (req, res) => {

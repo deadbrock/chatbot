@@ -278,44 +278,17 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     try {
       const context = document.getElementById('contextInput').value;
       
-      // ✅ apiFetch já adiciona o baseUrl automaticamente!
-      const response = await window.apiFetch('/ai-playground/test', {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch('/ai-playground/test', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
+        body: {
           message,
           context,
           userId: 'playground'
-        })
+        }
       });
 
-      // Verificar se a resposta tem conteúdo
-      const contentType = response.headers.get('content-type');
-      const responseText = await response.text();
-      
-      console.log('📊 AI Playground - Resposta recebida:', {
-        status: response.status,
-        contentType,
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 200)
-      });
-
-      // Tentar fazer parse do JSON
-      let data;
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch (parseError) {
-        console.error('❌ Erro ao fazer parse do JSON:', parseError);
-        throw new Error(`Resposta inválida do servidor (${response.status}): ${responseText.substring(0, 100)}`);
-      }
-
-      // Verificar se a requisição foi bem-sucedida
-      if (!response.ok) {
-        throw new Error(data.message || `Erro ${response.status}: ${response.statusText}`);
-      }
+      console.log('📊 AI Playground - Resposta recebida:', data);
 
       if (data.success) {
         // Adicionar resposta da IA ao chat
@@ -506,27 +479,16 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
     }
 
     try {
-      // ✅ apiFetch já adiciona o baseUrl automaticamente!
-      const response = await window.apiFetch('/ai-playground/examples', {
+      // ✅ apiFetch já retorna JSON parseado!
+      const data = await window.apiFetch('/ai-playground/examples', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
+        body: {
           message,
           expectedIntent,
           expectedResponse,
           notes
-        })
+        }
       });
-
-      const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
-
-      if (!response.ok) {
-        throw new Error(data.message || `Erro ${response.status}`);
-      }
 
       if (data.success) {
         this.showSuccess('Exemplo salvo com sucesso!');

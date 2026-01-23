@@ -1,9 +1,12 @@
 const logger = require('../utils/logger');
 const Groq = require('groq-sdk');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Controller para playground de testes e treinamento da IA
  * Usa Groq (Llama 3.1) para processamento de linguagem natural
+ * Implementa Few-Shot Learning com exemplos de treinamento
  */
 
 // Inicializar cliente Groq
@@ -20,7 +23,76 @@ function getGroqClient() {
 }
 
 /**
- * Testar mensagem com a IA
+ * Carregar exemplos de treinamento do arquivo
+ */
+function loadTrainingExamples() {
+  try {
+    const examplesFile = path.join(__dirname, '../data/training-examples/examples.json');
+    
+    if (fs.existsSync(examplesFile)) {
+      const data = fs.readFileSync(examplesFile, 'utf8');
+      const examples = JSON.parse(data);
+      logger.info(`📚 ${examples.length} exemplos de treinamento carregados`);
+      return examples;
+    }
+    
+    logger.warn('⚠️ Nenhum exemplo de treinamento encontrado');
+    return [];
+  } catch (error) {
+    logger.error('❌ Erro ao carregar exemplos:', error);
+    return [];
+  }
+}
+
+/**
+ * Construir prompt com Few-Shot Learning
+ * Inclui exemplos de treinamento para melhorar as respostas
+ */
+function buildFewShotPrompt(userMessage, context, examples) {
+  let systemPrompt = `Você é um assistente virtual inteligente da empresa Aestron.
+Sua função é ajudar funcionários com dúvidas sobre:
+- Departamento Pessoal (férias, benefícios, holerite)
+- Recursos Humanos (vagas, contratação)
+- Financeiro (pagamentos, reembolsos)
+- Manutenção (equipamentos, reparos)
+- Logística (entregas, transportes)
+
+Analise a mensagem do usuário e:
+1. Identifique a intenção principal
+2. Forneça uma resposta útil e profissional
+3. Se necessário, sugira o departamento adequado
+
+${context ? `Contexto adicional: ${context}` : ''}`;
+
+  // Adicionar exemplos de treinamento (Few-Shot Learning)
+  if (examples && examples.length > 0) {
+    systemPrompt += '\n\n📚 EXEMPLOS DE TREINAMENTO (aprenda com estes exemplos):\n';
+    
+    // Limitar a 5 exemplos mais recentes para não exceder limite de tokens
+    const recentExamples = examples.slice(0, 5);
+    
+    recentExamples.forEach((example, index) => {
+      systemPrompt += `\nExemplo ${index + 1}:`;
+      systemPrompt += `\nUsuário: "${example.message}"`;
+      systemPrompt += `\nIntenção esperada: ${example.expectedIntent}`;
+      
+      if (example.expectedResponse) {
+        systemPrompt += `\nResposta esperada: "${example.expectedResponse}"`;
+      }
+      
+      if (example.notes) {
+        systemPrompt += `\nNotas: ${example.notes}`;
+      }
+    });
+    
+    systemPrompt += '\n\n✅ Use estes exemplos como referência para entender melhor as intenções e fornecer respostas adequadas.';
+  }
+  
+  return systemPrompt;
+}
+
+/**
+ * Testar mensagem com a IA usando Few-Shot Learning
  */
 async function testMessage(req, res) {
   try {
@@ -47,23 +119,17 @@ async function testMessage(req, res) {
     
     logger.info(`🤖 [AI PLAYGROUND] Testando mensagem: "${message.substring(0, 50)}..."`);
 
-    // Construir prompt do sistema
-    const systemPrompt = `Você é um assistente virtual inteligente da empresa Aestron.
-Sua função é ajudar funcionários com dúvidas sobre:
-- Departamento Pessoal (férias, benefícios, holerite)
-- Recursos Humanos (vagas, contratação)
-- Financeiro (pagamentos, reembolsos)
-- Manutenção (equipamentos, reparos)
-- Logística (entregas, transportes)
+    // 🎓 CARREGAR EXEMPLOS DE TREINAMENTO (Few-Shot Learning)
+    const trainingExamples = loadTrainingExamples();
+    
+    // Construir prompt com exemplos de treinamento
+    const systemPrompt = buildFewShotPrompt(message, context, trainingExamples);
+    
+    if (trainingExamples.length > 0) {
+      logger.info(`📚 [AI PLAYGROUND] Usando ${Math.min(5, trainingExamples.length)} exemplos de treinamento`);
+    }
 
-Analise a mensagem do usuário e:
-1. Identifique a intenção principal
-2. Forneça uma resposta útil e profissional
-3. Se necessário, sugira o departamento adequado
-
-${context ? `Contexto adicional: ${context}` : ''}`;
-
-    // Chamar API Groq
+    // Chamar API Groq com Few-Shot Learning
     const startTime = Date.now();
     const chatCompletion = await client.chat.completions.create({
       messages: [
@@ -83,7 +149,7 @@ ${context ? `Contexto adicional: ${context}` : ''}`;
     const intent = detectSimpleIntent(message);
     const sentiment = detectSentiment(message);
 
-    logger.info(`✅ [AI PLAYGROUND] Resposta gerada em ${responseTime}ms`);
+    logger.info(`✅ [AI PLAYGROUND] Resposta gerada em ${responseTime}ms (${trainingExamples.length} exemplos usados)`);
 
     res.json({
       success: true,
@@ -93,7 +159,8 @@ ${context ? `Contexto adicional: ${context}` : ''}`;
       confidence: chatCompletion.choices[0]?.finish_reason === 'stop' ? 0.85 : 0.5,
       responseTime,
       model: 'llama-3.1-8b-instant',
-      usage: chatCompletion.usage
+      usage: chatCompletion.usage,
+      trainingExamplesUsed: Math.min(5, trainingExamples.length) // Quantos exemplos foram usados
     });
 
   } catch (error) {
@@ -108,18 +175,20 @@ ${context ? `Contexto adicional: ${context}` : ''}`;
 
 /**
  * Salvar exemplo de treinamento
+ * Os exemplos são salvos em arquivo JSON e usados automaticamente no Few-Shot Learning
  */
 async function saveTrainingExample(req, res) {
   try {
     const { message, expectedIntent, expectedResponse, notes } = req.body;
 
     if (!message || !expectedIntent) {
-      return res.status(400).json({ error: 'Mensagem e intenção esperada são obrigatórias' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Mensagem e intenção esperada são obrigatórias' 
+      });
     }
 
     // Criar diretório de exemplos se não existir
-    const fs = require('fs');
-    const path = require('path');
     const examplesDir = path.join(__dirname, '../data/training-examples');
     
     if (!fs.existsSync(examplesDir)) {
@@ -135,7 +204,7 @@ async function saveTrainingExample(req, res) {
       examples = JSON.parse(data);
     }
 
-    // Adicionar novo exemplo
+    // Adicionar novo exemplo NO INÍCIO (mais recentes primeiro)
     const newExample = {
       id: Date.now().toString(),
       message,
@@ -146,21 +215,25 @@ async function saveTrainingExample(req, res) {
       createdBy: req.user.id
     };
 
-    examples.push(newExample);
+    // Adicionar no início para priorizar exemplos recentes
+    examples.unshift(newExample);
 
-    // Salvar de volta
+    // Salvar de volta (PERSISTENTE - mantém após recarregar página)
     fs.writeFileSync(examplesFile, JSON.stringify(examples, null, 2), 'utf8');
 
-    logger.info(`✅ [AI PLAYGROUND] Exemplo de treinamento salvo: ${newExample.id}`);
+    logger.info(`✅ [AI PLAYGROUND] Exemplo salvo e será usado no próximo treinamento: ${newExample.id}`);
+    logger.info(`📚 [AI PLAYGROUND] Total de exemplos: ${examples.length}`);
 
     res.json({
       success: true,
-      example: newExample
+      example: newExample,
+      message: `Exemplo salvo! A IA agora usará ${Math.min(5, examples.length)} exemplos para aprender.`
     });
 
   } catch (error) {
     logger.error('❌ [AI PLAYGROUND] Erro ao salvar exemplo:', error);
     res.status(500).json({ 
+      success: false,
       error: 'Erro ao salvar exemplo',
       details: error.message 
     });

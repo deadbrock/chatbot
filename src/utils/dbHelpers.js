@@ -106,7 +106,8 @@ function rawDateDiffMinutesSQL(endColumn, startColumn) {
   const dialect = getDialect();
   
   if (dialect === 'postgres') {
-    return `EXTRACT(EPOCH FROM (${endColumn} - ${startColumn})) / 60`;
+    // IMPORTANTE: Quotar os nomes das colunas para case-sensitivity
+    return `EXTRACT(EPOCH FROM ("${endColumn}" - "${startColumn}")) / 60`;
   }
   
   // SQLite
@@ -131,7 +132,8 @@ function rawFormatDateSQL(column, format = '%Y-%m-%d') {
       .replace(/%H/g, 'HH24')
       .replace(/%M/g, 'MI')
       .replace(/%S/g, 'SS');
-    return `TO_CHAR(${column}, '${pgFormat}')`;
+    // IMPORTANTE: Quotar o nome da coluna para case-sensitivity
+    return `TO_CHAR("${column}", '${pgFormat}')`;
   }
   
   // SQLite
@@ -147,7 +149,8 @@ function rawExtractHourSQL(column) {
   const dialect = getDialect();
   
   if (dialect === 'postgres') {
-    return `EXTRACT(HOUR FROM ${column})`;
+    // IMPORTANTE: Quotar o nome da coluna para case-sensitivity
+    return `EXTRACT(HOUR FROM "${column}")`;
   }
   
   // SQLite

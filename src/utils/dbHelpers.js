@@ -116,18 +116,42 @@ function rawDateDiffMinutesSQL(endColumn, startColumn) {
 /**
  * Gera SQL para formatação de data (para queries raw)
  * @param {string} column - Nome da coluna
- * @param {string} format - Formato (YYYY-MM-DD por padrão)
+ * @param {string} format - Formato SQLite style (ex: '%Y-%m-%d', '%H', '%Y-%m')
  * @returns {string}
  */
-function rawFormatDateSQL(column, format = 'YYYY-MM-DD') {
+function rawFormatDateSQL(column, format = '%Y-%m-%d') {
   const dialect = getDialect();
   
   if (dialect === 'postgres') {
-    return `TO_CHAR(${column}, '${format}')`;
+    // Converter formato SQLite para PostgreSQL
+    const pgFormat = format
+      .replace(/%Y/g, 'YYYY')
+      .replace(/%m/g, 'MM')
+      .replace(/%d/g, 'DD')
+      .replace(/%H/g, 'HH24')
+      .replace(/%M/g, 'MI')
+      .replace(/%S/g, 'SS');
+    return `TO_CHAR(${column}, '${pgFormat}')`;
   }
   
   // SQLite
-  return `strftime('%Y-%m-%d', ${column})`;
+  return `strftime('${format}', ${column})`;
+}
+
+/**
+ * Gera SQL para extrair hora de uma data (0-23)
+ * @param {string} column - Nome da coluna
+ * @returns {string}
+ */
+function rawExtractHourSQL(column) {
+  const dialect = getDialect();
+  
+  if (dialect === 'postgres') {
+    return `EXTRACT(HOUR FROM ${column})`;
+  }
+  
+  // SQLite
+  return `CAST(strftime('%H', ${column}) AS INTEGER)`;
 }
 
 module.exports = {
@@ -138,5 +162,6 @@ module.exports = {
   dateDiffMillis,
   quoteIdentifier,
   rawDateDiffMinutesSQL,
-  rawFormatDateSQL
+  rawFormatDateSQL,
+  rawExtractHourSQL
 };

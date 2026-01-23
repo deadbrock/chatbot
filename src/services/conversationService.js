@@ -345,7 +345,7 @@ class ConversationService {
       // Padrões de horário
       const [hourlyPattern] = await sequelize.query(`
         SELECT 
-          CAST(strftime('%H', m.createdAt) AS INTEGER) as hour,
+          ${rawExtractHourSQL('m.createdAt')} as hour,
           COUNT(*) as messageCount
         FROM messages m
         INNER JOIN tickets t ON t.id = m.ticketId
@@ -364,9 +364,9 @@ class ConversationService {
       const [durationPattern] = await sequelize.query(`
         SELECT 
           CASE 
-            WHEN (julianday(t.closedAt) - julianday(t.createdAt)) * 24 * 60 < 15 THEN 'quick'
-            WHEN (julianday(t.closedAt) - julianday(t.createdAt)) * 24 * 60 < 60 THEN 'medium'
-            WHEN (julianday(t.closedAt) - julianday(t.createdAt)) * 24 * 60 < 240 THEN 'long'
+            WHEN ${rawDateDiffMinutesSQL('t.closedAt', 't.createdAt')} < 15 THEN 'quick'
+            WHEN ${rawDateDiffMinutesSQL('t.closedAt', 't.createdAt')} < 60 THEN 'medium'
+            WHEN ${rawDateDiffMinutesSQL('t.closedAt', 't.createdAt')} < 240 THEN 'long'
             ELSE 'very_long'
           END as duration,
           COUNT(*) as count,

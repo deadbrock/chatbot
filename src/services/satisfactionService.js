@@ -331,7 +331,7 @@ class SatisfactionService {
 
       const [results] = await sequelize.query(`
         SELECT 
-          strftime(:dateFormat, r.createdAt) as period,
+          ${rawFormatDateSQL('r.createdAt', dateFormat)} as period,
           COUNT(*) as totalRatings,
           AVG(r.rating) as avgRating,
           COUNT(CASE WHEN r.rating >= 9 THEN 1 END) as promoters,
@@ -343,7 +343,6 @@ class SatisfactionService {
         ORDER BY period ASC
       `, {
         replacements: {
-          dateFormat,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString()
         },

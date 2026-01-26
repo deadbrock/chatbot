@@ -162,12 +162,14 @@ async function loadTickets() {
   if (status) qs.set('status', status);
   qs.set('limit', '200');
 
-  state.tickets = await apiFetch(`/tickets?${qs.toString()}`);
+  const ticketsResponse = await apiFetch(`/tickets?${qs.toString()}`);
+  state.tickets = ticketsResponse.data || ticketsResponse || [];
   renderTickets({ tickets: state.tickets, apiFetch, createToast, escapeHtml });
 }
 
 async function loadSessions() {
-  state.sessions = await apiFetch('/sessions');
+  const sessionsResponse = await apiFetch('/sessions');
+  state.sessions = sessionsResponse.data || sessionsResponse || [];
   renderSessions({ sessions: state.sessions, apiFetch, createToast, escapeHtml });
 }
 

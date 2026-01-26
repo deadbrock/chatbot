@@ -123,7 +123,7 @@ AIClassificationLog.getStatsByIntent = async function(days = 7) {
       'intent',
       [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       [sequelize.fn('AVG', sequelize.col('confidence')), 'avgConfidence'],
-      [sequelize.fn('COUNT', sequelize.literal('CASE WHEN used = 1 THEN 1 END')), 'usedCount']
+      [sequelize.fn('COUNT', sequelize.literal('CASE WHEN used = TRUE THEN 1 END')), 'usedCount']
     ],
     where: {
       createdAt: {

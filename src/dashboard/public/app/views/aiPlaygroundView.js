@@ -81,7 +81,13 @@ class AIPlaygroundView {
           <div class="playground-settings-section">
             <!-- Context Editor -->
             <div class="settings-card">
-              <h3>📝 Contexto da IA</h3>
+              <div class="card-header-actions">
+                <h3>📝 Contexto da IA</h3>
+                <div class="form-check">
+                  <input type="checkbox" id="autoSaveContext" class="form-check-input">
+                  <label for="autoSaveContext" class="form-check-label">Auto-salvar</label>
+                </div>
+              </div>
               <textarea 
                 id="contextInput" 
                 placeholder="Defina o contexto e personalidade da IA..."
@@ -95,9 +101,15 @@ Ajude o usuário com suas dúvidas sobre:
 - Atendimento humano
 
 Se não souber responder ou o usuário pedir para falar com humano, classifique como "atendimento_humano".</textarea>
-              <button id="updateContext" class="btn-secondary mt-2">
-                <i class="fas fa-sync"></i> Atualizar Contexto
-              </button>
+              <div class="btn-group mt-2">
+                <button id="updateContext" class="btn-secondary">
+                  <i class="fas fa-sync"></i> Atualizar Contexto
+                </button>
+                <button id="saveContextPermanent" class="btn-success">
+                  <i class="fas fa-save"></i> Salvar Permanentemente
+                </button>
+              </div>
+              <small id="contextSaveStatus" class="text-muted mt-1"></small>
             </div>
 
             <!-- Last Response Details -->
@@ -220,6 +232,26 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
 
     // Atualizar contexto
     document.getElementById('updateContext').addEventListener('click', () => this.updateContext());
+    document.getElementById('saveContextPermanent').addEventListener('click', () => this.saveContextPermanent());
+    
+    // Auto-save
+    document.getElementById('autoSaveContext').addEventListener('change', (e) => {
+      this.autoSaveEnabled = e.target.checked;
+      if (this.autoSaveEnabled) {
+        this.showSuccess('✅ Auto-save ativado! O contexto será salvo automaticamente.');
+      }
+    });
+    
+    // Listener para auto-save ao digitar
+    let autoSaveTimeout;
+    document.getElementById('contextInput').addEventListener('input', () => {
+      if (this.autoSaveEnabled) {
+        clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = setTimeout(() => {
+          this.saveContextPermanent(true); // true = silencioso
+        }, 2000); // Salva 2 segundos após parar de digitar
+      }
+    });
 
     // Salvar exemplo
     document.getElementById('saveExample').addEventListener('click', () => this.openSaveExampleModal());
@@ -437,13 +469,78 @@ Se não souber responder ou o usuário pedir para falar com humano, classifique 
   }
 
   /**
-   * Carregar contexto salvo
+   * Carregar contexto salvo do banco de dados
    */
-  loadContext() {
-    // Aqui você pode carregar um contexto salvo anteriormente
-    const savedContext = localStorage.getItem('aiPlaygroundContext');
-    if (savedContext) {
-      document.getElementById('contextInput').value = savedContext;
+  async loadContext() {
+    try {
+      const response = await window.apiFetch('/ai-playground/config', {
+        method: 'GET'
+      });
+      
+      console.log('📋 Resposta do getConfig:', response);
+      
+      if (response.success && response.data && response.data.systemPrompt) {
+        document.getElementById('contextInput').value = response.data.systemPrompt;
+        this.currentContext = response.data.systemPrompt;
+        this.updateContextStatus('✅ Contexto carregado do banco de dados');
+      } else {
+        // Usar contexto padrão se não houver nada salvo
+        this.updateContextStatus('ℹ️ Usando contexto padrão');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar contexto:', error);
+      this.updateContextStatus('⚠️ Erro ao carregar contexto salvo');
+    }
+  }
+  
+  /**
+   * Salvar contexto permanentemente
+   */
+  async saveContextPermanent(silent = false) {
+    try {
+      const context = document.getElementById('contextInput').value;
+      
+      if (!context || context.trim() === '') {
+        if (!silent) this.showError('Por favor, insira um contexto válido');
+        return;
+      }
+      
+      this.updateContextStatus('💾 Salvando...');
+      
+      const response = await window.apiFetch('/ai-playground/config', {
+        method: 'POST',
+        body: {
+          systemPrompt: context
+        }
+      });
+      
+      if (response.success) {
+        this.currentContext = context;
+        this.updateContextStatus('✅ Salvo permanentemente');
+        if (!silent) {
+          this.showSuccess('✅ Contexto salvo permanentemente no banco de dados!');
+        }
+      } else {
+        throw new Error(response.error || 'Erro ao salvar contexto');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao salvar contexto:', error);
+      this.updateContextStatus('❌ Erro ao salvar');
+      if (!silent) {
+        this.showError('Erro ao salvar contexto: ' + error.message);
+      }
+    }
+  }
+  
+  /**
+   * Atualizar status do contexto
+   */
+  updateContextStatus(message) {
+    const statusEl = document.getElementById('contextSaveStatus');
+    if (statusEl) {
+      statusEl.textContent = message;
+      statusEl.style.display = 'block';
     }
   }
 

@@ -166,7 +166,7 @@ class PerformanceService {
           AND t.createdAt BETWEEN :startDate AND :endDate
         LEFT JOIN ratings r ON r.ticketId = t.id
         LEFT JOIN users u ON u.id = t.userId AND u.role IN ('agent', 'supervisor')
-        WHERE q.isActive = 1
+        WHERE q.isActive = TRUE
           ${queueIds && queueIds.length > 0 ? 'AND q.id IN (:queueIds)' : ''}
         GROUP BY q.id, q.name, q.slug, q.color, q.icon
         HAVING totalTickets > 0

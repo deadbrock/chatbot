@@ -100,10 +100,28 @@ async function availableAgents(req, res) {
 }
 
 async function create(req, res) {
+  const logger = require('../utils/logger');
+  
   try {
     const user = await User.create(req.body);
+    logger.info(`✅ Usuário criado: ${user.email} (${user.role})`);
     return created(res, { id: user.id, name: user.name, email: user.email, role: user.role });
   } catch (error) {
+    // Tratar erro de email duplicado
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      logger.warn(`⚠️ Tentativa de criar usuário com email duplicado: ${req.body.email}`);
+      return fail(res, 400, 'Este email já está cadastrado no sistema');
+    }
+    
+    // Tratar erro de validação
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map(e => e.message).join(', ');
+      logger.warn(`⚠️ Erro de validação ao criar usuário: ${messages}`);
+      return fail(res, 400, `Erro de validação: ${messages}`);
+    }
+    
+    // Outros erros
+    logger.error('❌ Erro ao criar usuário:', error);
     return fail(res, 500, error.message);
   }
 }

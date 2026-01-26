@@ -172,7 +172,8 @@ async function loadSessions() {
 }
 
 async function loadAgents() {
-  state.agents = await apiFetch('/users');
+  const response = await apiFetch('/users');
+  state.agents = response.data || response || [];
   renderAgents({ agents: state.agents, apiFetch, createToast, escapeHtml });
 }
 

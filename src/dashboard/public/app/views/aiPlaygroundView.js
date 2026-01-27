@@ -46,7 +46,7 @@ class AIPlaygroundView {
       <div class="ai-playground-container">
         <!-- Header -->
         <div class="playground-header">
-          <h1>🤖 AI Playground</h1>
+          <h1>AI Playground</h1>
           <p>Teste e treine sua IA em tempo real</p>
         </div>
 

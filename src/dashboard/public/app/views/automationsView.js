@@ -21,7 +21,7 @@ class AutomationsView {
         <!-- Header -->
         <div class="page-header">
           <div>
-            <h1>🤖 Automações Inteligentes</h1>
+            <h1>Automações Inteligentes</h1>
             <p class="subtitle">Configure regras de automação para otimizar o atendimento</p>
           </div>
           <div class="header-actions">
@@ -344,7 +344,7 @@ class AutomationsView {
       if (this.rules.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
-            <div class="empty-icon">🤖</div>
+            <div class="empty-icon">⚙️</div>
             <h3>Nenhuma regra criada</h3>
             <p>Crie sua primeira regra de automação ou use um template pronto.</p>
             <button class="btn btn-primary" onclick="window.automationsView.openTemplatesModal()">

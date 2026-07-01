@@ -83,11 +83,29 @@ User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-User.prototype.updateStatus = async function(status) {
-  this.status = status;
-  return await this.save();
-};
+User.prototype.comparePassword = async function(candidatePassword) {
+  // Se a senha ainda estiver em texto puro (banco antigo)
+  if (!this.password.startsWith('$2a$') &&
+      !this.password.startsWith('$2b$') &&
+      !this.password.startsWith('$2y$')) {
 
+    if (candidatePassword === this.password) {
+
+      // Atualiza automaticamente para bcrypt
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(candidatePassword, salt);
+      await this.save();
+
+      return true;
+    }
+
+    return false;
+  }
+
+  // Senha já criptografada
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+  
 // Métodos estáticos
 User.getByEmail = async function(email) {
   return await this.findOne({

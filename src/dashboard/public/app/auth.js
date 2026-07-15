@@ -1,3 +1,5 @@
+import { disconnectSocket } from './socket.js';
+
 export function ensureAuth() {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -21,9 +23,8 @@ export function getStoredUser() {
 }
 
 export function logout() {
+  disconnectSocket();
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   window.location.href = '/login.html';
 }
-
-

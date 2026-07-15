@@ -4,6 +4,24 @@ import { createToast } from './ui/toast.js';
 import { escapeHtml, debounce } from './ui/dom.js';
 import { initRouter, navigateToSection } from './router.js';
 import { applyMenuPermissions, canAccessSection, getCurrentUserRole, getRoleLabel } from './permissions.js';
+
+function applyStaffPresence(presence) {
+  if (!presence) return;
+
+  const el = document.getElementById('atendentesAtivos');
+  if (el) {
+    el.textContent = presence.atendentesAtivos || `${presence.online ?? 0}/${presence.total ?? 0}`;
+  }
+}
+
+function initStaffPresenceRealtime() {
+  window.addEventListener('staff:presence', (event) => {
+    applyStaffPresence(event.detail);
+    if ((location.hash || '').includes('agents')) {
+      loadAgents();
+    }
+  });
+}
 import { connectSocket } from './socket.js';
 import { registerChatRealtime } from './views/chatView.js';
 import { initMenuController } from './menuController.js';
@@ -24,7 +42,7 @@ import { initAdministrationView } from './views/administrationView.js';
 import { initChatView, cleanupChatView } from './views/chatView.js';
 import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
 import { initThemeToggle } from './theme.js';
-import { initWhatsappSyncProgress } from './ui/syncProgressOverlay.js';
+import { initWhatsappSyncProgress, triggerLoginSync } from './ui/syncProgressOverlay.js';
 
 // 🌐 EXPORTAR apiFetch para window (para scripts não-módulos como aiPlaygroundView.js)
 window.apiFetch = apiFetch;
@@ -171,6 +189,13 @@ async function loadDashboard() {
   ]);
 
   renderDashboard({ data: dashboardData, tickets, extendedMetrics, npsData, escapeHtml });
+  if (extendedMetrics?.atendentesAtivos) {
+    applyStaffPresence({
+      atendentesAtivos: extendedMetrics.atendentesAtivos,
+      online: Number(String(extendedMetrics.atendentesAtivos).split('/')[0]) || 0,
+      total: Number(String(extendedMetrics.atendentesAtivos).split('/')[1]) || 0
+    });
+  }
   renderDashboardCharts({ 
     timelineRows: Array.isArray(timelineRows) ? timelineRows : (timelineRows?.data || []), 
     statusRows: Array.isArray(statusRows) ? statusRows : (statusRows?.data || [])
@@ -403,6 +428,7 @@ async function init() {
   initMenuController();
   hydrateUser();
   applyMenuPermissions(getCurrentUserRole());
+  initStaffPresenceRealtime();
   wireEvents();
   initRouter(
     onSectionChange,
@@ -433,6 +459,7 @@ async function init() {
 
   registerChatRealtime();
   initWhatsappSyncProgress();
+  await triggerLoginSync();
 
   // primeira carga baseada no hash
   const initial = (location.hash || '#dashboard').replace('#', '');

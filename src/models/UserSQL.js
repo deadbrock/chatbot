@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const bcrypt = require('bcryptjs');
 
@@ -119,8 +119,8 @@ User.getByEmail = async function(email) {
 User.getAvailableAgents = async function(departmentId = null) {
   const where = {
     active: true,
-    status: ['online', 'away'],
-    role: ['agent', 'manager']
+    status: 'online',
+    role: { [Op.in]: ['agent', 'manager'] }
   };
   
   if (departmentId) {
@@ -128,6 +128,20 @@ User.getAvailableAgents = async function(departmentId = null) {
   }
   
   return await this.findAll({ where });
+};
+
+User.prototype.updateStatus = async function(status) {
+  const allowed = ['online', 'offline', 'busy', 'away'];
+  if (!allowed.includes(status)) {
+    throw new Error('Status inválido');
+  }
+
+  this.status = status;
+  if (status === 'online') {
+    this.lastLogin = new Date();
+  }
+
+  return this.save();
 };
 
 module.exports = User;

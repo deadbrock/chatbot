@@ -166,14 +166,14 @@ const flows = {
         message: `Digite 👇🏽\n\n1️⃣ Admissões\n2️⃣ Benefícios\n3️⃣ Férias\n4️⃣ Afastamentos\n5️⃣ Rescisões\n6️⃣ Outros\n7️⃣ Folha de Pagamento\n8️⃣ Encargos\n9️⃣ Voltar ao menu anterior`,
         
         options: {
-          '1': { action: 'transfer_to_agent', department: 'DP' },
+          '1': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Admissão' },
           '2': { next: 'benefits_menu' },
-          '3': { action: 'transfer_to_agent', department: 'DP' },
+          '3': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Folha e Transferências' },
           '4': { next: 'leave_menu' },
           '5': { next: 'termination_flow' },
-          '6': { action: 'transfer_to_agent', department: 'DP' },
-          '7': { action: 'transfer_to_agent', department: 'DP' },
-          '8': { action: 'transfer_to_agent', department: 'DP' },
+          '6': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Outros e Afastamentos' },
+          '7': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Folha e Transferências' },
+          '8': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Folha e Transferências' },
           '9': { next: 'profile_selection' }
         }
       }
@@ -187,15 +187,16 @@ const flows = {
     id: 'benefits_menu',
     name: 'Benefícios',
     
-    message: `Digite 👇🏽\n\n1️⃣ Vale Alimentação\n2️⃣ Vale Refeição\n3️⃣ Plano de saúde\n4️⃣ Plano odontológico\n5️⃣ Outros\n6️⃣ Voltar ao menu anterior`,
+    message: `Digite 👇🏽\n\n1️⃣ Vale Transporte\n2️⃣ Vale Alimentação\n3️⃣ Vale Refeição\n4️⃣ Plano de saúde\n5️⃣ Plano odontológico\n6️⃣ Outros benefícios\n7️⃣ Voltar ao menu anterior`,
     
     options: {
-      '1': { action: 'transfer_to_agent', department: 'DP - Benefícios' },
-      '2': { action: 'transfer_to_agent', department: 'DP - Benefícios' },
-      '3': { action: 'transfer_to_agent', department: 'DP - Benefícios' },
-      '4': { action: 'transfer_to_agent', department: 'DP - Benefícios' },
-      '5': { action: 'transfer_to_agent', department: 'DP - Benefícios' },
-      '6': { next: 'dp_employee_menu' }
+      '1': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '2': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '3': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '4': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '5': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '6': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Benefícios' },
+      '7': { next: 'dp_employee_menu' }
     }
   },
 
@@ -209,10 +210,10 @@ const flows = {
     message: `Digite 👇🏽\n\n1️⃣ Licença Maternidade/Paternidade\n2️⃣ Afastamento por doença\n3️⃣ Afastamento por acidente no trabalho\n4️⃣ Outros\n5️⃣ Voltar ao menu anterior`,
     
     options: {
-      '1': { action: 'transfer_to_agent', department: 'DP - Afastamentos' },
-      '2': { action: 'transfer_to_agent', department: 'DP - Afastamentos' },
-      '3': { action: 'transfer_to_agent', department: 'DP - Afastamentos' },
-      '4': { action: 'transfer_to_agent', department: 'DP - Afastamentos' },
+      '1': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Outros e Afastamentos' },
+      '2': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Outros e Afastamentos' },
+      '3': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Outros e Afastamentos' },
+      '4': { action: 'transfer_to_agent', department: 'Departamento Pessoal', topic: 'Outros e Afastamentos' },
       '5': { next: 'dp_employee_menu' }
     }
   },
@@ -228,7 +229,12 @@ const flows = {
       collect_info: {
         message: 'Para agilizar o atendimento, nos informe por gentileza seu nome e CPF.',
         collect: ['name', 'cpf'],
-        next: 'transfer_to_agent'
+        next: 'transfer_rescisoes'
+      },
+      transfer_rescisoes: {
+        action: 'transfer_to_agent',
+        department: 'Departamento Pessoal',
+        topic: 'Rescisões'
       }
     }
   },

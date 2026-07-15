@@ -359,6 +359,10 @@ async function startServer() {
     try {
       await syncDatabase();
       logger.info('✅ Modelos sincronizados com sucesso');
+
+      const userPresenceService = require('./services/userPresenceService');
+      await userPresenceService.resetAllUsersOffline();
+      logger.info('✅ Status de presença dos atendentes resetado para offline');
     } catch (syncError) {
       logger.error('❌ Erro ao sincronizar modelos:', {
         message: syncError.message,
@@ -506,18 +510,29 @@ async function startServer() {
     if (whatsappClient) {
       app.set('whatsappClient', whatsappClient);
       
-      // Inicializar WhatsApp apenas se WHATSAPP_AUTO_START=true (evita travar no boot)
-      if (process.env.WHATSAPP_AUTO_START === 'true') {
+      // Restaurar sessão salva automaticamente (fim de semana, logout de atendentes, etc.)
+      const autoStartEnv = process.env.WHATSAPP_AUTO_START === 'true';
+      const autoRestoreDisabled = process.env.WHATSAPP_AUTO_RESTORE === 'false';
+      const hasSavedSession = typeof whatsappClient.hasPersistedSession === 'function'
+        && whatsappClient.hasPersistedSession();
+      const shouldAutoStart = autoStartEnv || (!autoRestoreDisabled && hasSavedSession);
+
+      if (shouldAutoStart) {
         logger.info('═══════════════════════════════════════════════════════');
-        logger.info('📱 ETAPA 7: Inicializando WhatsApp (não bloqueia servidor)...');
+        logger.info('📱 ETAPA 7: Restaurando conexão WhatsApp (não bloqueia servidor)...');
         logger.info('═══════════════════════════════════════════════════════');
-        whatsappClient.prepareForConnection({ rotateIfLocked: true })
+        if (hasSavedSession) {
+          logger.info('💾 Sessão WhatsApp salva detectada — reconectando automaticamente');
+        }
+        whatsappClient.userRequestedDisconnect = false;
+        whatsappClient.autoReconnectEnabled = true;
+        whatsappClient.prepareForConnection({ rotateIfLocked: true, forceFresh: false, closeExisting: false })
           .then(() => whatsappClient.initialize())
           .then(() => {
-            logger.info('✅ WhatsApp inicializado com sucesso');
+            logger.info('✅ WhatsApp inicializado/restaurado com sucesso');
           })
           .catch((err) => {
-            logger.error('⚠️ AVISO: Falha ao inicializar WhatsApp (servidor continua online):');
+            logger.error('⚠️ AVISO: Falha ao restaurar WhatsApp (servidor continua online):');
             logger.error(`   Mensagem: ${err.message}`);
           });
       } else {
@@ -564,11 +579,13 @@ process.on('SIGINT', async () => {
   console.log('═══════════════════════════════════════════════════════');
   logger.info('🛑 SIGINT recebido - Encerrando servidor...');
   try {
-    if (whatsappClient && typeof whatsappClient.disconnect === 'function') {
-      await whatsappClient.disconnect();
+    if (whatsappClient && typeof whatsappClient.softShutdown === 'function') {
+      await whatsappClient.softShutdown();
+    } else if (whatsappClient && typeof whatsappClient.disconnect === 'function') {
+      await whatsappClient.disconnect({ userInitiated: false });
     }
   } catch (disconnectError) {
-    logger.error('⚠️ Erro ao desconectar WhatsApp:', disconnectError.message);
+    logger.error('⚠️ Erro ao encerrar WhatsApp:', disconnectError.message);
   }
   process.exit(0);
 });
@@ -579,11 +596,13 @@ process.on('SIGTERM', async () => {
   console.log('═══════════════════════════════════════════════════════');
   logger.info('🛑 SIGTERM recebido - Encerrando servidor...');
   try {
-    if (whatsappClient && typeof whatsappClient.disconnect === 'function') {
-      await whatsappClient.disconnect();
+    if (whatsappClient && typeof whatsappClient.softShutdown === 'function') {
+      await whatsappClient.softShutdown();
+    } else if (whatsappClient && typeof whatsappClient.disconnect === 'function') {
+      await whatsappClient.disconnect({ userInitiated: false });
     }
   } catch (disconnectError) {
-    logger.error('⚠️ Erro ao desconectar WhatsApp:', disconnectError.message);
+    logger.error('⚠️ Erro ao encerrar WhatsApp:', disconnectError.message);
   }
   process.exit(0);
 });

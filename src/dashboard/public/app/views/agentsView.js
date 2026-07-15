@@ -29,6 +29,13 @@ function getStatusLabel(status) {
   return STATUS_LABELS[status] || status || '—';
 }
 
+function getStatusBadgeClass(status) {
+  if (status === 'online') return 'bg-success';
+  if (status === 'away') return 'bg-warning text-dark';
+  if (status === 'busy') return 'bg-danger';
+  return 'bg-secondary';
+}
+
 function applyRoleFieldRestrictions() {
   const roleSelect = document.getElementById('agentRole');
   if (!roleSelect) return;
@@ -242,13 +249,15 @@ export function renderAgents({ agents, apiFetch: fetchFn, createToast, escapeHtm
       <td class="fw-semibold">${htmlEscape(u.name || '—')}</td>
       <td class="text-muted">${htmlEscape(u.email || '—')}</td>
       <td>${htmlEscape(getRoleLabel(u.role))}</td>
-      <td>${htmlEscape(getStatusLabel(u.status))}</td>
+      <td>
+        <span class="badge ${getStatusBadgeClass(u.status)}" data-user-status="${htmlEscape(u.id)}">
+          ${htmlEscape(getStatusLabel(u.status))}
+        </span>
+      </td>
       <td>${htmlEscape(u.department || '—')}</td>
       <td class="text-end">
         <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
           ${actionButtons}
-          <button class="btn btn-sm btn-outline-secondary" data-user-id="${htmlEscape(u.id)}" data-status="online" title="Marcar online">Online</button>
-          <button class="btn btn-sm btn-outline-secondary" data-user-id="${htmlEscape(u.id)}" data-status="offline" title="Marcar offline">Offline</button>
         </div>
       </td>
     </tr>
@@ -264,22 +273,6 @@ export function renderAgents({ agents, apiFetch: fetchFn, createToast, escapeHtm
   tbody.querySelectorAll('button[data-action="delete-agent"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       deleteAgent(btn.getAttribute('data-user-id'), btn.getAttribute('data-user-name'));
-    });
-  });
-
-  tbody.querySelectorAll('button[data-user-id][data-status]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-user-id');
-      const status = btn.getAttribute('data-status');
-      try {
-        await request(`/users/${id}/status`, { method: 'PATCH', body: { status } });
-        toast({ title: 'Ok', message: 'Status atualizado.', variant: 'success' });
-        if (typeof agentsReloadHandler === 'function') {
-          await agentsReloadHandler();
-        }
-      } catch (e) {
-        toast({ title: 'Erro', message: e?.message || 'Falha ao atualizar status.', variant: 'danger' });
-      }
     });
   });
 }

@@ -6,6 +6,13 @@
 const logger = require('../utils/logger');
 const User = require('../models/UserSQL');
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
+const {
+  DP_TOPICS,
+  JURIDICO_EXTRA_AGENT_NAMES,
+  resolveDPTopic,
+  getAgentEmailsForTopic
+} = require('../config/dpAttendanceRouting');
 
 class TicketRoutingService {
   /**
@@ -19,7 +26,6 @@ class TicketRoutingService {
 
       logger.info(`🎯 Roteando ticket: Dept=${departmentId}, Assunto="${subject}"`);
 
-      // Buscar atendentes do departamento
       const agents = await User.findAll({
         where: {
           departmentId: departmentId || department,
@@ -38,9 +44,8 @@ class TicketRoutingService {
 
       logger.info(`👥 Encontrados ${agents.length} atendentes no departamento`);
 
-      // Analisar qual atendente é mais adequado
       const fullText = `${subject} ${description} ${userMessage || ''}`.toLowerCase();
-      
+
       let bestMatch = null;
       let highestScore = 0;
 
@@ -49,13 +54,12 @@ class TicketRoutingService {
         const specialties = stats.specialties || [];
 
         if (specialties.length === 0) {
-          continue; // Pular atendentes sem especialidades
+          continue;
         }
 
         let score = 0;
         const matchedSpecialties = [];
 
-        // Verificar quantas especialidades correspondem ao assunto
         for (const specialty of specialties) {
           if (fullText.includes(specialty.toLowerCase())) {
             score += 10;
@@ -63,10 +67,9 @@ class TicketRoutingService {
           }
         }
 
-        // Bonus para coordenadores em assuntos complexos
         if (agent.role === 'manager') {
           const complexKeywords = ['urgente', 'coordenador', 'gerência', 'escalação', 'problema', 'reclamação'];
-          if (complexKeywords.some(kw => fullText.includes(kw))) {
+          if (complexKeywords.some((kw) => fullText.includes(kw))) {
             score += 5;
             matchedSpecialties.push('coordenação');
           }
@@ -82,12 +85,12 @@ class TicketRoutingService {
             agentEmail: agent.email,
             role: agent.role,
             matchedSpecialties,
-            score
+            score,
+            topicLabel: stats.dpTopicLabel || null
           };
         }
       }
 
-      // Se nenhum match específico, distribuir por round-robin ou pegar o primeiro disponível
       if (!bestMatch) {
         const randomAgent = agents[Math.floor(Math.random() * agents.length)];
         bestMatch = {
@@ -106,7 +109,6 @@ class TicketRoutingService {
       }
 
       return bestMatch;
-
     } catch (error) {
       logger.error('❌ Erro ao rotear ticket:', error);
       return null;
@@ -114,72 +116,143 @@ class TicketRoutingService {
   }
 
   /**
-   * Roteia especificamente para atendentes de DP
+   * Roteia especificamente para atendentes do DP por tema/assunto
    */
-  async routeDPTicket(ticketData) {
-    const { subject, description, userMessage } = ticketData;
-    const fullText = `${subject} ${description} ${userMessage || ''}`.toLowerCase();
+  async routeDPTicket(ticketData = {}) {
+    const topicConfig = resolveDPTopic(ticketData);
+    const fullText = [
+      ticketData.topic,
+      ticketData.subject,
+      ticketData.description,
+      ticketData.userMessage,
+      ticketData.department
+    ].filter(Boolean).join(' ');
 
-    logger.info(`🎯 Roteamento específico de DP: "${subject}"`);
+    logger.info(`🎯 Roteamento DP — tema: ${topicConfig.label}`);
 
-    // Regras específicas do DP
-    const dpRules = {
-      'elaine': ['férias', 'auxílio transporte', 'vale transporte', 'vale-transporte'],
-      'adriana': ['admissão', 'admitir', 'contratar', 'novo colaborador', 'contratação'],
-      'joana': ['admissão', 'admitir', 'contratar', 'novo colaborador', 'contratação'],
-      'draydiane': ['admissão', 'admitir', 'contratar', 'novo colaborador', 'contratação'],
-      'alysson': ['processo', 'documentação', 'documento', 'procedimento', 'tramite'],
-      'elias': ['coordenador', 'coordenação', 'gerencial', 'escalação', 'urgente', 'complexo']
-    };
+    const escalationKeywords = DP_TOPICS.gestao_dp.keywords;
+    const normalized = fullText.toLowerCase();
+    const needsManager = escalationKeywords.some((kw) => normalized.includes(kw.toLowerCase()));
 
-    let bestAgent = null;
-    let highestScore = 0;
+    if (needsManager) {
+      const manager = await this.findAgentByEmails(getAgentEmailsForTopic(DP_TOPICS.gestao_dp));
+      if (manager) {
+        return this.buildRoutingResult(manager, topicConfig, 'Gestão do DP (escalação)');
+      }
+    }
 
-    for (const [agentEmail, keywords] of Object.entries(dpRules)) {
-      let score = 0;
-      const matchedKeywords = [];
+    let candidateEmails = getAgentEmailsForTopic(topicConfig);
 
-      for (const keyword of keywords) {
-        if (fullText.includes(keyword)) {
-          score += 10;
-          matchedKeywords.push(keyword);
+    if (topicConfig.id === 'juridico_arquivo') {
+      const extraAgents = await User.findAll({
+        where: {
+          active: true,
+          departmentId: 'dp',
+          [Op.or]: JURIDICO_EXTRA_AGENT_NAMES.map((name) => ({
+            name: { [Op.like]: `%${name}%` }
+          }))
+        },
+        attributes: ['id', 'name', 'email', 'role', 'stats']
+      });
+      for (const agent of extraAgents) {
+        if (agent.email && !candidateEmails.includes(agent.email)) {
+          candidateEmails.push(agent.email);
         }
       }
-
-      if (score > highestScore) {
-        highestScore = score;
-        bestAgent = {
-          email: `${agentEmail}@fgservices.com`,
-          keywords: matchedKeywords,
-          score
-        };
-      }
     }
 
-    if (bestAgent) {
-      const agent = await User.findOne({ where: { email: bestAgent.email } });
-      if (agent) {
-        logger.info(`✅ Roteamento DP: ${agent.name} (Score: ${bestAgent.score})`);
-        return {
-          agentId: agent.id,
-          agentName: agent.name,
-          agentEmail: agent.email,
-          role: agent.role,
-          matchedSpecialties: bestAgent.keywords,
-          score: bestAgent.score,
-          reason: `Especialidade DP: ${bestAgent.keywords.join(', ')}`
-        };
-      }
-    }
-
-    // Fallback: usar roteamento genérico
-    return await this.routeTicket({
-      ...ticketData,
-      departmentId: 'dp',
-      department: 'Departamento Pessoal'
+    let agents = await User.findAll({
+      where: {
+        active: true,
+        departmentId: 'dp',
+        role: { [Op.in]: ['agent', 'manager'] },
+        [Op.or]: [
+          { email: { [Op.in]: candidateEmails } },
+          sequelize.where(
+            sequelize.fn('json_extract', sequelize.col('stats'), '$.dpTopic'),
+            topicConfig.id
+          )
+        ]
+      },
+      attributes: ['id', 'name', 'email', 'role', 'stats']
     });
+
+    if (agents.length === 0) {
+      agents = await User.findAll({
+        where: {
+          email: { [Op.in]: candidateEmails },
+          active: true,
+          role: { [Op.in]: ['agent', 'manager'] }
+        },
+        attributes: ['id', 'name', 'email', 'role', 'stats']
+      });
+    }
+
+    if (agents.length === 0) {
+      logger.warn(`⚠️ Nenhum atendente ativo para o tema ${topicConfig.label} — fallback genérico DP`);
+      return this.routeTicket({
+        ...ticketData,
+        departmentId: 'dp',
+        department: 'Departamento Pessoal'
+      });
+    }
+
+    const ranked = agents
+      .map((agent) => {
+        const stats = agent.stats || {};
+        const specialties = stats.specialties || topicConfig.keywords;
+        let score = 0;
+        const matched = [];
+
+        for (const specialty of specialties) {
+          if (normalized.includes(String(specialty).toLowerCase())) {
+            score += 10;
+            matched.push(specialty);
+          }
+        }
+
+        const workload = Number(stats.ticketsHandled) || 0;
+
+        return { agent, score, matched, workload };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.workload - b.workload;
+      });
+
+    const selected = ranked[0].agent;
+    const reason = ranked[0].matched.length
+      ? `Tema ${topicConfig.label}: ${ranked[0].matched.join(', ')}`
+      : `Tema ${topicConfig.label} — distribuição por carga`;
+
+    return this.buildRoutingResult(selected, topicConfig, reason);
+  }
+
+  async findAgentByEmails(emails = []) {
+    if (!emails.length) return null;
+    return User.findOne({
+      where: {
+        email: { [Op.in]: emails },
+        active: true
+      },
+      attributes: ['id', 'name', 'email', 'role', 'stats']
+    });
+  }
+
+  buildRoutingResult(agent, topicConfig, reason) {
+    logger.info(`✅ Roteamento DP: ${agent.name} — ${reason}`);
+    return {
+      agentId: agent.id,
+      agentName: agent.name,
+      agentEmail: agent.email,
+      role: agent.role,
+      topicId: topicConfig.id,
+      topicLabel: topicConfig.label,
+      matchedSpecialties: [],
+      score: 0,
+      reason
+    };
   }
 }
 
 module.exports = new TicketRoutingService();
-

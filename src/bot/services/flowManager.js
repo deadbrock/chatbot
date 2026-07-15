@@ -347,7 +347,7 @@ class FlowManager {
         return await this.sendJobLink(session);
       
       case 'transfer_to_agent':
-        return await this.transferToAgent(session, context.department);
+        return await this.transferToAgent(session, context);
       
       case 'transfer_to_human':
         return await this.transferToHuman(session);
@@ -439,24 +439,31 @@ class FlowManager {
   /**
    * Transfere para atendente humano
    */
-  async transferToAgent(session, department) {
+  async transferToAgent(session, context = {}) {
+    const department = typeof context === 'string' ? context : (context.department || 'Atendimento');
+    const topic = typeof context === 'object' ? (context.topic || null) : null;
+
     session.needsHumanAgent = true;
     session.currentFlow = 'wait_for_agent';
     session.currentStep = 'waiting';
-    
-    // Salvar departamento no formData
+
     const formData = session.formData || {};
     formData.department = department;
+    formData.dpTopic = topic;
+    formData.subject = topic || department;
     session.formData = formData;
-    
+
     await session.save();
-    
-    logger.info(`Transferindo sessão ${session.id} para departamento: ${department}`);
-    
+
+    logger.info(`Transferindo sessão ${session.id} para ${department}${topic ? ` — tema: ${topic}` : ''}`);
+
+    const topicLabel = topic ? `*${topic}*` : `*${department}*`;
+
     return {
-      message: `Aguarde que nosso time de *${department}* já vai te atender 😊`,
+      message: `Aguarde! Nosso time de ${topicLabel} já vai te atender 😊\n\n⏳ _Um atendente especializado responderá em breve._`,
       transferToAgent: true,
-      department
+      department,
+      topic
     };
   }
 

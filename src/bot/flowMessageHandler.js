@@ -587,6 +587,10 @@ class FlowMessageHandler {
               this.notifyDashboard(conversation, ticket, contact, textToSend, 'outgoing');
             }
           }
+
+          if (response.transferToAgent && conversation) {
+            await this.handleTransferToAgent(session, conversation, contact, response, ticket);
+          }
         }
         
         // Se tem próximo fluxo, processar
@@ -1241,11 +1245,13 @@ class FlowMessageHandler {
         ticket.description = `Nome: ${formData.nome_completo}\nEmail: ${formData.email}${formData.contrato ? `\nContrato/Loja: ${formData.contrato}` : ''}\n\nSolicitação: ${ticket.subject || 'Atendimento'}`;
 
         // Rotear automaticamente
-        const routing = targetIntent === 'dp' 
+        const routing = targetIntent === 'dp'
           ? await ticketRoutingService.routeDPTicket({
-              subject: ticket.subject,
+              topic: formData.dpTopic || formData.subject,
+              subject: ticket.subject || formData.subject,
               description: ticket.description,
               userMessage: messageBody,
+              department: formData.department || 'Departamento Pessoal',
               departmentId: 'dp'
             })
           : await ticketRoutingService.routeTicket({
@@ -1402,6 +1408,51 @@ class FlowMessageHandler {
   }
 
   /**
+   * Encaminha conversa para atendente humano com roteamento por tema do DP
+   */
+  async handleTransferToAgent(session, conversation, contact, response, ticket) {
+    try {
+      const ticketRoutingService = require('../services/ticketRoutingService');
+      const formData = session.formData || {};
+      const topic = response.topic || formData.dpTopic || formData.subject;
+      const department = response.department || formData.department || 'Departamento Pessoal';
+      const reason = topic
+        ? `Atendimento DP — ${topic}`
+        : `Atendimento — ${department}`;
+
+      const routing = await ticketRoutingService.routeDPTicket({
+        topic,
+        department,
+        subject: topic || department,
+        description: formData.name ? `Nome: ${formData.name}` : '',
+        userMessage: formData.cpf ? `CPF informado` : ''
+      });
+
+      const metadata = {
+        ...(conversation.metadata || {}),
+        waitingHuman: true,
+        waitingHumanReason: reason,
+        waitingHumanAt: new Date().toISOString(),
+        suggestedAgentId: routing?.agentId || null,
+        suggestedAgentName: routing?.agentName || null,
+        dpTopic: routing?.topicLabel || topic || null,
+        dpDepartment: department
+      };
+
+      await conversation.update({ metadata });
+      await inboxConversationService.markWaitingHuman(conversation, reason);
+
+      if (routing?.agentId) {
+        logger.info(`🎯 Conversa ${conversation.id} direcionada para ${routing.agentName} (${routing.topicLabel || topic})`);
+      }
+
+      await this.notifyAvailableAgents(conversation, contact, reason, routing);
+    } catch (error) {
+      logger.error('❌ Erro ao encaminhar para atendente:', error);
+    }
+  }
+
+  /**
    * IA solicita atendimento humano (sem criar ticket — só ao aceitar)
    */
   async requestHumanAttendance(conversation, whatsappClient, jid, reason = 'Solicitação de atendimento') {
@@ -1430,16 +1481,39 @@ class FlowMessageHandler {
   /**
    * Notifica atendentes disponíveis sobre conversa aguardando humano
    */
-  async notifyAvailableAgents(conversation, contact, messageBody) {
+  async notifyAvailableAgents(conversation, contact, messageBody, routing = null) {
     try {
       const User = require('../models/UserSQL');
+      const { Op } = require('sequelize');
+      const { getAgentEmailsForTopic, resolveDPTopic } = require('../config/dpAttendanceRouting');
 
-      const availableAgents = await User.findAll({
-        where: {
-          role: ['agent', 'manager', 'admin'],
-          status: 'online'
+      let where = {
+        role: ['agent', 'manager', 'admin'],
+        status: 'online',
+        active: true
+      };
+
+      if (routing?.agentEmail) {
+        where = {
+          [Op.or]: [
+            { email: routing.agentEmail },
+            { departmentId: 'dp', status: 'online', active: true, role: ['agent', 'manager'] }
+          ]
+        };
+      } else if (routing?.topicId) {
+        const topicConfig = resolveDPTopic({ topic: routing.topicId });
+        const emails = getAgentEmailsForTopic(topicConfig);
+        if (emails.length) {
+          where = {
+            [Op.or]: [
+              { email: { [Op.in]: emails } },
+              { departmentId: 'dp', status: 'online', active: true, role: ['agent', 'manager', 'admin'] }
+            ]
+          };
         }
-      });
+      }
+
+      const availableAgents = await User.findAll({ where });
 
       if (availableAgents.length === 0) {
         logger.warn('⚠️ Nenhum atendente online disponível!');
@@ -1454,6 +1528,9 @@ class FlowMessageHandler {
           conversation: conversation.toJSON ? conversation.toJSON() : conversation,
           contact: contact?.toJSON ? contact.toJSON() : contact,
           message: messageBody,
+          suggestedAgentId: routing?.agentId || null,
+          suggestedAgentName: routing?.agentName || null,
+          dpTopic: routing?.topicLabel || null,
           timestamp: new Date()
         });
       }

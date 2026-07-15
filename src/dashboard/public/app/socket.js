@@ -74,9 +74,24 @@ function bindCoreEvents() {
     authenticateSocket();
   });
 
-  socket.on('authenticated', () => {
+  socket.on('authenticated', (data) => {
     authenticated = true;
     console.log('✅ Socket.IO autenticado');
+    if (data?.presence) {
+      window.dispatchEvent(new CustomEvent('staff:presence', { detail: data.presence }));
+    }
+  });
+
+  socket.on('staff_presence_updated', (data) => {
+    window.dispatchEvent(new CustomEvent('staff:presence', { detail: data }));
+  });
+
+  socket.on('user_online', (data) => {
+    window.dispatchEvent(new CustomEvent('staff:user_online', { detail: data }));
+  });
+
+  socket.on('user_offline', (data) => {
+    window.dispatchEvent(new CustomEvent('staff:user_offline', { detail: data }));
   });
 
   socket.on('disconnect', (reason) => {
@@ -113,6 +128,13 @@ function bindCoreEvents() {
       try { fn(data); } catch (e) { console.error(e); }
     });
   });
+}
+
+export function disconnectSocket() {
+  if (socket?.connected) {
+    socket.disconnect();
+  }
+  authenticated = false;
 }
 
 export function connectSocket({

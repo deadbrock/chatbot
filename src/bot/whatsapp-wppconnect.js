@@ -60,12 +60,61 @@ class WhatsAppClient {
     this.initStartedAt = null;
     this.hasSyncedThisSession = false;
     this.awaitingInitialSync = false;
+    this.userRequestedDisconnect = false;
+    this.autoReconnectEnabled = true;
+    this.reconnectTimer = null;
+    this.maxReconnectAttempts = Number.POSITIVE_INFINITY;
   }
 
   hasPersistedBrowserProfile() {
     const sessionPath = this.getSessionPath();
     const markers = ['Default', 'Local State', 'First Run', 'Preferences'];
     return markers.some((name) => fs.existsSync(path.join(sessionPath, name)));
+  }
+
+  hasPersistedSession() {
+    return this.hasPersistedBrowserProfile();
+  }
+
+  clearReconnectTimer() {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  shouldKeepConnectionAlive() {
+    return this.autoReconnectEnabled && !this.userRequestedDisconnect;
+  }
+
+  scheduleAutoReconnect(reason = 'desconexão inesperada') {
+    if (!this.shouldKeepConnectionAlive()) {
+      logger.info(`⏹️ Reconexão automática ignorada (${reason}) — desconexão solicitada pelo usuário`);
+      return;
+    }
+
+    if (this.isReady || this.isInitializing || this.reconnectTimer) {
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const delay = Math.min(120000, 3000 + (this.reconnectAttempts * 4000));
+    logger.warn(`🔄 Reconexão automática agendada em ${Math.round(delay / 1000)}s (${reason}) — tentativa ${this.reconnectAttempts}`);
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      if (!this.shouldKeepConnectionAlive() || this.isReady) return;
+
+      try {
+        this.isInitializing = false;
+        this.client = null;
+        await this.cleanupOrphanedProcesses();
+        await this.prepareForConnection({ rotateIfLocked: true, forceFresh: false, closeExisting: false });
+        await this.initialize();
+      } catch (err) {
+        logger.error('❌ Falha na reconexão automática:', err.message);
+        this.scheduleAutoReconnect('falha na reconexão');
+      }
+    }, delay);
   }
 
   getSessionPath() {
@@ -86,23 +135,36 @@ class WhatsAppClient {
     return lockFiles.some((name) => fs.existsSync(path.join(this.getSessionPath(), name)));
   }
 
-  async prepareForConnection({ rotateIfLocked = true, forceFresh = false } = {}) {
-    this.reconnectAttempts = 0;
-    this.isInitializing = false;
+  async prepareForConnection({
+    rotateIfLocked = true,
+    forceFresh = false,
+    closeExisting = false,
+  } = {}) {
+    this.clearReconnectTimer();
 
-    if (this.client) {
-      await this.disconnect();
+    if (this.isReady && !closeExisting && !forceFresh) {
+      logger.info('✅ Sessão WhatsApp já ativa — mantendo conexão');
+      return;
     }
+
+    if (closeExisting && this.client) {
+      await this.disconnect({ userInitiated: false });
+    } else if (this.client && (forceFresh || closeExisting)) {
+      await this.disconnect({ userInitiated: forceFresh });
+    }
+
+    this.isInitializing = false;
 
     if (forceFresh && !this.isReady) {
       logger.info('🆕 Preparando sessão limpa para novo QR Code...');
       this.rotateSessionName();
     } else if (rotateIfLocked && this.isSessionLocked()) {
-      logger.warn('⚠️ Sessão anterior ainda bloqueada. Criando nova pasta de sessão...');
-      this.rotateSessionName();
-    } else if (!this.isReady && this.hasPersistedBrowserProfile()) {
-      logger.warn('⚠️ Perfil antigo detectado sem conexão ativa. Criando nova sessão...');
-      this.rotateSessionName();
+      logger.warn('⚠️ Sessão anterior ainda bloqueada. Tentando liberar locks...');
+      await this.cleanupOrphanedProcesses();
+      if (this.isSessionLocked()) {
+        logger.warn('⚠️ Locks persistentes — criando nova pasta de sessão...');
+        this.rotateSessionName();
+      }
     }
   }
 
@@ -167,6 +229,9 @@ class WhatsAppClient {
     this.isReady = true;
     this.isInitializing = false;
     this.reconnectAttempts = 0;
+    this.userRequestedDisconnect = false;
+    this.autoReconnectEnabled = true;
+    this.clearReconnectTimer();
     this.awaitingInitialSync = true;
     this.clearQrAfterAuth();
     logger.info('✅ WhatsApp autenticado e pronto!');
@@ -414,17 +479,23 @@ class WhatsAppClient {
               logger.info('✅ Chats disponíveis!');
               this.markConnected();
             } else if (statusSession === 'serverClose') {
-              logger.warn('⚠️ Servidor fechou a conexão');
-              this.markDisconnected();
-            } else if (statusSession === 'notLogged') {
-              logger.info('📲 Aguardando escaneamento do QR Code...');
-              this.loadingMessage = 'Aguardando escaneamento do QR Code...';
-              this.markDisconnected();
-            } else if (statusSession === 'qrReadError' || statusSession === 'autocloseCalled' || statusSession === 'browserClose') {
-              logger.warn(`⚠️ Sessão encerrada (${statusSession}). Será necessário reconectar.`);
+              logger.warn('⚠️ Servidor fechou a conexão — tentando reconectar automaticamente');
               this.markDisconnected();
               this.isInitializing = false;
               this.client = null;
+              this.scheduleAutoReconnect('serverClose');
+            } else if (statusSession === 'notLogged') {
+              logger.info('📲 Aguardando escaneamento do QR Code...');
+              this.loadingMessage = 'Aguardando escaneamento do QR Code...';
+              if (!this.hasPersistedSession()) {
+                this.markDisconnected();
+              }
+            } else if (statusSession === 'qrReadError' || statusSession === 'autocloseCalled' || statusSession === 'browserClose') {
+              logger.warn(`⚠️ Sessão encerrada (${statusSession}) — reconectando automaticamente`);
+              this.markDisconnected();
+              this.isInitializing = false;
+              this.client = null;
+              this.scheduleAutoReconnect(statusSession);
             }
           } catch (err) {
             logger.error('❌ Erro no callback statusFind:', err);
@@ -529,16 +600,10 @@ class WhatsAppClient {
         }
       }
       
-      // Tentar reconectar
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        const delay = isBrowserLocked ? 2000 : 5000 + (this.reconnectAttempts * 2000);
-        logger.info(`🔄 Tentando reconectar (${this.reconnectAttempts}/${this.maxReconnectAttempts}) em ${delay/1000}s...`);
-        setTimeout(() => this.initialize(), delay);
+      if (this.shouldKeepConnectionAlive()) {
+        this.scheduleAutoReconnect(isBrowserLocked ? 'navegador travado' : 'falha na inicialização');
       } else {
-        logger.error('❌ Máximo de tentativas de reconexão atingido!');
-        logger.warn('⚠️ O servidor continuará rodando, mas o WhatsApp não estará disponível.');
-        logger.warn('⚠️ Para tentar novamente, reinicie o servidor ou use a API de reconexão.');
+        logger.warn('⚠️ WhatsApp indisponível até nova conexão manual (desconexão solicitada pelo usuário).');
       }
       
       // NÃO fazer throw aqui para não derrubar o servidor
@@ -584,7 +649,9 @@ class WhatsAppClient {
       } else if (state === 'DISCONNECTED') {
         logger.warn('⚠️ WhatsApp desconectado!');
         this.markDisconnected();
+        this.isInitializing = false;
         this.client = null;
+        this.scheduleAutoReconnect('DISCONNECTED');
       }
     });
 
@@ -824,9 +891,21 @@ class WhatsAppClient {
 
   /**
    * Desconectar
+   * @param {{ userInitiated?: boolean }} options
+   * userInitiated=true apenas em "Encerrar" ou "Limpar sessão" no painel.
    */
-  async disconnect() {
+  async disconnect({ userInitiated = true } = {}) {
     try {
+      this.clearReconnectTimer();
+
+      if (userInitiated) {
+        this.userRequestedDisconnect = true;
+        this.autoReconnectEnabled = false;
+        logger.info('🔌 Desconexão solicitada pelo usuário — reconexão automática desativada');
+      } else {
+        logger.info('🔌 Encerrando navegador WhatsApp (sessão preservada para restauração)');
+      }
+
       if (this.qrWatchdog) {
         clearInterval(this.qrWatchdog);
         this.qrWatchdog = null;
@@ -842,7 +921,10 @@ class WhatsAppClient {
       this.markDisconnected();
       this.client = null;
       this.isInitializing = false;
-      await this.cleanupOrphanedProcesses();
+
+      if (userInitiated) {
+        await this.cleanupOrphanedProcesses();
+      }
     } catch (error) {
       logger.error('❌ Erro ao desconectar:', error);
       this.client = null;
@@ -851,12 +933,21 @@ class WhatsAppClient {
   }
 
   /**
+   * Encerramento suave do servidor — preserva tokens para restaurar no próximo boot.
+   */
+  async softShutdown() {
+    await this.disconnect({ userInitiated: false });
+  }
+
+  /**
    * Limpar sessão
    */
   async clearSession() {
     logger.info('🗑️ Limpando sessão WPPConnect...');
 
-    await this.disconnect();
+    this.userRequestedDisconnect = true;
+    this.autoReconnectEnabled = false;
+    await this.disconnect({ userInitiated: true });
     this.client = null;
 
     const result = await this.resetStuckSession();
@@ -867,6 +958,8 @@ class WhatsAppClient {
     this.qrCode = null;
     this.isInitializing = false;
     this.reconnectAttempts = 0;
+    this.userRequestedDisconnect = false;
+    this.autoReconnectEnabled = true;
 
     logger.info(`✅ Sessão limpa. Sessão ativa: ${this.sessionName}`);
     return { sessionName: this.sessionName };
@@ -877,7 +970,10 @@ class WhatsAppClient {
    */
   async forceReconnect() {
     logger.info('🔄 Forçando reconexão...');
-    await this.prepareForConnection({ rotateIfLocked: true });
+    this.userRequestedDisconnect = false;
+    this.autoReconnectEnabled = true;
+    this.clearReconnectTimer();
+    await this.prepareForConnection({ rotateIfLocked: true, forceFresh: false, closeExisting: true });
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await this.initialize();
     logger.info('✅ Reconexão iniciada!');

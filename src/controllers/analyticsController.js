@@ -7,6 +7,8 @@ const ChatMessage = require('../models/ChatMessageSQL');
 const { ok, fail } = require('../utils/http');
 const { formatDateStr, dateDiffMinutes, dateDiffMillis, rawExtractHourSQL } = require('../utils/dbHelpers');
 
+const userPresenceService = require('../services/userPresenceService');
+
 const STAFF_ROLES = ['agent', 'manager'];
 
 function buildStaffUserWhere({ onlineOnly = false } = {}) {
@@ -23,7 +25,7 @@ function buildStaffUserWhere({ onlineOnly = false } = {}) {
 }
 
 async function countStaffUsers(options = {}) {
-  return User.count({ where: buildStaffUserWhere(options) });
+  return userPresenceService.countStaffUsers(options);
 }
 
 function buildFinishedTodayWhere(today, tomorrow) {

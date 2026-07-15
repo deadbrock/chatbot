@@ -149,7 +149,17 @@ exports.connect = async (req, res) => {
     }
 
     whatsappClient.reconnectAttempts = 0;
-    await whatsappClient.prepareForConnection({ rotateIfLocked: true, forceFresh: true });
+    whatsappClient.userRequestedDisconnect = false;
+    whatsappClient.autoReconnectEnabled = true;
+
+    const hasSavedSession = typeof whatsappClient.hasPersistedSession === 'function'
+      && whatsappClient.hasPersistedSession();
+
+    await whatsappClient.prepareForConnection({
+      rotateIfLocked: true,
+      forceFresh: !hasSavedSession,
+      closeExisting: false,
+    });
 
     // Iniciar nova conexão
     logger.info('🚀 Iniciando nova conexão WhatsApp...');
@@ -180,7 +190,7 @@ exports.disconnect = async (req, res) => {
       return sendError(res, 'Cliente WhatsApp não está conectado', 400);
     }
 
-    await whatsappClient.disconnect();
+    await whatsappClient.disconnect({ userInitiated: true });
     currentQRCode = null;
     qrCodeExpiry = null;
 
@@ -206,9 +216,11 @@ exports.restart = async (req, res) => {
       return sendError(res, 'Cliente WhatsApp não inicializado', 400);
     }
 
-    // Desconectar se estiver conectado
+    // Desconectar se estiver conectado (preserva tokens — é um reinício, não encerramento)
     if (whatsappClient.isReady) {
-      await whatsappClient.disconnect();
+      await whatsappClient.disconnect({ userInitiated: false });
+      whatsappClient.userRequestedDisconnect = false;
+      whatsappClient.autoReconnectEnabled = true;
       currentQRCode = null;
       qrCodeExpiry = null;
     }
@@ -377,6 +389,48 @@ exports.syncConversations = async (req, res) => {
   } catch (error) {
     logger.error('❌ Erro ao iniciar sync:', error);
     return sendError(res, 'Erro ao sincronizar conversas: ' + error.message);
+  }
+};
+
+/**
+ * POST /api/whatsapp/sync-on-login
+ * Dispara sincronização automática após login no painel (força se passou do cooldown).
+ */
+exports.syncOnLogin = async (req, res) => {
+  try {
+    const whatsappClient = req.app.get('whatsappClient');
+
+    if (!whatsappClient) {
+      return sendSuccess(res, {
+        started: false,
+        message: 'Cliente WhatsApp não inicializado'
+      });
+    }
+
+    if (!(await whatsappClient.ensureReadyForSend())) {
+      return sendSuccess(res, {
+        started: false,
+        connected: false,
+        message: 'WhatsApp não está conectado — sincronização adiada'
+      });
+    }
+
+    const force = req.body?.force !== false;
+
+    whatsappSyncService.startSync(whatsappClient, { force }).then((stats) => {
+      logger.info('✅ Sync pós-login concluído:', stats);
+    }).catch((err) => {
+      logger.error('❌ Sync pós-login falhou:', err.message);
+    });
+
+    return sendSuccess(res, {
+      started: true,
+      message: 'Sincronização automática iniciada',
+      sync: whatsappSyncService.getStatus()
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao iniciar sync pós-login:', error);
+    return sendError(res, 'Erro ao sincronizar após login: ' + error.message);
   }
 };
 

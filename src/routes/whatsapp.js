@@ -57,6 +57,12 @@ router.post('/clear-session', whatsappController.clearSession);
 router.post('/sync', authenticate, whatsappController.syncConversations);
 
 /**
+ * POST /api/whatsapp/sync-on-login
+ * Sincronização automática ao entrar no painel
+ */
+router.post('/sync-on-login', authenticate, whatsappController.syncOnLogin);
+
+/**
  * GET /api/whatsapp/sync/status
  * Progresso da sincronização em tempo real
  */

@@ -226,6 +226,11 @@ async function remove(req, res) {
 async function updateStatus(req, res) {
   try {
     const { status } = req.body;
+
+    if (['online', 'offline'].includes(status)) {
+      return fail(res, 403, 'Status online/offline é definido automaticamente pelo login no painel');
+    }
+
     const user = await User.findByPk(req.params.id);
     if (!user) return fail(res, 404, 'Usuário não encontrado');
 

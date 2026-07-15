@@ -214,6 +214,32 @@ async function checkInitialSyncStatus() {
   }
 }
 
+/**
+ * Dispara sincronização automática ao entrar no painel (ex.: após fim de semana).
+ */
+export async function triggerLoginSync() {
+  try {
+    const whatsappStatus = unwrapStatus(await apiFetch('/whatsapp/status'));
+    if (!whatsappStatus.connected) return;
+
+    const syncStatus = unwrapStatus(await apiFetch('/whatsapp/sync/status'));
+    if (syncStatus.syncInProgress) {
+      if (syncStatus.progress) {
+        updateOverlay(syncStatus.progress);
+        startPolling();
+      }
+      return;
+    }
+
+    await apiFetch('/whatsapp/sync-on-login', {
+      method: 'POST',
+      body: { force: true }
+    });
+  } catch {
+    // WhatsApp offline ou API indisponível — painel segue normalmente
+  }
+}
+
 export function initWhatsappSyncProgress() {
   if (initialized) return;
   initialized = true;

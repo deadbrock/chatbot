@@ -1,6 +1,11 @@
 const ChatMessage = require('../models/ChatMessageSQL');
 const Attachment = require('../models/AttachmentSQL');
 const Ticket = require('../models/TicketSQL');
+const jwt = require('jsonwebtoken');
+const userPresenceService = require('./userPresenceService');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
+const STAFF_ROLES = new Set(userPresenceService.STAFF_ROLES);
 
 /**
  * Serviço de Socket.IO para Chat em Tempo Real
@@ -10,8 +15,9 @@ const Ticket = require('../models/TicketSQL');
 class ChatSocketService {
   constructor(io) {
     this.io = io;
-    this.connectedUsers = new Map(); // userId -> socket.id
+    this.connectedUsers = new Map(); // userId -> socket.id (última conexão)
     this.userSockets = new Map(); // socket.id -> userData
+    this.userConnections = new Map(); // userId -> Set<socketId>
   }
 
   /**
@@ -46,7 +52,7 @@ class ChatSocketService {
       // Reação
       socket.on('react_message', (data) => this.handleReaction(socket, data));
       
-      // Online/Offline
+      // Away/Busy (somente enquanto conectado)
       socket.on('set_status', (status) => this.handleStatusChange(socket, status));
       
       // Desconexão
@@ -56,38 +62,124 @@ class ChatSocketService {
     console.log('✅ Socket.IO Chat Service inicializado');
   }
 
-  /**
-   * Autentica usuário
-   */
-  handleAuthentication(socket, data) {
-    const { userId, name, role } = data;
-    
-    if (!userId) {
-      socket.emit('auth_error', { message: 'User ID é obrigatório' });
-      return;
+  addUserConnection(userId, socketId) {
+    const key = String(userId);
+    if (!this.userConnections.has(key)) {
+      this.userConnections.set(key, new Set());
     }
-    
-    // Armazenar dados do usuário
-    this.userSockets.set(socket.id, {
-      userId,
-      name,
-      role,
-      status: 'online',
-      connectedAt: new Date()
+    this.userConnections.get(key).add(socketId);
+    return this.userConnections.get(key).size;
+  }
+
+  removeUserConnection(userId, socketId) {
+    const key = String(userId);
+    const connections = this.userConnections.get(key);
+    if (!connections) return 0;
+
+    connections.delete(socketId);
+    if (!connections.size) {
+      this.userConnections.delete(key);
+    }
+
+    return connections.size;
+  }
+
+  async broadcastStaffPresence(changedUser = null) {
+    const summary = await userPresenceService.getStaffPresenceSummary();
+    this.io.emit('staff_presence_updated', {
+      ...summary,
+      changedUser
     });
-    
-    this.connectedUsers.set(userId, socket.id);
-    
-    socket.emit('authenticated', {
-      success: true,
-      userId,
-      connectedUsers: this.getOnlineUsers()
+  }
+
+  async markUserOnline(userData) {
+    if (!STAFF_ROLES.has(userData.role)) return;
+
+    await userPresenceService.setUserPresence(userData.userId, 'online');
+    await this.broadcastStaffPresence({
+      userId: userData.userId,
+      name: userData.name,
+      status: 'online'
     });
-    
-    // Notificar outros usuários
-    this.io.emit('user_online', { userId, name });
-    
-    console.log(`✅ Usuário autenticado: ${name} (${userId})`);
+  }
+
+  async markUserOffline(userData) {
+    if (!STAFF_ROLES.has(userData.role)) return;
+
+    await userPresenceService.setUserPresence(userData.userId, 'offline');
+    await this.broadcastStaffPresence({
+      userId: userData.userId,
+      name: userData.name,
+      status: 'offline'
+    });
+  }
+
+  /**
+   * Autentica usuário via JWT e marca online na primeira conexão ativa
+   */
+  async handleAuthentication(socket, data) {
+    try {
+      const { token, userId, name, role } = data || {};
+
+      if (!token || !userId) {
+        socket.emit('auth_error', { message: 'Token e usuário são obrigatórios' });
+        return;
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        socket.emit('auth_error', { message: 'Token inválido ou expirado' });
+        return;
+      }
+
+      if (String(decoded.id) !== String(userId)) {
+        socket.emit('auth_error', { message: 'Usuário não corresponde ao token' });
+        return;
+      }
+
+      const resolvedUserId = decoded.id;
+      const resolvedName = name || decoded.name || decoded.email || 'Usuário';
+      const resolvedRole = role || decoded.role || 'agent';
+
+      const userData = {
+        userId: resolvedUserId,
+        name: resolvedName,
+        role: resolvedRole,
+        status: 'online',
+        connectedAt: new Date()
+      };
+
+      this.userSockets.set(socket.id, userData);
+      this.connectedUsers.set(String(resolvedUserId), socket.id);
+
+      const activeConnections = this.addUserConnection(resolvedUserId, socket.id);
+      const becameOnline = activeConnections === 1;
+
+      if (becameOnline) {
+        await this.markUserOnline(userData);
+        this.io.emit('user_online', {
+          userId: resolvedUserId,
+          name: resolvedName,
+          role: resolvedRole
+        });
+      }
+
+      const presence = await userPresenceService.getStaffPresenceSummary();
+
+      socket.emit('authenticated', {
+        success: true,
+        userId: resolvedUserId,
+        connectedUsers: this.getOnlineUsers(),
+        presence
+      });
+
+      console.log(`✅ Usuário autenticado: ${resolvedName} (${resolvedUserId})`);
+    } catch (error) {
+      console.error('❌ Erro na autenticação do socket:', error);
+      socket.emit('auth_error', { message: 'Falha na autenticação' });
+    }
   }
 
   handleJoinConversation(socket, conversationId) {
@@ -122,18 +214,7 @@ class ChatSocketService {
     const room = `ticket_${ticketId}`;
     socket.join(room);
     
-    socket.emit('joined_ticket', {
-      ticketId,
-      room
-    });
-    
-    // Notificar outros na sala
-    socket.to(room).emit('user_joined_ticket', {
-      ticketId,
-      userId: userData.userId,
-      name: userData.name
-    });
-    
+    socket.emit('joined_ticket', { ticketId, room });
     console.log(`✅ ${userData.name} entrou no ticket ${ticketId}`);
   }
 
@@ -141,36 +222,27 @@ class ChatSocketService {
    * Sair de sala de ticket
    */
   handleLeaveTicket(socket, ticketId) {
-    const userData = this.userSockets.get(socket.id);
     const room = `ticket_${ticketId}`;
-    
     socket.leave(room);
-    
-    if (userData) {
-      socket.to(room).emit('user_left_ticket', {
-        ticketId,
-        userId: userData.userId,
-        name: userData.name
-      });
-    }
-    
-    console.log(`👋 ${userData?.name || 'Usuário'} saiu do ticket ${ticketId}`);
   }
 
   /**
    * Usuário está digitando
    */
   handleTyping(socket, data) {
-    const { ticketId } = data;
     const userData = this.userSockets.get(socket.id);
-    
-    if (!userData || !ticketId) return;
-    
-    const room = `ticket_${ticketId}`;
+    if (!userData) return;
+
+    const { ticketId, conversationId } = data || {};
+    const room = conversationId
+      ? `conversation_${conversationId}`
+      : `ticket_${ticketId}`;
+
     socket.to(room).emit('user_typing', {
-      ticketId,
       userId: userData.userId,
-      name: userData.name
+      name: userData.name,
+      ticketId,
+      conversationId
     });
   }
 
@@ -178,75 +250,58 @@ class ChatSocketService {
    * Usuário parou de digitar
    */
   handleStopTyping(socket, data) {
-    const { ticketId } = data;
     const userData = this.userSockets.get(socket.id);
-    
-    if (!userData || !ticketId) return;
-    
-    const room = `ticket_${ticketId}`;
+    if (!userData) return;
+
+    const { ticketId, conversationId } = data || {};
+    const room = conversationId
+      ? `conversation_${conversationId}`
+      : `ticket_${ticketId}`;
+
     socket.to(room).emit('user_stop_typing', {
+      userId: userData.userId,
       ticketId,
+      conversationId
+    });
+  }
+
+  /**
+   * Enviar mensagem via socket (opcional)
+   */
+  async handleSendMessage(socket, data) {
+    const userData = this.userSockets.get(socket.id);
+    if (!userData) return;
+
+    const room = data.conversationId
+      ? `conversation_${data.conversationId}`
+      : `ticket_${data.ticketId}`;
+
+    this.io.to(room).emit('message_sent', {
+      ...data,
+      userId: userData.userId,
+      userName: userData.name
+    });
+  }
+
+  /**
+   * Mensagem lida
+   */
+  handleReadMessage(socket, data) {
+    const userData = this.userSockets.get(socket.id);
+    if (!userData) return;
+
+    const room = data.conversationId
+      ? `conversation_${data.conversationId}`
+      : `ticket_${data.ticketId}`;
+
+    this.io.to(room).emit('message_read', {
+      ...data,
       userId: userData.userId
     });
   }
 
   /**
-   * Enviar mensagem (via Socket.IO)
-   */
-  async handleSendMessage(socket, data) {
-    const userData = this.userSockets.get(socket.id);
-    
-    if (!userData) {
-      socket.emit('message_error', { message: 'Não autenticado' });
-      return;
-    }
-    
-    try {
-      const { ticketId, body, type = 'text', quotedMessageId } = data;
-      
-      // TODO: Criar mensagem no banco e enviar via WhatsApp
-      // Por enquanto, apenas emitir para a sala
-      
-      const room = `ticket_${ticketId}`;
-      this.io.to(room).emit('new_message', {
-        ticketId,
-        messageId: `msg_${Date.now()}`,
-        from: userData.userId,
-        fromName: userData.name,
-        body,
-        type,
-        timestamp: new Date(),
-        quotedMessageId
-      });
-      
-      socket.emit('message_sent', { success: true });
-    } catch (error) {
-      console.error('Erro ao enviar mensagem via socket:', error);
-      socket.emit('message_error', { message: error.message });
-    }
-  }
-
-  /**
-   * Marcar mensagem como lida
-   */
-  async handleReadMessage(socket, data) {
-    const { ticketId, messageId } = data;
-    const userData = this.userSockets.get(socket.id);
-    
-    if (!userData) return;
-    
-    // Notificar sala
-    const room = `ticket_${ticketId}`;
-    this.io.to(room).emit('message_read', {
-      ticketId,
-      messageId,
-      readBy: userData.userId,
-      readAt: new Date()
-    });
-  }
-
-  /**
-   * Adicionar reação
+   * Reação em mensagem
    */
   async handleReaction(socket, data) {
     const { ticketId, messageId, emoji } = data;
@@ -266,17 +321,25 @@ class ChatSocketService {
   }
 
   /**
-   * Mudar status (online/away/busy)
+   * Mudar status (away/busy) enquanto conectado
    */
-  handleStatusChange(socket, status) {
+  async handleStatusChange(socket, status) {
     const userData = this.userSockets.get(socket.id);
     
     if (!userData) return;
+
+    if (!['away', 'busy'].includes(status)) return;
     
     userData.status = status;
+    await userPresenceService.setUserPresence(userData.userId, status);
     
-    // Notificar todos
     this.io.emit('user_status_change', {
+      userId: userData.userId,
+      name: userData.name,
+      status
+    });
+
+    await this.broadcastStaffPresence({
       userId: userData.userId,
       name: userData.name,
       status
@@ -286,18 +349,22 @@ class ChatSocketService {
   /**
    * Desconexão
    */
-  handleDisconnect(socket) {
+  async handleDisconnect(socket) {
     const userData = this.userSockets.get(socket.id);
     
     if (userData) {
-      this.connectedUsers.delete(userData.userId);
+      const remaining = this.removeUserConnection(userData.userId, socket.id);
+      this.connectedUsers.delete(String(userData.userId));
       this.userSockets.delete(socket.id);
-      
-      // Notificar outros usuários
-      this.io.emit('user_offline', {
-        userId: userData.userId,
-        name: userData.name
-      });
+
+      if (remaining === 0) {
+        await this.markUserOffline(userData);
+        this.io.emit('user_offline', {
+          userId: userData.userId,
+          name: userData.name,
+          role: userData.role
+        });
+      }
       
       console.log(`👋 ${userData.name} desconectado`);
     } else {
@@ -311,7 +378,7 @@ class ChatSocketService {
   getOnlineUsers() {
     const users = [];
     
-    for (const [socketId, userData] of this.userSockets) {
+    for (const [, userData] of this.userSockets) {
       users.push({
         userId: userData.userId,
         name: userData.name,
@@ -327,7 +394,7 @@ class ChatSocketService {
    * Emite evento para um usuário específico
    */
   emitToUser(userId, event, data) {
-    const socketId = this.connectedUsers.get(userId);
+    const socketId = this.connectedUsers.get(String(userId));
     
     if (socketId) {
       this.io.to(socketId).emit(event, data);
@@ -353,4 +420,3 @@ class ChatSocketService {
 }
 
 module.exports = ChatSocketService;
-

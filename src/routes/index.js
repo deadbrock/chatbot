@@ -26,6 +26,7 @@ const reportsRoutes = require('./reports'); // Relatórios e Exportações
 const dashboardRoutes = require('./dashboard'); // Dashboard Executivo
 const performanceRoutes = require('./performance'); // Análise de Desempenho (Fase 6B)
 const satisfactionRoutes = require('./satisfaction'); // Análise de Satisfação (Fase 6C)
+const conversationsRoutes = require('./conversations'); // Inbox de Conversas WhatsApp
 const conversationRoutes = require('./conversation'); // Análise de Conversas (Fase 6D)
 const whatsappRoutes = require('./whatsapp'); // Conexão WhatsApp
 const conversationFlowsRoutes = require('./conversationFlows'); // Fluxos internos do bot (diagnóstico/config)
@@ -64,6 +65,7 @@ router.use('/reports', reportsRoutes); // Relatórios e Exportações (auth dent
 router.use('/dashboard', dashboardRoutes); // Dashboard Executivo (auth dentro das rotas)
 router.use('/performance', performanceRoutes); // Análise de Desempenho (Fase 6B)
 router.use('/satisfaction', satisfactionRoutes); // Análise de Satisfação (Fase 6C)
+router.use('/conversations', authMiddleware, conversationsRoutes); // Inbox WhatsApp
 router.use('/conversation', conversationRoutes); // Análise de Conversas (Fase 6D)
 router.use('/whatsapp', whatsappRoutes); // Conexão WhatsApp
 router.use('/conversation-flows', authMiddleware, conversationFlowsRoutes);

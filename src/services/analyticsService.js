@@ -6,7 +6,8 @@ const User = require('../models/UserSQL');
 const Rating = require('../models/RatingSQL');
 const logger = require('../utils/logger');
 const moment = require('moment-timezone');
-const { Op } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
+const { formatDateStr } = require('../utils/dbHelpers');
 
 /**
  * ANALYTICS SERVICE
@@ -114,7 +115,7 @@ class AnalyticsService {
   async countOpenTickets(date) {
     return await Ticket.count({
       where: {
-        status: { [Op.in]: ['open', 'pending', 'waiting'] },
+        status: { [Op.in]: ['open', 'waiting_human', 'in_progress'] },
         createdAt: { [Op.lte]: date },
       },
     });
@@ -347,7 +348,7 @@ class AnalyticsService {
       where: {
         createdAt: { [Op.between]: [startDate, endDate] },
       },
-      attributes: [[Ticket.sequelize.fn('AVG', Ticket.sequelize.col('score')), 'avg']],
+      attributes: [[fn('AVG', col('score')), 'avg']],
       raw: true,
     });
 
@@ -359,17 +360,25 @@ class AnalyticsService {
   // ==============================================
 
   async countActiveAgents(startDate, endDate) {
-    // Agentes que atenderam tickets no período
     const tickets = await Ticket.findAll({
       where: {
-        createdAt: { [Op.between]: [startDate, endDate] },
-        userId: { [Op.ne]: null },
+        assignedAt: { [Op.between]: [startDate, endDate] },
+        assignedTo: { [Op.ne]: null },
       },
-      attributes: ['userId'],
-      group: ['userId'],
+      attributes: ['assignedTo'],
+      group: ['assignedTo'],
     });
 
     return tickets.length;
+  }
+
+  async countOnlineAgents() {
+    return await User.count({
+      where: {
+        status: 'online',
+        role: { [Op.in]: ['agent', 'manager'] },
+      },
+    });
   }
 
   async calculateAvgAgentLoad(startDate, endDate) {
@@ -381,9 +390,19 @@ class AnalyticsService {
   }
 
   async calculateTotalAgentHours(startDate, endDate) {
-    // Estimativa baseada em tickets atendidos (assumindo 15min por ticket)
-    const totalTickets = await this.countTickets(startDate, endDate);
-    return parseFloat((totalTickets * 0.25).toFixed(2)); // 15min = 0.25h
+    const tickets = await Ticket.findAll({
+      where: {
+        assignedAt: { [Op.between]: [startDate, endDate] },
+        closedAt: { [Op.ne]: null },
+      },
+      attributes: ['assignedAt', 'closedAt'],
+    });
+
+    const totalMinutes = tickets.reduce((sum, ticket) => {
+      return sum + moment(ticket.closedAt).diff(moment(ticket.assignedAt), 'minutes');
+    }, 0);
+
+    return parseFloat((totalMinutes / 60).toFixed(2));
   }
 
   async calculateAvgTicketsPerAgent(startDate, endDate) {
@@ -449,18 +468,30 @@ class AnalyticsService {
     const tickets = await Ticket.findAll({
       where: {
         createdAt: { [Op.between]: [startDate, endDate] },
+        assignedTo: { [Op.ne]: null },
       },
       attributes: [
-        'userId',
-        [Ticket.sequelize.fn('COUNT', Ticket.sequelize.col('id')), 'count'],
+        'assignedTo',
+        [fn('COUNT', col('id')), 'count'],
       ],
-      group: ['userId'],
+      group: ['assignedTo'],
       raw: true,
     });
 
+    const agentIds = tickets.map((t) => t.assignedTo).filter(Boolean);
+    const agents = agentIds.length
+      ? await User.findAll({
+          where: { id: { [Op.in]: agentIds } },
+          attributes: ['id', 'name'],
+          raw: true,
+        })
+      : [];
+    const agentNames = new Map(agents.map((a) => [a.id, a.name]));
+
     const breakdown = {};
     for (const ticket of tickets) {
-      breakdown[ticket.userId || 'sem-agente'] = parseInt(ticket.count);
+      const label = agentNames.get(ticket.assignedTo) || `Atendente #${ticket.assignedTo}`;
+      breakdown[label] = parseInt(ticket.count, 10);
     }
 
     return breakdown;
@@ -555,11 +586,173 @@ class AnalyticsService {
   async getDashboardData(startDate, endDate, filters = {}) {
     const snapshots = await AnalyticsSnapshot.findInRange(startDate, endDate, filters.period || 'daily');
 
+    if (snapshots.length > 0) {
+      return {
+        timeline: snapshots.map((s) => s.getSummary()),
+        summary: this.calculateSummary(snapshots),
+        trends: this.calculateTrends(snapshots),
+        comparison: await this.calculateComparison(startDate, endDate),
+        source: 'snapshots',
+      };
+    }
+
+    const timeline = await this.buildRealtimeTimeline(startDate, endDate);
+
     return {
-      timeline: snapshots.map(s => s.getSummary()),
-      summary: this.calculateSummary(snapshots),
-      trends: this.calculateTrends(snapshots),
+      timeline,
+      summary: this.calculateSummaryFromTimeline(timeline),
+      trends: this.calculateTrendsFromTimeline(timeline),
       comparison: await this.calculateComparison(startDate, endDate),
+      source: 'realtime',
+    };
+  }
+
+  async buildRealtimeTimeline(startDate, endDate) {
+    const start = moment(startDate).startOf('day');
+    const end = moment(endDate).endOf('day');
+
+    const createdDateExpr = formatDateStr('createdAt');
+    const closedDateExpr = formatDateStr('closedAt');
+    const messageDateExpr = formatDateStr('timestamp');
+
+    const ratingDateExpr = formatDateStr('createdAt');
+
+    const [createdRows, closedRows, receivedRows, sentRows, ratingRows] = await Promise.all([
+      Ticket.findAll({
+        attributes: [[createdDateExpr, 'date'], [fn('COUNT', col('id')), 'total']],
+        where: { createdAt: { [Op.between]: [start.toDate(), end.toDate()] } },
+        group: [createdDateExpr],
+        raw: true,
+      }),
+      Ticket.findAll({
+        attributes: [[closedDateExpr, 'date'], [fn('COUNT', col('id')), 'closed']],
+        where: {
+          status: { [Op.in]: ['closed', 'resolved'] },
+          closedAt: { [Op.between]: [start.toDate(), end.toDate()] },
+        },
+        group: [closedDateExpr],
+        raw: true,
+      }),
+      ChatMessage.findAll({
+        attributes: [[messageDateExpr, 'date'], [fn('COUNT', col('id')), 'received']],
+        where: {
+          timestamp: { [Op.between]: [start.toDate(), end.toDate()] },
+          [Op.or]: [{ fromMe: false }, { direction: 'incoming' }],
+        },
+        group: [messageDateExpr],
+        raw: true,
+      }),
+      ChatMessage.findAll({
+        attributes: [[messageDateExpr, 'date'], [fn('COUNT', col('id')), 'sent']],
+        where: {
+          timestamp: { [Op.between]: [start.toDate(), end.toDate()] },
+          [Op.or]: [{ fromMe: true }, { direction: 'outgoing' }],
+        },
+        group: [messageDateExpr],
+        raw: true,
+      }),
+      Rating.findAll({
+        attributes: [
+          [ratingDateExpr, 'date'],
+          [fn('COUNT', col('id')), 'ratings'],
+          [fn('AVG', col('score')), 'avg'],
+          [fn('SUM', literal('CASE WHEN score >= 9 THEN 1 ELSE 0 END')), 'promoters'],
+          [fn('SUM', literal('CASE WHEN score <= 6 THEN 1 ELSE 0 END')), 'detractors'],
+        ],
+        where: { createdAt: { [Op.between]: [start.toDate(), end.toDate()] } },
+        group: [ratingDateExpr],
+        raw: true,
+      }),
+    ]);
+
+    const toMap = (rows, field) => Object.fromEntries(
+      rows.map((row) => [row.date, parseInt(row[field] || 0, 10)])
+    );
+
+    const createdMap = toMap(createdRows, 'total');
+    const closedMap = toMap(closedRows, 'closed');
+    const receivedMap = toMap(receivedRows, 'received');
+    const sentMap = toMap(sentRows, 'sent');
+    const ratingsByDate = Object.fromEntries(
+      ratingRows.map((row) => {
+        const count = parseInt(row.ratings || 0, 10);
+        const promoters = parseInt(row.promoters || 0, 10);
+        const detractors = parseInt(row.detractors || 0, 10);
+        const nps = count > 0 ? parseFloat((((promoters - detractors) / count) * 100).toFixed(2)) : 0;
+        return [row.date, {
+          ratings: count,
+          avg: parseFloat((row.avg || 0).toFixed(1)),
+          nps,
+        }];
+      })
+    );
+
+    const dates = [];
+    const cursor = start.clone();
+    while (cursor.isSameOrBefore(end, 'day')) {
+      dates.push(cursor.format('YYYY-MM-DD'));
+      cursor.add(1, 'day');
+    }
+
+    return dates.map((date) => {
+      const received = receivedMap[date] || 0;
+      const sent = sentMap[date] || 0;
+      const rating = ratingsByDate[date] || { nps: 0, ratings: 0, avg: 0 };
+      return {
+        date,
+        period: 'daily',
+        tickets: {
+          total: createdMap[date] || 0,
+          closed: closedMap[date] || 0,
+        },
+        messages: {
+          total: received + sent,
+          received,
+          sent,
+        },
+        satisfaction: {
+          nps: rating.nps,
+          ratings: rating.ratings,
+          avg: rating.avg,
+        },
+        agents: {
+          active: 0,
+          avgLoad: 0,
+        },
+      };
+    });
+  }
+
+  calculateSummaryFromTimeline(timeline) {
+    if (!timeline.length) return null;
+
+    return {
+      totalTickets: timeline.reduce((sum, item) => sum + (item.tickets?.total || 0), 0),
+      closedTickets: timeline.reduce((sum, item) => sum + (item.tickets?.closed || 0), 0),
+      totalMessages: timeline.reduce((sum, item) => sum + (item.messages?.total || 0), 0),
+      totalRatings: timeline.reduce((sum, item) => sum + (item.satisfaction?.ratings || 0), 0),
+      avgNPS: (() => {
+        const ratedDays = timeline.filter((item) => (item.satisfaction?.ratings || 0) > 0);
+        if (!ratedDays.length) return 0;
+        return ratedDays.reduce((sum, item) => sum + (item.satisfaction?.nps || 0), 0) / ratedDays.length;
+      })(),
+    };
+  }
+
+  calculateTrendsFromTimeline(timeline) {
+    if (timeline.length < 2) return null;
+
+    const first = timeline[0];
+    const last = timeline[timeline.length - 1];
+    const calculate = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return ((current - previous) / previous) * 100;
+    };
+
+    return {
+      tickets: calculate(last.tickets?.total || 0, first.tickets?.total || 0),
+      messages: calculate(last.messages?.total || 0, first.messages?.total || 0),
+      nps: calculate(last.satisfaction?.nps || 0, first.satisfaction?.nps || 0),
     };
   }
 
@@ -651,12 +844,11 @@ class AnalyticsService {
     const snapshots = await AnalyticsSnapshot.findInRange(startDate, endDate, 'daily');
 
     if (snapshots.length === 0) {
-      // Se não há snapshots, calcular em tempo real
       return {
         totalTickets: await this.countTickets(startDate, endDate),
         avgResolutionTime: await this.calculateAvgResolutionTime(startDate, endDate),
         npsScore: await this.calculateNPS(startDate, endDate),
-        activeAgents: await this.countActiveAgents(startDate, endDate),
+        activeAgents: await this.countOnlineAgents(),
         conversionRate: await this.calculateConversionRate(startDate, endDate),
       };
     }
@@ -666,7 +858,7 @@ class AnalyticsService {
       totalTickets: summary.totalTickets,
       avgResolutionTime: snapshots.reduce((sum, s) => sum + s.avgResolutionTime, 0) / snapshots.length,
       npsScore: summary.avgNPS,
-      activeAgents: snapshots[snapshots.length - 1].activeAgents,
+      activeAgents: await this.countOnlineAgents(),
       conversionRate: snapshots.reduce((sum, s) => sum + s.conversionRate, 0) / snapshots.length,
     };
   }

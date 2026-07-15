@@ -11,27 +11,37 @@
     }
     </script>
     <title>AstroChat - Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'></text></svg>">
+    <link rel="icon" type="image/png" href="/images/logotipo-astro.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/css/theme.css">
+    <link rel="stylesheet" href="/css/brand.css">
     <link rel="stylesheet" href="/css/metric-cards.css">
     <link rel="stylesheet" href="/css/kanban.css">
     <link rel="stylesheet" href="/css/tags.css">
     <link rel="stylesheet" href="/css/chat.css">
+    <link rel="stylesheet" href="/css/sync-progress.css">
     <link rel="stylesheet" href="/css/dashboard.css">
     <link rel="stylesheet" href="/css/whatsapp-chat.css">
+    <link rel="stylesheet" href="/css/media-viewer.css">
     <link rel="stylesheet" href="/css/administration.css">
     <link rel="stylesheet" href="/app/views/aiPlayground.css">
     <link rel="stylesheet" href="/css/automations.css">
     <link rel="stylesheet" href="/css/modal-fix.css">
+    <link rel="stylesheet" href="/css/executive-dashboard.css">
 </head>
 <body>
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg app-navbar">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">
-                <span class="brand-title">AstroChat</span>
+            <a class="navbar-brand brand-lockup" href="#" aria-label="AstroChat">
+                <img
+                    src="/images/logotipo-astro.png"
+                    alt="AstroChat"
+                    class="app-logo app-logo--navbar"
+                    width="36"
+                    height="36"
+                >
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -272,58 +282,34 @@
                         </div>
                     </div>
 
-                    <!-- Cards de Estatísticas Amanda-Style (11 cards) -->
+                    <!-- Cards de Estatísticas -->
                     <div class="row g-3 mb-4">
-                        <!-- Card 1: Tickets Ativos -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-orange">
-                                <div class="metric-header">
-                                    <span class="metric-title">Tickets Ativos</span>
-                                    <i class="bi bi-arrow-up-right"></i>
-                                </div>
-                                <div class="metric-value" id="ticketsAtivos">0</div>
-                                <div class="metric-subtitle">Demanda ativa</div>
-                            </div>
-                        </div>
-
-                        <!-- Card 2: Tickets Passivos -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-blue">
-                                <div class="metric-header">
-                                    <span class="metric-title">Tickets Passivos</span>
-                                    <i class="bi bi-arrow-down-right"></i>
-                                </div>
-                                <div class="metric-value" id="ticketsPassivos">0</div>
-                                <div class="metric-subtitle">Aguardando</div>
-                            </div>
-                        </div>
-
-                        <!-- Card 3: Em Atendimento -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-green">
+                        <!-- Em Atendimento -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-green metric-card-link" data-nav-section="chat" role="link" tabindex="0" title="Abrir chat em tempo real">
                                 <div class="metric-header">
                                     <span class="metric-title">Em Atendimento</span>
                                     <i class="bi bi-person-check"></i>
                                 </div>
                                 <div class="metric-value" id="ticketsAtendimento">0</div>
-                                <div class="metric-subtitle">Ativos agora</div>
+                                <div class="metric-subtitle">Abrir chat</div>
                             </div>
                         </div>
 
-                        <!-- Card 4: Aguardando -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-yellow">
+                        <!-- Aguardando -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-yellow metric-card-link" data-nav-section="tickets" data-nav-filter="open" role="link" tabindex="0" title="Abrir módulo de tickets">
                                 <div class="metric-header">
                                     <span class="metric-title">Aguardando</span>
                                     <i class="bi bi-hourglass-split"></i>
                                 </div>
                                 <div class="metric-value" id="ticketsAguardando">0</div>
-                                <div class="metric-subtitle">Na fila</div>
+                                <div class="metric-subtitle">Ver tickets na fila</div>
                             </div>
                         </div>
 
-                        <!-- Card 5: Finalizados -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
+                        <!-- Finalizados -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
                             <div class="metric-card metric-card-purple">
                                 <div class="metric-header">
                                     <span class="metric-title">Finalizados</span>
@@ -334,8 +320,8 @@
                             </div>
                         </div>
 
-                        <!-- Card 6: Mensagens Recebidas -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
+                        <!-- Mensagens Recebidas -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
                             <div class="metric-card metric-card-cyan">
                                 <div class="metric-header">
                                     <span class="metric-title">Msgs Recebidas</span>
@@ -346,20 +332,8 @@
                             </div>
                         </div>
 
-                        <!-- Card 7: Mensagens Enviadas -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-teal">
-                                <div class="metric-header">
-                                    <span class="metric-title">Msgs Enviadas</span>
-                                    <i class="bi bi-send"></i>
-                                </div>
-                                <div class="metric-value" id="msgsEnviadas">0</div>
-                                <div class="metric-subtitle">Período</div>
-                            </div>
-                        </div>
-
-                        <!-- Card 8: Tempo Médio Atendimento -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
+                        <!-- Tempo Médio Atendimento -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
                             <div class="metric-card metric-card-pink">
                                 <div class="metric-header">
                                     <span class="metric-title">Tempo Atend.</span>
@@ -370,8 +344,8 @@
                             </div>
                         </div>
 
-                        <!-- Card 9: Tempo Médio Espera -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
+                        <!-- Tempo Médio Espera -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
                             <div class="metric-card metric-card-indigo">
                                 <div class="metric-header">
                                     <span class="metric-title">Tempo Espera</span>
@@ -382,21 +356,21 @@
                             </div>
                         </div>
 
-                        <!-- Card 10: Novos Contatos -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-red">
+                        <!-- Contatos -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-red metric-card-link" data-nav-section="contacts" role="link" tabindex="0" title="Abrir módulo de contatos">
                                 <div class="metric-header">
-                                    <span class="metric-title">Novos Contatos</span>
+                                    <span class="metric-title">Contatos</span>
                                     <i class="bi bi-person-plus"></i>
                                 </div>
                                 <div class="metric-value" id="novosContatos">0</div>
-                                <div class="metric-subtitle">Hoje</div>
+                                <div class="metric-subtitle">Novos hoje</div>
                             </div>
                         </div>
 
-                        <!-- Card 11: Atendentes Ativos -->
-                        <div class="col-lg-2 col-md-4 col-sm-6">
-                            <div class="metric-card metric-card-lime">
+                        <!-- Atendentes -->
+                        <div class="col-lg-3 col-md-4 col-sm-6">
+                            <div class="metric-card metric-card-lime metric-card-link" data-nav-section="agents" role="link" tabindex="0" title="Abrir módulo de atendentes">
                                 <div class="metric-header">
                                     <span class="metric-title">Atendentes</span>
                                     <i class="bi bi-people"></i>
@@ -443,39 +417,10 @@
                         </div>
                     </div>
 
-                    <!-- Gráficos Avançados Amanda-Style -->
+                    <!-- Rankings e Atividade -->
                     <div class="row g-3 mb-4">
-                        <!-- Ranking de Contatos -->
-                        <div class="col-lg-6">
-                            <div class="card">
-                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                                    <strong><i class="bi bi-trophy"></i> Top 10 Contatos</strong>
-                                    <span class="badge bg-primary">Mais ativos</span>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover">
-                                            <thead>
-                                                <tr>
-                                                    <th>Contato</th>
-                                                    <th class="text-center">Tickets</th>
-                                                    <th>Departamento</th>
-                                                    <th class="text-end">Tempo</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="rankingContatos">
-                                                <tr>
-                                                    <td colspan="4" class="text-center text-muted">Carregando...</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Ranking de Atendentes -->
-                        <div class="col-lg-6">
+                        <div class="col-lg-12">
                             <div class="card">
                                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
                                     <strong><i class="bi bi-star"></i> Ranking de Atendentes</strong>
@@ -490,28 +435,9 @@
                         </div>
                     </div>
 
-                    <!-- Métricas de Tempo e Atividade por Hora -->
+                    <!-- Atividade por Hora -->
                     <div class="row g-3 mb-4">
-                        <!-- Métricas de Tempo -->
-                        <div class="col-lg-6">
-                            <div class="card">
-                                <div class="card-header bg-transparent">
-                                    <strong><i class="bi bi-clock-history"></i> Métricas de Tempo</strong>
-                                </div>
-                                <div class="card-body">
-                                    <div class="chart-wrap" style="height: 250px;">
-                                        <canvas id="timeMetricsChart"></canvas>
-                                        <div class="chart-empty" id="timeMetricsEmpty">
-                                            <div class="empty-title">Sem dados ainda</div>
-                                            <div class="empty-subtitle text-muted">Aguardando dados de tempo</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Atividade por Hora -->
-                        <div class="col-lg-6">
+                        <div class="col-lg-12">
                             <div class="card">
                                 <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
                                     <strong><i class="bi bi-graph-up"></i> Atividade por Hora</strong>
@@ -520,39 +446,6 @@
                                 <div class="card-body">
                                     <div class="chart-wrap" style="height: 250px;">
                                         <canvas id="hourlyActivityChart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Distribuição por Canal e Setor -->
-                    <div class="row g-3 mb-4">
-                        <!-- Distribuição por Canal -->
-                        <div class="col-lg-6">
-                            <div class="card">
-                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                                    <strong><i class="bi bi-diagram-3"></i> Distribuição por Canal</strong>
-                                    <span class="badge bg-secondary" id="totalCanais">-- canais</span>
-                                </div>
-                                <div class="card-body">
-                                    <div class="chart-wrap" style="height: 250px;">
-                                        <canvas id="channelDistChart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Distribuição por Setor -->
-                        <div class="col-lg-6">
-                            <div class="card">
-                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                                    <strong><i class="bi bi-building"></i> Distribuição por Setor</strong>
-                                    <span class="badge bg-secondary" id="totalSetores">-- setores</span>
-                                </div>
-                                <div class="card-body">
-                                    <div class="chart-wrap" style="height: 250px;">
-                                        <canvas id="sectorDistChart"></canvas>
                                     </div>
                                 </div>
                             </div>
@@ -835,6 +728,169 @@
                             </div>
                             <div class="kanban-column-body" data-status="closed">
                                 <div class="text-center text-muted py-4">Carregando...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dashboard Executivo -->
+                <div id="executive-dashboardSection" class="content-section">
+                    <div class="dashboard-toolbar pt-3">
+                        <div>
+                            <h1 class="page-title">Dashboard Executivo</h1>
+                            <div class="page-subtitle text-muted">Visão estratégica de atendimento, performance e satisfação</div>
+                        </div>
+                        <div class="dashboard-actions">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshDashboard">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary btn-export" id="exportDashboard">
+                                <i class="bi bi-download"></i> Exportar CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-filters">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label" for="dashboardStartDate">Data inicial</label>
+                                <input type="date" class="form-control" id="dashboardStartDate">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="dashboardEndDate">Data final</label>
+                                <input type="date" class="form-control" id="dashboardEndDate">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Período rápido</label>
+                                <div class="quick-period-buttons d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="period7days">7 dias</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="period30days">30 dias</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="period90days">90 dias</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="executiveSummary" class="stats-summary d-none">
+                        <h4><i class="bi bi-bar-chart-line"></i> Resumo do período</h4>
+                        <div id="executiveSummaryContent"></div>
+                    </div>
+
+                    <div id="heatmapInsights" class="mb-4"></div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card kpi-card tickets h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Total de Tickets</div>
+                                    <div class="kpi-value" id="kpiTotalTicketsValue">—</div>
+                                    <div class="kpi-variation" id="kpiTotalTicketsVariation"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card kpi-card resolution h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Tempo Médio de Resolução</div>
+                                    <div class="kpi-value" id="kpiAvgResolutionTimeValue">—</div>
+                                    <div class="kpi-variation" id="kpiAvgResolutionTimeVariation"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card kpi-card nps h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">NPS Score</div>
+                                    <div class="kpi-value" id="kpiNpsScoreValue">—</div>
+                                    <div class="kpi-variation" id="kpiNpsScoreVariation"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card kpi-card conversion h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Taxa de Conversão</div>
+                                    <div class="kpi-value" id="kpiConversionRateValue">—</div>
+                                    <div class="kpi-variation" id="kpiConversionRateVariation"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card kpi-card agents h-100">
+                                <div class="card-body">
+                                    <div class="kpi-label">Atendentes Ativos</div>
+                                    <div class="kpi-value" id="kpiActiveAgentsValue">—</div>
+                                    <div class="kpi-variation" id="kpiActiveAgentsVariation"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-8">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-graph-up"></i> Evolução de Tickets</h5>
+                                <div class="chart-container large">
+                                    <canvas id="ticketsTimelineChart"></canvas>
+                                </div>
+                                <div class="dashboard-empty d-none" id="ticketsTimelineEmpty">
+                                    <i class="bi bi-bar-chart"></i>
+                                    <p>Sem dados de tickets no período selecionado.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-emoji-smile"></i> Evolução do NPS</h5>
+                                <div class="chart-container">
+                                    <canvas id="npsChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-chat-left-text"></i> Mensagens Recebidas vs Enviadas</h5>
+                                <div class="chart-container">
+                                    <canvas id="messagesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-clock"></i> Atividade por Hora do Dia</h5>
+                                <div class="chart-container">
+                                    <canvas id="hourHeatmapChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-lg-4">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-calendar-week"></i> Distribuição por Dia da Semana</h5>
+                                <div class="chart-container small">
+                                    <canvas id="weekdayChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-diagram-3"></i> Tickets por Fila</h5>
+                                <div class="chart-container small">
+                                    <canvas id="queuesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="chart-card">
+                                <h5><i class="bi bi-people"></i> Top 10 Atendentes</h5>
+                                <div class="chart-container small">
+                                    <canvas id="agentsChart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1151,32 +1207,33 @@
                         <!-- Sidebar de Conversas -->
                         <div class="chat-sidebar">
                             <div class="chat-sidebar-header">
-                                <h5 class="mb-0">Conversas</h5>
-                                <button class="btn btn-sm btn-outline-primary" id="refreshChatsBtn" title="Atualizar">
-                                    <i class="bi bi-arrow-clockwise"></i>
-                                </button>
+                                <h5 class="chat-sidebar-title">Conversas</h5>
+                                <div class="d-flex gap-1">
+                                    <button class="chat-icon-btn" id="enableNotificationsBtn" title="Ativar notificações do navegador" aria-label="Ativar notificações" style="display: none;">
+                                        <i class="bi bi-bell"></i>
+                                    </button>
+                                    <button class="chat-icon-btn" id="refreshChatsBtn" title="Atualizar conversas" aria-label="Atualizar">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
                             </div>
                             
-                            <!-- Busca -->
                             <div class="chat-search-box">
-                                <div class="input-group">
-                                    <span class="input-group-text bg-transparent border-end-0">
-                                        <i class="bi bi-search"></i>
-                                    </span>
-                                    <input type="text" class="form-control border-start-0" id="chatSearchInput" placeholder="Buscar conversa...">
+                                <div class="chat-search-input-wrap">
+                                    <i class="bi bi-search"></i>
+                                    <input type="text" id="chatSearchInput" placeholder="Buscar conversa..." autocomplete="off">
                                 </div>
                             </div>
 
-                            <!-- Filtros -->
                             <div class="chat-filters">
-                                <button class="btn btn-sm filter-btn active" data-filter="all">
-                                    Todas <span class="badge bg-secondary" id="filterAllCount">0</span>
+                                <button class="filter-btn active" data-filter="all">
+                                    Todas <span class="filter-count" id="filterAllCount">0</span>
                                 </button>
-                                <button class="btn btn-sm filter-btn" data-filter="unread">
-                                    Não lidas <span class="badge bg-danger" id="filterUnreadCount">0</span>
+                                <button class="filter-btn" data-filter="unread">
+                                    Não lidas <span class="filter-count" id="filterUnreadCount">0</span>
                                 </button>
-                                <button class="btn btn-sm filter-btn" data-filter="open">
-                                    Abertas <span class="badge bg-success" id="filterOpenCount">0</span>
+                                <button class="filter-btn" data-filter="open">
+                                    Abertas <span class="filter-count" id="filterOpenCount">0</span>
                                 </button>
                             </div>
 
@@ -1187,6 +1244,8 @@
                                     <p class="mt-2">Nenhuma conversa ativa</p>
                                 </div>
                             </div>
+
+                            <div class="chat-list-pagination" id="chatListPagination" style="display: none;"></div>
                         </div>
 
                         <!-- Área Principal do Chat -->
@@ -1200,37 +1259,57 @@
 
                             <!-- Cabeçalho do Chat -->
                             <div class="chat-header" id="chatHeader" style="display: none;">
-                                <div class="d-flex align-items-center">
-                                    <div class="chat-avatar me-3">
+                                <div class="chat-header-info">
+                                    <div class="chat-avatar">
+                                        <img id="chatContactAvatarImg" class="chat-avatar-img" alt="" style="display: none;">
                                         <span id="chatContactInitials">??</span>
                                         <span class="status-indicator" id="chatContactStatus"></span>
                                     </div>
-                                    <div class="flex-grow-1">
-                                        <h6 class="mb-0" id="chatContactName">Carregando...</h6>
-                                        <small class="text-muted" id="chatContactInfo">...</small>
+                                    <div class="chat-header-text">
+                                        <h6 class="chat-header-name" id="chatContactName">Carregando...</h6>
+                                        <p class="chat-header-subtitle" id="chatContactInfo">...</p>
                                     </div>
                                 </div>
                                 <div class="chat-header-actions">
-                                    <!-- Botões de Ação (Aceitar, Rejeitar, Finalizar) -->
-                                    <div id="chatHeaderActions" class="me-2" style="display: flex; gap: 8px;"></div>
-                                    
-                                    <button class="btn btn-sm btn-outline-secondary" id="chatSearchToggle" title="Buscar na conversa">
+                                    <div id="chatHeaderActions" class="d-flex gap-2 me-1"></div>
+                                    <button type="button" class="chat-icon-btn" id="chatSearchToggle" title="Buscar na conversa" aria-label="Buscar">
                                         <i class="bi bi-search"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" id="chatInfoToggle" title="Informações do ticket">
+                                    <button type="button" class="chat-icon-btn" id="chatInfoToggle" title="Informações do ticket" aria-label="Informações">
                                         <i class="bi bi-info-circle"></i>
                                     </button>
                                     <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                        <button type="button" class="chat-icon-btn dropdown-toggle" id="chatMenuToggle" aria-label="Mais opções" aria-expanded="false">
                                             <i class="bi bi-three-dots-vertical"></i>
                                         </button>
-                                        <ul class="dropdown-menu dropdown-menu-end">
+                                        <ul class="dropdown-menu dropdown-menu-end" id="chatHeaderDropdown">
+                                            <li id="chatSaveContactItem" style="display: none;"><a class="dropdown-item" href="#" id="chatSaveContactBtn"><i class="bi bi-person-plus"></i> Salvar contato</a></li>
                                             <li><a class="dropdown-item" href="#" id="chatArchiveBtn"><i class="bi bi-archive"></i> Arquivar</a></li>
                                             <li><a class="dropdown-item" href="#" id="chatCloseBtn"><i class="bi bi-check-circle"></i> Finalizar</a></li>
                                             <li><hr class="dropdown-divider"></li>
                                             <li><a class="dropdown-item text-danger" href="#" id="chatBlockBtn"><i class="bi bi-slash-circle"></i> Bloquear</a></li>
                                         </ul>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Busca na conversa -->
+                            <div class="chat-message-search" id="chatMessageSearchBar" style="display: none;">
+                                <div class="chat-search-input-wrap">
+                                    <i class="bi bi-search"></i>
+                                    <input type="text" id="chatMessageSearchInput" placeholder="Buscar na conversa..." autocomplete="off">
+                                </div>
+                                <div class="chat-message-search-nav">
+                                    <button type="button" class="chat-icon-btn" id="chatMessageSearchPrev" title="Anterior" disabled>
+                                        <i class="bi bi-chevron-up"></i>
+                                    </button>
+                                    <span id="chatMessageSearchCount">0/0</span>
+                                    <button type="button" class="chat-icon-btn" id="chatMessageSearchNext" title="Próximo" disabled>
+                                        <i class="bi bi-chevron-down"></i>
+                                    </button>
+                                    <button type="button" class="chat-icon-btn" id="chatMessageSearchClose" title="Fechar busca">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1252,21 +1331,23 @@
                             <!-- Input de Mensagem -->
                             <div class="chat-input" id="chatInput" style="display: none;">
                                 <div class="chat-input-container">
-                                    <button class="btn btn-link text-secondary" id="attachFileBtn" title="Anexar arquivo">
-                                        <i class="bi bi-paperclip fs-5"></i>
+                                    <button class="chat-attach-btn" id="attachFileBtn" title="Anexar arquivo" aria-label="Anexar">
+                                        <i class="bi bi-paperclip"></i>
+                                    </button>
+                                    <button class="chat-attach-btn" id="recordVoiceBtn" title="Gravar mensagem de voz" aria-label="Gravar áudio">
+                                        <i class="bi bi-mic-fill"></i>
                                     </button>
                                     <input type="file" id="fileInput" style="display: none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar">
-                                    <textarea class="form-control chat-textarea" id="messageTextarea" placeholder="Digite sua mensagem..." rows="1"></textarea>
-                                    <button class="btn btn-link text-secondary" id="emojiBtn" title="Emoji">
-                                        <i class="bi bi-emoji-smile fs-5"></i>
+                                    <textarea class="chat-textarea" id="messageTextarea" placeholder="Digite uma mensagem" rows="1"></textarea>
+                                    <button class="chat-emoji-btn" id="emojiBtn" title="Emoji" aria-label="Emoji">
+                                        <i class="bi bi-emoji-smile"></i>
                                     </button>
-                                    <button class="btn btn-primary" id="sendMessageBtn" title="Enviar">
+                                    <button id="sendMessageBtn" title="Enviar" aria-label="Enviar">
                                         <i class="bi bi-send-fill"></i>
                                     </button>
                                 </div>
-                                <!-- Preview de Arquivo -->
                                 <div class="file-preview" id="filePreview" style="display: none;">
-                                    <div class="d-flex align-items-center justify-content-between p-2 bg-light rounded">
+                                    <div class="file-preview-inner">
                                         <div class="d-flex align-items-center">
                                             <i class="bi bi-file-earmark fs-4 me-2"></i>
                                             <div>
@@ -1320,6 +1401,29 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Visualizador de mídia (lightbox) -->
+                    <div id="mediaViewer" class="media-viewer" style="display: none;" aria-hidden="true">
+                        <div class="media-viewer-backdrop"></div>
+                        <button type="button" class="media-viewer-close" id="mediaViewerClose" aria-label="Fechar">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <div class="media-viewer-stage">
+                            <img id="mediaViewerImage" class="media-viewer-image" alt="Visualização de mídia">
+                            <div id="mediaViewerFile" class="media-viewer-file" style="display: none;">
+                                <i class="bi bi-file-earmark-arrow-down"></i>
+                                <span id="mediaViewerFileName">arquivo</span>
+                            </div>
+                        </div>
+                        <div class="media-viewer-toolbar">
+                            <a id="mediaViewerDownload" class="media-viewer-btn" href="#" download title="Baixar">
+                                <i class="bi bi-download"></i>
+                            </a>
+                            <a id="mediaViewerOpen" class="media-viewer-btn" href="#" target="_blank" rel="noopener" title="Abrir em nova aba" style="display: none;">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -1403,9 +1507,17 @@
                     <div data-admin-content="connections" class="admin-tab-content">
                         <div class="d-flex justify-content-between mb-3">
                             <h4>Conexões WhatsApp</h4>
-                            <button class="btn btn-success" id="newConnectionBtn">
-                                <i class="bi bi-plus-lg"></i> Nova Conexão
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-primary" id="syncWhatsappBtn" title="Importar conversas do WhatsApp conectado">
+                                    <i class="bi bi-cloud-download"></i> Sincronizar Conversas
+                                </button>
+                                <button class="btn btn-outline-warning" id="clearWhatsappSessionBtn" title="Desconecta o WhatsApp, apaga todas as conversas/mensagens e exige novo QR Code">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Limpar Sessão
+                                </button>
+                                <button class="btn btn-success" id="newConnectionBtn">
+                                    <i class="bi bi-plus-lg"></i> Nova Conexão
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="table-responsive">
@@ -1553,32 +1665,36 @@
       </div>
     </div>
 
-    <!-- New Agent Modal -->
-    <div class="modal fade" id="newAgentModal" tabindex="-1" aria-hidden="true">
+    <!-- Agent Modal -->
+    <div class="modal fade" id="agentModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Novo atendente</h5>
+            <h5 class="modal-title" id="agentModalTitle">Novo atendente</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
           <div class="modal-body">
-            <form id="newAgentForm">
+            <form id="agentForm">
+              <input type="hidden" id="agentId" />
               <div class="mb-2">
-                <label class="form-label">Nome</label>
-                <input class="form-control" name="name" required />
+                <label class="form-label" for="agentName">Nome</label>
+                <input class="form-control" id="agentName" name="name" required />
               </div>
               <div class="mb-2">
-                <label class="form-label">E-mail</label>
-                <input class="form-control" name="email" type="email" required />
+                <label class="form-label" for="agentEmail">E-mail</label>
+                <input class="form-control" id="agentEmail" name="email" type="email" required />
               </div>
               <div class="mb-2">
-                <label class="form-label">Senha</label>
-                <input class="form-control" name="password" type="password" required />
+                <label class="form-label" for="agentPassword">Senha</label>
+                <input class="form-control" id="agentPassword" name="password" type="password" />
+                <div class="form-text" id="agentPasswordHint" style="display: none;">
+                  Deixe em branco para manter a senha atual.
+                </div>
               </div>
               <div class="row g-2">
                 <div class="col-6">
-                  <label class="form-label">Perfil</label>
-                  <select class="form-select" name="role">
+                  <label class="form-label" for="agentRole">Perfil</label>
+                  <select class="form-select" id="agentRole" name="role">
                     <option value="agent">Atendente</option>
                     <option value="manager">Gestor</option>
                     <option value="admin">Admin</option>
@@ -1586,8 +1702,8 @@
                   </select>
                 </div>
                 <div class="col-6">
-                  <label class="form-label">Status</label>
-                  <select class="form-select" name="status">
+                  <label class="form-label" for="agentStatus">Status</label>
+                  <select class="form-select" id="agentStatus" name="status">
                     <option value="offline">Offline</option>
                     <option value="online">Online</option>
                     <option value="away">Ausente</option>
@@ -1596,17 +1712,16 @@
                 </div>
               </div>
               <div class="mt-2">
-                <label class="form-label">Departamento</label>
-                <input class="form-control" name="department" placeholder="Ex: Comercial" />
+                <label class="form-label" for="agentDepartment">Departamento</label>
+                <select class="form-select" id="agentDepartment" name="department">
+                  <option value="">Selecione um departamento...</option>
+                </select>
               </div>
             </form>
-            <div class="small text-muted mt-2">
-              Dica: durante desenvolvimento, você pode criar atendentes por aqui para testar fila/atribuição.
-            </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button class="btn btn-primary" id="createAgentBtn">
+            <button class="btn btn-primary" id="saveAgentBtn">
               <i class="bi bi-person-check"></i> Criar
             </button>
           </div>
@@ -2245,8 +2360,6 @@
     <!-- Automations View (Global) -->
     <script src="/app/views/automationsView.js" onerror="console.error('❌ Erro ao carregar automationsView.js')"></script>
     
-    <!-- App JavaScript (Módulos ES6) -->
-    <script type="module" src="/app/app.js"></script>
 </body>
 </html>
 

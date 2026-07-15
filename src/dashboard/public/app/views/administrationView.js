@@ -9,6 +9,10 @@ import { showLoading, hideLoading } from '../ui/loading.js';
 
 let currentTab = 'api-keys';
 
+function unwrapApi(response) {
+  return response?.data ?? response ?? {};
+}
+
 export function initAdministrationView() {
   console.log('Inicializando view de Administração');
   
@@ -71,7 +75,7 @@ async function loadApiKeys() {
     showLoading('Carregando API Keys...');
     
     const response = await apiFetch('/api-keys');
-    const { apiKeys } = response;
+    const { apiKeys } = unwrapApi(response);
     
     renderApiKeys(apiKeys);
     hideLoading();
@@ -149,7 +153,7 @@ async function loadConnections() {
     showLoading('Carregando Conexões...');
     
     const response = await apiFetch('/connections');
-    const { connections } = response;
+    const { connections } = unwrapApi(response);
     
     renderConnections(connections);
     hideLoading();
@@ -198,46 +202,54 @@ function renderConnections(connections) {
 
 window.connectInstance = async function(id) {
   try {
-    await apiFetch(`/connections/${id}/connect`, { method: 'POST' });
-    showToast('Conectando instância...', 'info');
+    hideLoading();
+    const connectData = unwrapApi(await apiFetch('/whatsapp/connect', { method: 'POST' }));
+    if (connectData.connected) {
+      showToast('WhatsApp já está conectado!', 'success');
+      loadConnections();
+      return;
+    }
+    if (connectData.qrcode) {
+      showQRCodeModal({ qrcode: connectData.qrcode, expiresIn: connectData.expiresIn || 90 });
+      startQRCodePolling();
+      return;
+    }
+    await waitForQRCode(60, 2000);
     setTimeout(loadConnections, 2000);
   } catch (error) {
+    hideLoading();
     showToast('Erro ao conectar instância', 'error');
   }
 };
 
 window.disconnectInstance = async function(id) {
-  if (!confirm('Tem certeza que deseja desconectar esta instância?')) return;
+  if (!confirm('Tem certeza que deseja desconectar o WhatsApp?')) return;
   
   try {
-    await apiFetch(`/connections/${id}/disconnect`, { method: 'POST' });
-    showToast('Instância desconectada', 'success');
+    await apiFetch('/whatsapp/disconnect', { method: 'POST' });
+    showToast('WhatsApp desconectado', 'success');
     loadConnections();
   } catch (error) {
     showToast('Erro ao desconectar instância', 'error');
   }
 };
 
-window.viewQRCode = async function(id) {
+window.viewQRCode = async function() {
   try {
-    showLoading('Carregando QR Code...');
-    
-    // Se não passar ID, conectar a instância principal
-    const endpoint = id ? `/connections/${id}/qrcode` : '/whatsapp/qrcode';
-    const response = await apiFetch(endpoint);
-    
     hideLoading();
-    
-    if (response.qrcode || (response.data && response.data.qrcode)) {
-      const qrcode = response.qrcode || response.data.qrcode;
-      const expiresIn = response.expiresIn || (response.data && response.data.expiresIn) || 60;
-      
-      showQRCodeModal(qrcode, expiresIn);
-    } else if (response.connected || (response.data && response.data.connected)) {
+    const status = unwrapApi(await apiFetch('/whatsapp/status'));
+    if (status.connected) {
       showToast('WhatsApp já está conectado!', 'success');
-    } else {
-      showToast('QR Code não disponível. Aguarde alguns segundos e tente novamente.', 'warning');
+      return;
     }
+
+    showQRCodeModal({ loadingMessage: 'Gerando QR Code...' });
+
+    if (!status.qrCode) {
+      await apiFetch('/whatsapp/connect', { method: 'POST' });
+    }
+
+    await waitForQRCode(60, 2000);
   } catch (error) {
     hideLoading();
     console.error('Erro ao obter QR Code:', error);
@@ -257,17 +269,96 @@ window.deleteConnection = async function(id) {
   }
 };
 
-// Função para exibir modal com QR Code
-function showQRCodeModal(qrcode, expiresIn) {
-  // Remover modal existente se houver
+function showClearSessionConfirmModal() {
+  return new Promise((resolve) => {
+    const existingModal = document.getElementById('clearSessionModal');
+    if (existingModal) existingModal.remove();
+
+    const modalHtml = `
+      <div class="modal fade" id="clearSessionModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header bg-warning">
+              <h5 class="modal-title">
+                <i class="bi bi-exclamation-triangle-fill"></i> Limpar sessão do WhatsApp
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <p class="mb-3">Esta ação é <strong>irreversível</strong> e executará o seguinte:</p>
+              <ul class="mb-3">
+                <li>Desconectar o WhatsApp deste painel</li>
+                <li><strong>Apagar todas as conversas</strong> exibidas no chat</li>
+                <li><strong>Apagar todas as mensagens</strong> importadas</li>
+                <li>Remover contatos criados automaticamente pela sincronização</li>
+                <li>Limpar os dados da sessão local (será necessário escanear o QR Code novamente)</li>
+              </ul>
+              <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i>
+                Após reconectar, use <strong>Sincronizar</strong> para importar novamente as conversas e o histórico de mensagens do WhatsApp.
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="clearSessionCancelBtn">Cancelar</button>
+              <button type="button" class="btn btn-warning" id="clearSessionConfirmBtn">
+                <i class="bi bi-trash"></i> Limpar tudo e reconectar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modalElement = document.getElementById('clearSessionModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    let settled = false;
+
+    const finish = (confirmed) => {
+      if (settled) return;
+      settled = true;
+      modal.hide();
+      resolve(confirmed);
+    };
+
+    document.getElementById('clearSessionConfirmBtn')?.addEventListener('click', () => finish(true));
+    document.getElementById('clearSessionCancelBtn')?.addEventListener('click', () => finish(false));
+    modalElement.addEventListener('hidden.bs.modal', () => {
+      if (!settled) resolve(false);
+      modalElement.remove();
+    }, { once: true });
+
+    modal.show();
+  });
+}
+
+// Função para exibir modal com QR Code (ou estado de carregamento)
+function showQRCodeModal({ qrcode = null, expiresIn = 90, loadingMessage = 'Gerando QR Code...' } = {}) {
   const existingModal = document.getElementById('qrcodeModal');
   if (existingModal) {
     existingModal.remove();
   }
-  
-  // Criar modal
+
+  const qrImageBlock = qrcode
+    ? `<img id="qrCodeImage" src="${qrcode}" alt="QR Code" style="max-width: 100%; height: auto; border: 3px solid #25D366; border-radius: 10px;">`
+    : `<div class="py-4" id="qrLoadingBlock">
+        <div class="spinner-border text-success" style="width: 3rem; height: 3rem;" role="status"></div>
+        <p class="mt-3 mb-0 text-muted" id="qrLoadingMessage">${loadingMessage}</p>
+      </div>`;
+
+  const expiryBlock = qrcode
+    ? `<div class="alert alert-info mb-0" id="qrExpiryAlert">
+        <i class="bi bi-clock"></i>
+        <strong>Expira em <span id="qrCountdown">${expiresIn}</span> segundos</strong>
+      </div>`
+    : `<div class="alert alert-light mb-0" id="qrExpiryAlert">
+        <i class="bi bi-info-circle"></i>
+        <span id="qrLoadingHint">O QR Code aparecerá aqui automaticamente</span>
+      </div>`;
+
   const modalHtml = `
-    <div class="modal fade" id="qrcodeModal" tabindex="-1">
+    <div class="modal fade" id="qrcodeModal" tabindex="-1" data-bs-backdrop="static">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
           <div class="modal-header bg-success text-white">
@@ -278,15 +369,12 @@ function showQRCodeModal(qrcode, expiresIn) {
           </div>
           <div class="modal-body text-center">
             <p class="mb-3">Escaneie o QR Code com seu WhatsApp:</p>
-            <div class="qrcode-container mb-3" style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-              <img src="${qrcode}" alt="QR Code" style="max-width: 100%; height: auto; border: 3px solid #25D366; border-radius: 10px;">
+            <div class="qrcode-container mb-3" id="qrCodeContainer" style="background: #f8f9fa; padding: 20px; border-radius: 10px; min-height: 280px; display: flex; align-items: center; justify-content: center;">
+              ${qrImageBlock}
             </div>
-            <div class="alert alert-info mb-0">
-              <i class="bi bi-clock"></i> 
-              <strong>Expira em <span id="qrCountdown">${expiresIn}</span> segundos</strong>
-            </div>
+            ${expiryBlock}
             <hr>
-            <ol class="text-start small">
+            <ol class="text-start small mb-0">
               <li>Abra o WhatsApp no seu celular</li>
               <li>Toque em <strong>Menu</strong> ou <strong>Configurações</strong></li>
               <li>Selecione <strong>Aparelhos conectados</strong></li>
@@ -296,7 +384,7 @@ function showQRCodeModal(qrcode, expiresIn) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-            <button type="button" class="btn btn-success" onclick="window.viewQRCode()">
+            <button type="button" class="btn btn-success" id="refreshQRBtn">
               <i class="bi bi-arrow-clockwise"></i> Atualizar QR Code
             </button>
           </div>
@@ -304,85 +392,167 @@ function showQRCodeModal(qrcode, expiresIn) {
       </div>
     </div>
   `;
-  
-  // Adicionar modal ao body
+
   document.body.insertAdjacentHTML('beforeend', modalHtml);
-  
-  // Exibir modal
+
   const modalElement = document.getElementById('qrcodeModal');
-  const modal = new bootstrap.Modal(modalElement);
+  const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
   modal.show();
-  
-  // Countdown
-  let countdown = expiresIn;
-  const countdownInterval = setInterval(() => {
-    countdown--;
-    const countdownElement = document.getElementById('qrCountdown');
-    if (countdownElement) {
-      countdownElement.textContent = countdown;
-      if (countdown <= 0) {
-        clearInterval(countdownInterval);
-        countdownElement.textContent = 'Expirado';
-        countdownElement.parentElement.classList.remove('alert-info');
-        countdownElement.parentElement.classList.add('alert-danger');
-      }
-    }
-  }, 1000);
-  
-  // Limpar ao fechar modal
+
+  document.getElementById('refreshQRBtn')?.addEventListener('click', () => window.viewQRCode());
+
+  if (qrcode) {
+    startQRCountdown(expiresIn);
+  }
+
   modalElement.addEventListener('hidden.bs.modal', () => {
-    clearInterval(countdownInterval);
+    if (qrCountdownInterval) {
+      clearInterval(qrCountdownInterval);
+      qrCountdownInterval = null;
+    }
+    if (qrPollingInterval) {
+      clearInterval(qrPollingInterval);
+      qrPollingInterval = null;
+    }
     modalElement.remove();
   });
 }
 
+let qrCountdownInterval = null;
+
+function startQRCountdown(expiresIn) {
+  if (qrCountdownInterval) clearInterval(qrCountdownInterval);
+
+  let countdown = expiresIn;
+  qrCountdownInterval = setInterval(() => {
+    countdown -= 1;
+    const countdownElement = document.getElementById('qrCountdown');
+    if (!countdownElement) {
+      clearInterval(qrCountdownInterval);
+      return;
+    }
+    countdownElement.textContent = Math.max(0, countdown);
+    if (countdown <= 0) {
+      clearInterval(qrCountdownInterval);
+      countdownElement.textContent = 'Expirado';
+      const alertEl = document.getElementById('qrExpiryAlert');
+      if (alertEl) {
+        alertEl.classList.remove('alert-info');
+        alertEl.classList.add('alert-warning');
+      }
+    }
+  }, 1000);
+}
+
+function updateQRModalWithCode(qrcode, expiresIn = 90) {
+  const container = document.getElementById('qrCodeContainer');
+  if (!container) {
+    showQRCodeModal({ qrcode, expiresIn });
+    return;
+  }
+
+  container.innerHTML = `<img id="qrCodeImage" src="${qrcode}" alt="QR Code" style="max-width: 100%; height: auto; border: 3px solid #25D366; border-radius: 10px;">`;
+
+  const alertEl = document.getElementById('qrExpiryAlert');
+  if (alertEl) {
+    alertEl.className = 'alert alert-info mb-0';
+    alertEl.innerHTML = `<i class="bi bi-clock"></i> <strong>Expira em <span id="qrCountdown">${expiresIn}</span> segundos</strong>`;
+  }
+
+  startQRCountdown(expiresIn);
+}
+
+function updateQRModalMessage(message) {
+  const msgEl = document.getElementById('qrLoadingMessage');
+  if (msgEl) msgEl.textContent = message;
+}
+
+function showQRModalError(message) {
+  const container = document.getElementById('qrCodeContainer');
+  if (container) {
+    container.innerHTML = `<div class="text-danger py-3"><i class="bi bi-exclamation-triangle"></i><p class="mt-2 mb-0">${message}</p></div>`;
+  }
+}
+
 // Função para aguardar QR Code estar disponível
-async function waitForQRCode(maxAttempts = 10, delayMs = 2000) {
-  showLoading('Aguardando QR Code...');
-  
+async function waitForQRCode(maxAttempts = 60, delayMs = 2000) {
+  if (!document.getElementById('qrcodeModal')) {
+    showQRCodeModal({ loadingMessage: 'Gerando QR Code...' });
+  }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log(`🔍 Tentativa ${attempt}/${maxAttempts} - Buscando QR Code...`);
-      
-      const response = await apiFetch('/whatsapp/qrcode');
-      
-      // Verificar se QR Code está disponível
-      if (response.qrcode || (response.data && response.data.qrcode)) {
-        const qrcode = response.qrcode || response.data.qrcode;
-        const expiresIn = response.expiresIn || (response.data && response.data.expiresIn) || 60;
-        
-        hideLoading();
-        console.log('✅ QR Code encontrado!');
-        showQRCodeModal(qrcode, expiresIn);
+      const status = unwrapApi(await apiFetch('/whatsapp/status'));
+      const payload = unwrapApi(await apiFetch('/whatsapp/qrcode'));
+
+      if (status.loadingMessage) {
+        updateQRModalMessage(status.loadingMessage);
+      } else if (payload.message) {
+        updateQRModalMessage(payload.message);
+      }
+
+      if (payload.qrcode) {
+        updateQRModalWithCode(payload.qrcode, payload.expiresIn || 90);
+        startQRCodePolling();
         return true;
       }
-      
-      // Verificar se já está conectado
-      if (response.connected || (response.data && response.data.connected)) {
-        hideLoading();
-        showToast('WhatsApp já está conectado!', 'success');
+
+      if (payload.connected || status.connected) {
+        bootstrap.Modal.getInstance(document.getElementById('qrcodeModal'))?.hide();
+        showToast('WhatsApp conectado com sucesso!', 'success');
+        loadConnections();
         return true;
       }
-      
-      // Aguardar antes da próxima tentativa
+
       if (attempt < maxAttempts) {
-        console.log(`⏳ QR Code ainda não disponível. Aguardando ${delayMs/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     } catch (error) {
-      console.error(`❌ Erro na tentativa ${attempt}:`, error);
+      console.error(`Erro na tentativa ${attempt} de QR:`, error);
       if (attempt === maxAttempts) {
-        hideLoading();
-        showToast('Timeout: QR Code não foi gerado. Tente novamente.', 'error');
+        showQRModalError('Não foi possível gerar o QR Code. Tente "Limpar Sessão" e conectar novamente.');
         return false;
       }
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-  
-  hideLoading();
-  showToast('QR Code não disponível após várias tentativas. Tente novamente.', 'warning');
+
+  showQRModalError('QR Code não disponível. Tente "Limpar Sessão" e conectar novamente.');
   return false;
+}
+
+let qrPollingInterval = null;
+
+function startQRCodePolling() {
+  if (qrPollingInterval) clearInterval(qrPollingInterval);
+
+  qrPollingInterval = setInterval(async () => {
+    try {
+      const payload = unwrapApi(await apiFetch('/whatsapp/qrcode'));
+
+      if (payload.connected) {
+        clearInterval(qrPollingInterval);
+        qrPollingInterval = null;
+        bootstrap.Modal.getInstance(document.getElementById('qrcodeModal'))?.hide();
+        showToast('WhatsApp conectado com sucesso!', 'success');
+        loadConnections();
+        return;
+      }
+
+      if (payload.qrcode) {
+        const img = document.querySelector('#qrCodeImage');
+        if (img) {
+          img.src = payload.qrcode;
+        } else {
+          updateQRModalWithCode(payload.qrcode, payload.expiresIn || 90);
+        }
+        const countdownEl = document.getElementById('qrCountdown');
+        if (countdownEl) countdownEl.textContent = payload.expiresIn || 90;
+      }
+    } catch (error) {
+      console.error('Erro no polling do QR:', error);
+    }
+  }, 5000);
 }
 
 // Event listener para botão "Nova Conexão"
@@ -390,20 +560,80 @@ window.addEventListener('DOMContentLoaded', () => {
   const newConnectionBtn = document.getElementById('newConnectionBtn');
   if (newConnectionBtn) {
     newConnectionBtn.addEventListener('click', async () => {
+      hideLoading();
+      showQRCodeModal({ loadingMessage: 'Iniciando conexão WhatsApp...' });
+
       try {
-        showLoading('Iniciando conexão WhatsApp...');
-        
-        // Iniciar conexão
-        const connectResponse = await apiFetch('/whatsapp/connect', { method: 'POST' });
-        console.log('📱 Resposta do connect:', connectResponse);
-        
-        // Aguardar e buscar QR Code com polling
-        await waitForQRCode(10, 2000); // 10 tentativas, 2s cada = 20s total
-        
+        const connectData = unwrapApi(await apiFetch('/whatsapp/connect', { method: 'POST' }));
+
+        if (connectData.connected) {
+          showToast('WhatsApp já está conectado!', 'success');
+          loadConnections();
+          return;
+        }
+
+        if (connectData.qrcode) {
+          updateQRModalWithCode(connectData.qrcode, connectData.expiresIn || 90);
+          startQRCodePolling();
+          return;
+        }
+
+        await waitForQRCode(60, 2000);
       } catch (error) {
         hideLoading();
         console.error('Erro ao iniciar conexão:', error);
         showToast('Erro ao iniciar conexão: ' + (error.message || 'Erro desconhecido'), 'error');
+      }
+    });
+  }
+
+  const syncWhatsappBtn = document.getElementById('syncWhatsappBtn');
+  if (syncWhatsappBtn) {
+    syncWhatsappBtn.addEventListener('click', async () => {
+      try {
+        hideLoading();
+        const status = unwrapApi(await apiFetch('/whatsapp/status'));
+        if (!status.connected) {
+          showToast('Conecte o WhatsApp antes de sincronizar', 'warning');
+          return;
+        }
+
+        showToast('Sincronização iniciada. Acompanhe o progresso no canto inferior direito.', 'info');
+        await apiFetch('/whatsapp/sync', { method: 'POST', body: { force: true } });
+      } catch (error) {
+        hideLoading();
+        showToast('Erro ao sincronizar: ' + (error.message || 'Erro desconhecido'), 'error');
+      }
+    });
+  }
+
+  const clearSessionBtn = document.getElementById('clearWhatsappSessionBtn');
+  if (clearSessionBtn) {
+    clearSessionBtn.addEventListener('click', async () => {
+      const confirmed = await showClearSessionConfirmModal();
+      if (!confirmed) return;
+
+      try {
+        hideLoading();
+        const response = await apiFetch('/whatsapp/clear-session', {
+          method: 'POST',
+          body: { purgeConversations: true }
+        });
+        const purgeStats = response?.purgeStats || response?.data?.purgeStats;
+        const tickets = purgeStats?.ticketsDeleted ?? 0;
+        const messages = purgeStats?.messagesDeleted ?? 0;
+        showToast(
+          `Sessão limpa. ${tickets} conversas e ${messages} mensagens removidas. Gerando novo QR Code...`,
+          'info'
+        );
+        showQRCodeModal({ loadingMessage: 'Gerando novo QR Code...' });
+        await apiFetch('/whatsapp/connect', { method: 'POST' });
+        await waitForQRCode(60, 2000);
+        loadConnections();
+      } catch (error) {
+        hideLoading();
+        console.error('Erro ao limpar sessão:', error);
+        showToast('Erro ao limpar sessão: ' + (error.message || 'Erro desconhecido'), 'error');
       }
     });
   }
@@ -416,7 +646,7 @@ async function loadSettings() {
     showLoading('Carregando Configurações...');
     
     const response = await apiFetch('/settings');
-    const { settings } = response;
+    const { settings } = unwrapApi(response);
     
     renderSettings(settings);
     hideLoading();
@@ -516,7 +746,7 @@ async function loadRoles() {
     showLoading('Carregando Papéis...');
     
     const response = await apiFetch('/roles');
-    const { roles } = response;
+    const { roles } = unwrapApi(response);
     
     renderRoles(roles);
     hideLoading();

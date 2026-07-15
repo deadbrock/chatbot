@@ -19,6 +19,22 @@ function initTheme() {
 
 initTheme();
 
+const authFooter = document.getElementById('authFooter');
+const isLocalHost =
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname.includes('192.168');
+
+if (authFooter) {
+  authFooter.textContent = isLocalHost
+    ? 'Ambiente local — SQLite'
+    : 'Ambiente de produção';
+}
+
+if (isLocalHost && defaultCreds) {
+  defaultCreds.classList.remove('d-none');
+}
+
 function setLoading(isLoading) {
   if (isLoading) {
     submitBtn.classList.add('is-loading');
@@ -41,10 +57,9 @@ function clearError() {
 
 togglePassword?.addEventListener('click', () => {
   const input = document.getElementById('password');
-  const icon = togglePassword.querySelector('i');
   const isPassword = input.type === 'password';
   input.type = isPassword ? 'text' : 'password';
-  icon.className = isPassword ? 'bi bi-eye-slash' : 'bi bi-eye';
+  togglePassword.textContent = isPassword ? 'Ocultar' : 'Mostrar';
 });
 
 showDefaultCreds?.addEventListener('click', (e) => {
@@ -88,6 +103,17 @@ form.addEventListener('submit', async (e) => {
   try {
     // Detectar URL da API
     function getApiBaseUrl() {
+      const hostname = window.location.hostname;
+      const isLocal =
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.includes('192.168') ||
+        hostname.endsWith('.local');
+
+      if (isLocal) {
+        return '/api';
+      }
+
       // 1. Tentar meta tag
       const apiUrlMeta = document.querySelector('meta[name="api-url"]');
       if (apiUrlMeta) {
@@ -118,14 +144,7 @@ form.addEventListener('submit', async (e) => {
       }
       
       // 3. Detecção automática (produção)
-      const hostname = window.location.hostname;
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.includes('192.168')) {
-        // Em produção, assumir que a API está no mesmo domínio ou usar fallback
-        console.warn('⚠️ URL da API não configurada. Usando fallback.');
-        return '/api'; // Fallback para desenvolvimento
-      }
-      
-      // 4. Desenvolvimento local
+      console.warn('⚠️ URL da API não configurada. Usando fallback.');
       return '/api';
     }
 

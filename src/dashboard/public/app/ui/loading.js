@@ -189,7 +189,11 @@ export function showProgress(elementId, percent, label = '') {
  */
 export function showPageLoading(message = 'Carregando...') {
   const existing = document.getElementById('page-loading-overlay');
-  if (existing) return;
+  if (existing) {
+    const messageEl = existing.querySelector('p');
+    if (messageEl) messageEl.textContent = message;
+    return;
+  }
 
   const overlay = document.createElement('div');
   overlay.id = 'page-loading-overlay';

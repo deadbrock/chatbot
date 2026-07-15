@@ -1,6 +1,7 @@
 const ChatMessage = require('../models/ChatMessageSQL');
 const Attachment = require('../models/AttachmentSQL');
 const Ticket = require('../models/TicketSQL');
+const Conversation = require('../models/ConversationSQL');
 const Contact = require('../models/ContactSQL');
 const { sendSuccess, sendError, badRequest, notFound, created } = require('../utils/http');
 const multer = require('multer');
@@ -8,6 +9,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
 const logger = require('../utils/logger');
+const chatMediaUtils = require('../utils/chatMediaUtils');
+const chatMediaService = require('../services/chatMediaService');
 
 /**
  * Controller de Chat em Tempo Real
@@ -15,36 +18,41 @@ const logger = require('../utils/logger');
  */
 
 /**
- * Lista mensagens de um ticket
- * GET /api/chat/tickets/:ticketId/messages
+ * Lista mensagens de uma conversa (inbox WhatsApp)
+ * GET /api/chat/conversations/:conversationId/messages
  */
-async function getTicketMessages(req, res) {
+async function getConversationMessages(req, res) {
   try {
-    const { ticketId } = req.params;
-    const { limit = 50, offset = 0, before, after } = req.query;
-    
-    logger.info(`🔍 [GET_MESSAGES] ticketId: ${ticketId}, limit: ${limit}, offset: ${offset}`);
-    
+    const { conversationId } = req.params;
+    const { limit = 200, offset = 0, before, after } = req.query;
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 5000);
+    const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    const conversation = await Conversation.findByPk(conversationId);
+    if (!conversation) {
+      return notFound(res, 'Conversa não encontrada');
+    }
+
     const where = {
-      ticketId: parseInt(ticketId) // Garantir que é número
-      // Removido isDeleted temporariamente para debug
+      conversationId,
+      isDeleted: false
     };
-    
-    logger.info(`🔍 [GET_MESSAGES] WHERE:`, JSON.stringify(where));
-    
-    // Filtro por data
+
     if (before) {
       where.timestamp = { [ChatMessage.sequelize.Sequelize.Op.lt]: new Date(before) };
-    }
-    if (after) {
+    } else if (after) {
       where.timestamp = { [ChatMessage.sequelize.Sequelize.Op.gt]: new Date(after) };
     }
-    
+
+    const total = await ChatMessage.count({
+      where: { conversationId, isDeleted: false }
+    });
+
     const messages = await ChatMessage.findAll({
       where,
       order: [['timestamp', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: parsedLimit,
+      offset: before || after ? 0 : parsedOffset,
       include: [
         {
           model: Attachment,
@@ -54,17 +62,77 @@ async function getTicketMessages(req, res) {
         }
       ]
     });
-    
-    logger.info(`🔍 [GET_MESSAGES] Encontradas ${messages.length} mensagens`);
-    
-    // Contar não lidas
-    const unreadCount = await ChatMessage.countUnread(ticketId);
-    
+
+    const unreadCount = await ChatMessage.countUnread(conversationId, { by: 'conversation' });
+    const ordered = messages.reverse();
+
     return sendSuccess(res, {
-      messages: messages.reverse(), // Reverter para ordem cronológica
-      total: messages.length,
+      messages: ordered,
+      total,
       unreadCount,
-      hasMore: messages.length === parseInt(limit)
+      conversationId,
+      activeTicketId: conversation.activeTicketId,
+      hasMore: before
+        ? messages.length === parsedLimit
+        : (parsedOffset + messages.length) < total
+    });
+  } catch (error) {
+    console.error('Erro ao buscar mensagens da conversa:', error);
+    return sendError(res, 'Erro ao buscar mensagens');
+  }
+}
+
+/**
+ * Lista mensagens de um ticket
+ * GET /api/chat/tickets/:ticketId/messages
+ */
+async function getTicketMessages(req, res) {
+  try {
+    const { ticketId } = req.params;
+    const { limit = 200, offset = 0, before, after } = req.query;
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 5000);
+    const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    const where = {
+      ticketId,
+      isDeleted: false
+    };
+
+    if (before) {
+      where.timestamp = { [ChatMessage.sequelize.Sequelize.Op.lt]: new Date(before) };
+    } else if (after) {
+      where.timestamp = { [ChatMessage.sequelize.Sequelize.Op.gt]: new Date(after) };
+    }
+
+    const total = await ChatMessage.count({
+      where: { ticketId, isDeleted: false }
+    });
+
+    const messages = await ChatMessage.findAll({
+      where,
+      order: [['timestamp', 'DESC']],
+      limit: parsedLimit,
+      offset: before || after ? 0 : parsedOffset,
+      include: [
+        {
+          model: Attachment,
+          as: 'attachments',
+          where: { status: 'ready' },
+          required: false
+        }
+      ]
+    });
+
+    const unreadCount = await ChatMessage.countUnread(ticketId);
+    const ordered = messages.reverse();
+
+    return sendSuccess(res, {
+      messages: ordered,
+      total,
+      unreadCount,
+      hasMore: before
+        ? messages.length === parsedLimit
+        : (parsedOffset + messages.length) < total
     });
   } catch (error) {
     console.error('Erro ao buscar mensagens:', error);
@@ -79,88 +147,172 @@ async function getTicketMessages(req, res) {
 async function sendMessage(req, res) {
   try {
     const {
+      conversationId,
       ticketId,
       contactId,
       to,
       body,
       type = 'text',
+      mediaUrl,
+      fileName,
+      fileSize,
       quotedMessageId
     } = req.body;
-    
-    if (!to || (!body && type === 'text')) {
+
+    const hasMedia = Boolean(mediaUrl);
+    const isText = type === 'text' && !hasMedia;
+
+    if (!to || (isText && !body)) {
       return badRequest(res, 'Destinatário e mensagem são obrigatórios');
     }
-    
-    // Buscar ticket
-    const ticket = await Ticket.findByPk(ticketId);
-    if (!ticket) {
-      return notFound(res, 'Ticket não encontrado');
+
+    if (!conversationId && !ticketId) {
+      return badRequest(res, 'conversationId ou ticketId é obrigatório');
     }
-    
-    // Gerar ID único
+
+    let conversation = null;
+    let ticket = null;
+
+    if (conversationId) {
+      conversation = await Conversation.findByPk(conversationId);
+      if (!conversation) {
+        return notFound(res, 'Conversa não encontrada');
+      }
+      if (conversation.activeTicketId) {
+        ticket = await Ticket.findByPk(conversation.activeTicketId);
+      }
+    }
+
+    if (!conversation && ticketId) {
+      ticket = await Ticket.findByPk(ticketId);
+      if (!ticket) {
+        return notFound(res, 'Ticket não encontrado');
+      }
+      if (ticket.conversationId) {
+        conversation = await Conversation.findByPk(ticket.conversationId);
+      }
+    }
+
+    const effectiveConversationId = conversation?.id || conversationId || null;
+    const effectiveTicketId = ticket?.id || null;
+
     const messageId = `msg_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-    
-    // Criar mensagem
+    const displayBody = hasMedia
+      ? (body?.trim() || chatMediaUtils.getMediaPreviewLabel(type, true))
+      : body;
+
     const message = await ChatMessage.create({
       messageId,
-      ticketId,
-      contactId: contactId || ticket.contactId,
+      conversationId: effectiveConversationId,
+      ticketId: effectiveTicketId,
+      contactId: contactId || conversation?.contactId || ticket?.userId,
       userId: req.user?.id,
       direction: 'outgoing',
-      from: ticket.whatsappId || 'system',
+      from: 'agent',
       to,
-      fromName: req.user?.name || 'Sistema',
-      body,
-      type,
+      fromName: req.user?.name || 'Atendente',
+      body: displayBody,
+      type: hasMedia ? type : 'text',
       status: 'pending',
       fromMe: true,
+      hasMedia,
+      mediaUrl: mediaUrl || null,
+      mediaFilename: fileName || null,
+      mediaSize: fileSize || null,
       timestamp: new Date(),
       quotedMessageId
     });
-    
-    // 📱 ENVIAR MENSAGEM VIA WHATSAPP
+
+    const whatsappClient = require('../bot/whatsapp');
+
+    if (!(await whatsappClient.ensureReadyForSend())) {
+      await message.updateStatus('failed');
+      return sendError(res, 'WhatsApp não está conectado. Vá em Administração → Conexões e reconecte.', 503);
+    }
+
+    const formattedNumber = whatsappClient.normalizeChatId(to);
+    logger.info(`🔍 [CHAT] Enviando para: ${formattedNumber}`);
+
     try {
-      logger.info('🔍 [CHAT] Iniciando envio via WhatsApp...');
-      logger.info(`🔍 [CHAT] Para: ${to}`);
-      logger.info(`🔍 [CHAT] Mensagem: ${body.substring(0, 50)}...`);
-      
-      const whatsappClient = require('../bot/whatsapp');
-      logger.info(`🔍 [CHAT] Cliente WhatsApp (WPPConnect) carregado. isReady: ${whatsappClient.isReady}`);
-      
-      // Se já tem @, usar como está. Caso contrário, adicionar @c.us (WPPConnect)
-      const formattedNumber = to.includes('@') ? to : `${to}@c.us`;
-      logger.info(`🔍 [CHAT] Número original: ${to}`);
-      logger.info(`🔍 [CHAT] Número formatado: ${formattedNumber}`);
-      
-      // Adicionar timeout de 10 segundos
-      const sendPromise = whatsappClient.sendMessage(formattedNumber, body);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout ao enviar mensagem')), 10000)
-      );
-      
-      logger.info('🔍 [CHAT] Aguardando envio...');
-      await Promise.race([sendPromise, timeoutPromise]);
-      
-      // Atualizar status como enviado
+      if (hasMedia) {
+        const filePath = chatMediaService.resolveLocalPathFromPublicUrl(mediaUrl);
+        if (!filePath) {
+          throw new Error('Arquivo de mídia não encontrado');
+        }
+
+        if (type === 'image') {
+          await whatsappClient.client.sendImage(
+            formattedNumber,
+            filePath,
+            fileName || 'imagem.jpg',
+            body || ''
+          );
+        } else if (type === 'ptt' || type === 'voice') {
+          await whatsappClient.sendVoiceMessage(
+            formattedNumber,
+            filePath,
+            fileName || 'audio.ogg'
+          );
+        } else {
+          await whatsappClient.client.sendFile(formattedNumber, filePath, {
+            caption: body || '',
+            filename: fileName || path.basename(filePath)
+          });
+        }
+      } else {
+        await whatsappClient.sendMessage(formattedNumber, body);
+      }
+
       await message.updateStatus('sent', 1);
-      
-      logger.info(`✅ [CHAT] Mensagem enviada via WhatsApp para ${to}`);
+      logger.info(`✅ [CHAT] Mensagem enviada via WhatsApp para ${formattedNumber}`);
     } catch (whatsappError) {
       logger.error(`❌ [CHAT] Erro ao enviar via WhatsApp: ${whatsappError.message}`);
-      logger.error(`❌ [CHAT] Stack completo: ${whatsappError.stack}`);
-      logger.error(`❌ [CHAT] isReady no momento do erro: ${require('../bot/whatsapp').isReady}`);
-      // Mesmo que falhe, continuar (mensagem já está salva no banco)
-      // Marcar como 'pending' para reprocessamento posterior
+      await message.updateStatus('failed');
+      return sendError(res, `Não foi possível enviar pelo WhatsApp: ${whatsappError.message}`, 502);
     }
-    
-    // Emitir via Socket.IO
+
+    await message.reload();
+    if (effectiveConversationId) {
+      const inboxConversationService = require('../services/inboxConversationService');
+      await inboxConversationService.touchConversation(effectiveConversationId);
+    }
+    if (effectiveTicketId) {
+      await Ticket.update({ updatedAt: new Date() }, { where: { id: effectiveTicketId } });
+    }
+
     const io = req.app.get('io');
+    const payload = {
+      conversationId: effectiveConversationId,
+      ticketId: effectiveTicketId,
+      message: message.toJSON(),
+      direction: 'outgoing'
+    };
+
     if (io) {
-      io.to(`ticket_${ticketId}`).emit('new_message', message);
+      if (effectiveTicketId) {
+        io.to(`ticket_${effectiveTicketId}`).emit('new_message', payload);
+      }
+      if (effectiveConversationId) {
+        io.to(`conversation_${effectiveConversationId}`).emit('new_message', payload);
+      }
+      io.emit('new_message', payload);
+      if (effectiveTicketId && ticket) {
+        io.emit('ticket_updated', {
+          ticketId: effectiveTicketId,
+          ticket: { ...ticket.toJSON(), updatedAt: new Date() }
+        });
+      }
+      if (effectiveConversationId && conversation) {
+        io.emit('conversation_updated', {
+          conversationId: effectiveConversationId,
+          conversation: { ...conversation.toJSON(), updatedAt: new Date() }
+        });
+      }
     }
-    
+
     return created(res, {
-      message,
+      message: message.toJSON(),
+      whatsappSent: true,
       success: true
     });
   } catch (error) {
@@ -175,10 +327,10 @@ async function sendMessage(req, res) {
  */
 async function markAsRead(req, res) {
   try {
-    const { messageIds, ticketId } = req.body;
+    const { messageIds, ticketId, conversationId } = req.body;
     
-    if (!messageIds && !ticketId) {
-      return badRequest(res, 'IDs de mensagens ou ticket são obrigatórios');
+    if (!messageIds && !ticketId && !conversationId) {
+      return badRequest(res, 'IDs de mensagens, conversationId ou ticketId são obrigatórios');
     }
     
     let updated = 0;
@@ -193,6 +345,19 @@ async function markAsRead(req, res) {
           await message.markAsRead();
           updated++;
         }
+      }
+    } else if (conversationId) {
+      const messages = await ChatMessage.findAll({
+        where: {
+          conversationId,
+          direction: 'incoming',
+          status: { [ChatMessage.sequelize.Sequelize.Op.ne]: 'read' }
+        }
+      });
+
+      for (const message of messages) {
+        await message.markAsRead();
+        updated++;
       }
     } else if (ticketId) {
       // Marcar todas as mensagens do ticket
@@ -212,8 +377,14 @@ async function markAsRead(req, res) {
     
     // Emitir via Socket.IO
     const io = req.app.get('io');
-    if (io && ticketId) {
-      io.to(`ticket_${ticketId}`).emit('messages_read', { updated });
+    if (io && (ticketId || conversationId)) {
+      const payload = { updated };
+      if (ticketId) {
+        io.to(`ticket_${ticketId}`).emit('messages_read', payload);
+      }
+      if (conversationId) {
+        io.to(`conversation_${conversationId}`).emit('messages_read', payload);
+      }
     }
     
     return sendSuccess(res, {
@@ -414,9 +585,13 @@ async function uploadFile(req, res) {
     
     // TODO: Processar arquivo (gerar thumbnail, comprimir, etc)
     await attachment.markAsReady();
-    
+
+    const publicUrl = `/uploads/chat/${file.filename}`;
+
     return created(res, {
       attachment,
+      publicUrl,
+      downloadUrl: attachment.downloadUrl,
       message: 'Arquivo enviado com sucesso'
     });
   } catch (error) {
@@ -520,6 +695,7 @@ function getMediaType(mimetype) {
 }
 
 module.exports = {
+  getConversationMessages,
   getTicketMessages,
   sendMessage,
   markAsRead,

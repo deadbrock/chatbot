@@ -44,5 +44,23 @@ router.post('/restart', authenticate, whatsappController.restart);
  */
 router.post('/force-reconnect', whatsappController.forceReconnect);
 
+/**
+ * POST /api/whatsapp/clear-session
+ * Limpa sessão e força novo QR Code
+ */
+router.post('/clear-session', whatsappController.clearSession);
+
+/**
+ * POST /api/whatsapp/sync
+ * Sincroniza conversas do WhatsApp conectado
+ */
+router.post('/sync', authenticate, whatsappController.syncConversations);
+
+/**
+ * GET /api/whatsapp/sync/status
+ * Progresso da sincronização em tempo real
+ */
+router.get('/sync/status', authenticate, whatsappController.getSyncStatus);
+
 module.exports = router;
 

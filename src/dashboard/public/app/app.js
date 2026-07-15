@@ -3,12 +3,14 @@ import { apiFetch } from './api.js';
 import { createToast } from './ui/toast.js';
 import { escapeHtml, debounce } from './ui/dom.js';
 import { initRouter, navigateToSection } from './router.js';
+import { applyMenuPermissions, canAccessSection, getCurrentUserRole, getRoleLabel } from './permissions.js';
 import { connectSocket } from './socket.js';
+import { registerChatRealtime } from './views/chatView.js';
 import { initMenuController } from './menuController.js';
 import { renderDashboard, renderDashboardCharts, renderRankings, renderAdditionalCharts } from './views/dashboardView.js';
 import { renderTickets, openTicketModal } from './views/ticketsView.js';
 import { renderSessions } from './views/sessionsView.js';
-import { renderAgents } from './views/agentsView.js';
+import { renderAgents, initAgentsModule } from './views/agentsView.js';
 import { renderAnalytics } from './views/analyticsView.js';
 import { loadSettingsView } from './views/settingsView.js';
 import { renderKanban } from './views/kanbanView.js';
@@ -22,6 +24,7 @@ import { initAdministrationView } from './views/administrationView.js';
 import { initChatView, cleanupChatView } from './views/chatView.js';
 import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
 import { initThemeToggle } from './theme.js';
+import { initWhatsappSyncProgress } from './ui/syncProgressOverlay.js';
 
 // 🌐 EXPORTAR apiFetch para window (para scripts não-módulos como aiPlaygroundView.js)
 window.apiFetch = apiFetch;
@@ -36,7 +39,10 @@ function hydrateUser() {
   const user = getStoredUser();
   if (user?.name) {
     const el = document.getElementById('userName');
-    if (el) el.textContent = user.name;
+    if (el) {
+      const roleLabel = getRoleLabel(user.role);
+      el.textContent = `${user.name} (${roleLabel})`;
+    }
   }
 }
 
@@ -50,6 +56,8 @@ function wireEvents() {
     await loadDashboard();
     createToast({ title: 'Atualizado', message: 'Dados atualizados com sucesso.', variant: 'success' });
   });
+
+  initDashboardMetricLinks();
 
   // Tickets
   document.getElementById('refreshTicketsBtn')?.addEventListener('click', () => loadTickets());
@@ -100,42 +108,65 @@ function wireEvents() {
   document.getElementById('refreshSessionsBtn')?.addEventListener('click', () => loadSessions());
 
   // Atendentes
+  initAgentsModule({ onReload: loadAgents });
   document.getElementById('refreshAgentsBtn')?.addEventListener('click', () => loadAgents());
-  document.getElementById('newAgentBtn')?.addEventListener('click', () => {
-    const modalEl = document.getElementById('newAgentModal');
-    if (!modalEl) return;
-    const modal = new window.bootstrap.Modal(modalEl);
-    modal.show();
-  });
-  document.getElementById('createAgentBtn')?.addEventListener('click', async () => {
-    const form = document.getElementById('newAgentForm');
-    if (!form) return;
-    const fd = new FormData(form);
-    const payload = Object.fromEntries(fd.entries());
-    try {
-      await apiFetch('/users', { method: 'POST', body: payload });  // ✅ apiFetch já faz JSON.stringify!
-      createToast({ title: 'Criado', message: 'Atendente criado com sucesso.', variant: 'success' });
-      form.reset();
-      window.bootstrap.Modal.getInstance(document.getElementById('newAgentModal'))?.hide();
-      await loadAgents();
-    } catch (e) {
-      createToast({ title: 'Erro', message: e?.message || 'Falha ao criar atendente.', variant: 'danger' });
-    }
-  });
 
   // Analytics
   document.getElementById('refreshAnalyticsBtn')?.addEventListener('click', () => loadAnalytics());
 }
 
+function initDashboardMetricLinks() {
+  const dashboardSection = document.getElementById('dashboardSection');
+  if (!dashboardSection || dashboardSection.dataset.metricLinksReady === '1') return;
+
+  const openMetricTarget = (card) => {
+    const section = card.dataset.navSection;
+    if (!section) return;
+
+    const role = getCurrentUserRole();
+    if (!canAccessSection(role, section)) {
+      createToast({
+        title: 'Acesso restrito',
+        message: 'Você não tem permissão para acessar este módulo.',
+        variant: 'warning'
+      });
+      return;
+    }
+
+    const filter = card.dataset.navFilter;
+    if (filter) {
+      const filterEl = document.getElementById('ticketStatusFilter');
+      if (filterEl) filterEl.value = filter;
+    }
+
+    navigateToSection(section);
+  };
+
+  dashboardSection.addEventListener('click', (event) => {
+    const card = event.target.closest('[data-nav-section]');
+    if (!card) return;
+    openMetricTarget(card);
+  });
+
+  dashboardSection.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const card = event.target.closest('[data-nav-section]');
+    if (!card) return;
+    event.preventDefault();
+    openMetricTarget(card);
+  });
+
+  dashboardSection.dataset.metricLinksReady = '1';
+}
+
 async function loadDashboard() {
-  const [dashboardData, tickets, timelineRows, statusRows, extendedMetrics, npsData, contactsRanking, agentsRanking] = await Promise.all([
+  const [dashboardData, tickets, timelineRows, statusRows, extendedMetrics, npsData, agentsRanking] = await Promise.all([
     apiFetch('/analytics/dashboard'),
     apiFetch('/tickets?limit=10'),
     apiFetch('/analytics/tickets/timeline?days=30'),
     apiFetch('/analytics/tickets/by-status'),
     apiFetch('/analytics/metrics/extended').catch(() => null),
     apiFetch('/nps/score').catch(() => null),
-    apiFetch('/analytics/rankings/contacts?limit=10').catch(() => null),
     apiFetch('/analytics/rankings/agents').catch(() => null)
   ]);
 
@@ -145,9 +176,9 @@ async function loadDashboard() {
     statusRows: Array.isArray(statusRows) ? statusRows : (statusRows?.data || [])
   });
   
-  // Renderizar rankings
-  if (contactsRanking || agentsRanking) {
-    renderRankings({ contacts: contactsRanking, agents: agentsRanking });
+  // Renderizar ranking de atendentes
+  if (agentsRanking) {
+    renderRankings({ agents: agentsRanking });
   }
   
   // Renderizar gráficos adicionais
@@ -174,9 +205,15 @@ async function loadSessions() {
 }
 
 async function loadAgents() {
-  const response = await apiFetch('/users');
+  const response = await apiFetch('/users?role=agent,manager');
   state.agents = response.data || response || [];
-  renderAgents({ agents: state.agents, apiFetch, createToast, escapeHtml });
+  renderAgents({
+    agents: state.agents,
+    apiFetch,
+    createToast,
+    escapeHtml,
+    onReload: loadAgents
+  });
 }
 
 async function loadAnalytics() {
@@ -365,14 +402,23 @@ async function init() {
   initThemeToggle();
   initMenuController();
   hydrateUser();
+  applyMenuPermissions(getCurrentUserRole());
   wireEvents();
-  initRouter(onSectionChange);
+  initRouter(
+    onSectionChange,
+    () => {
+      createToast({
+        title: 'Acesso restrito',
+        message: 'Você não tem permissão para acessar este módulo.',
+        variant: 'warning'
+      });
+    }
+  );
 
   connectSocket({
     onNewTicket: (data) => {
       createToast({ title: 'Novo ticket', message: `Ticket ${data.protocol} criado.`, variant: 'primary' });
       loadDashboard();
-      // se estiver na aba tickets, atualiza também
       if (location.hash.includes('tickets')) loadTickets();
     },
     onTicketUpdated: () => {
@@ -384,6 +430,9 @@ async function init() {
       if (location.hash.includes('sessions')) loadSessions();
     }
   });
+
+  registerChatRealtime();
+  initWhatsappSyncProgress();
 
   // primeira carga baseada no hash
   const initial = (location.hash || '#dashboard').replace('#', '');

@@ -164,7 +164,7 @@ async function syncDatabase() {
     // ETAPA 1: Sincronizar modelos base PRIMEIRO (sem foreign keys problemáticas)
     logger.info('   📦 Etapa 1/2: Sincronizando modelos base...');
     const baseModels = [
-      'User', 'Role', 'Queue', 'TicketStatus', 'Contact', 
+      'User', 'Role', 'Queue', 'TicketStatus', 'Contact', 'Conversation',
       'Tag', 'Flow', 'VisualFlow', 'FlowNode', 'SystemSetting',
       'WhatsAppConnection', 'ApiKey', 'Session', 'UserSession'
     ];

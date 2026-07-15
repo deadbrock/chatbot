@@ -173,6 +173,7 @@ const io = socketIO(server, {
     methods: ['GET', 'POST']
   }
 });
+global.io = io;
 
 // Middlewares
 // Configurar CORS para permitir requisições do frontend (Vercel)
@@ -227,6 +228,7 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'dashboard/public')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Se chegar JSON inválido, responder 400 (sem derrubar / sem virar 500 genérico)
 app.use((err, req, res, next) => {
@@ -252,7 +254,7 @@ app.get('/health', async (req, res) => {
   const dbConnected = await testConnection();
   res.json({ 
     status: 'ok', 
-    whatsapp: whatsappClient.isReady,
+    whatsapp: whatsappClient?.isReady ?? false,
     database: dbConnected
   });
 });
@@ -504,21 +506,23 @@ async function startServer() {
     if (whatsappClient) {
       app.set('whatsappClient', whatsappClient);
       
-      // Inicializar WhatsApp (não bloquear o start do servidor)
-      logger.info('═══════════════════════════════════════════════════════');
-      logger.info('📱 ETAPA 7: Inicializando WhatsApp (não bloqueia servidor)...');
-      logger.info('═══════════════════════════════════════════════════════');
-      whatsappClient.initialize()
-        .then(() => {
-          logger.info('✅ WhatsApp inicializado com sucesso');
-        })
-        .catch((err) => {
-          logger.error('⚠️ AVISO: Falha ao inicializar WhatsApp (servidor continua online):');
-          logger.error(`   Mensagem: ${err.message}`);
-          if (err.stack) {
-            logger.error(`   Stack: ${err.stack}`);
-          }
-        });
+      // Inicializar WhatsApp apenas se WHATSAPP_AUTO_START=true (evita travar no boot)
+      if (process.env.WHATSAPP_AUTO_START === 'true') {
+        logger.info('═══════════════════════════════════════════════════════');
+        logger.info('📱 ETAPA 7: Inicializando WhatsApp (não bloqueia servidor)...');
+        logger.info('═══════════════════════════════════════════════════════');
+        whatsappClient.prepareForConnection({ rotateIfLocked: true })
+          .then(() => whatsappClient.initialize())
+          .then(() => {
+            logger.info('✅ WhatsApp inicializado com sucesso');
+          })
+          .catch((err) => {
+            logger.error('⚠️ AVISO: Falha ao inicializar WhatsApp (servidor continua online):');
+            logger.error(`   Mensagem: ${err.message}`);
+          });
+      } else {
+        logger.info('📱 WhatsApp: aguardando conexão manual (Administração → Nova Conexão)');
+      }
     } else {
       logger.warn('⚠️ WhatsApp client não disponível (servidor continua sem WhatsApp)');
     }

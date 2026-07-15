@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
 const {
+  getConversationMessages,
   getTicketMessages,
   sendMessage,
   markAsRead,
@@ -85,6 +86,9 @@ const upload = multer({
  */
 
 // ==================== MENSAGENS ====================
+
+// Listar mensagens de uma conversa (inbox)
+router.get('/conversations/:conversationId/messages', authenticate, getConversationMessages);
 
 // Listar mensagens de um ticket
 router.get('/tickets/:ticketId/messages', authenticate, getTicketMessages);

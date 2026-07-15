@@ -4,239 +4,313 @@
  */
 
 import { apiFetch } from '../api.js';
-import { showToast } from '../ui/toast.js';
+import { showToast, createToast } from '../ui/toast.js';
 import { showLoading, hideLoading } from '../ui/loading.js';
+import { getSocket, connectSocket, requestNotificationPermission, getNotificationPermission, onSocketEvent } from '../socket.js';
+import { resolveContactDisplayName, getContactInitials, formatPhoneDisplay, normalizePhoneDigits } from '../utils/contactDisplay.js';
+import { debounce } from '../ui/dom.js';
 
 // Socket.IO
 let socket = null;
+let currentConversationId = null;
+let currentConversation = null;
 let currentTicketId = null;
 let currentUserId = null;
 let typingTimeout = null;
 let selectedFile = null;
+let cachedTickets = [];
+let chatRealtimeReady = false;
+let chatPollInterval = null;
+let voiceRecorder = null;
+let voiceChunks = [];
+let isRecordingVoice = false;
+const notifiedMessageIds = new Set();
+let currentChatFilter = 'all';
+let currentSearchText = '';
+const CHAT_LIST_PAGE_SIZE = 50;
+let chatListPage = 1;
+let chatListPagination = { total: 0, pages: 1, hasMore: false };
+let chatListStats = { all: 0, unread: 0, open: 0 };
+const CHAT_MESSAGES_PAGE_SIZE = 200;
+let currentTicketMessages = [];
+let hasMoreOlderMessages = false;
+let loadingOlderMessages = false;
+let chatUiListenersReady = false;
+let messageSearchMatches = [];
+let messageSearchIndex = -1;
 
 /**
- * Inicializa a view do chat
+ * Registra listeners de tempo real (chamado no login do app)
  */
-export async function initChatView() {
-  console.log('🎨 Inicializando Chat View...');
-  
-  // Conectar Socket.IO
-  connectSocket();
-  
-  // Carregar conversas
-  await loadChats();
-  
-  // Event Listeners
-  setupEventListeners();
-  
-  console.log('✅ Chat View inicializado');
-}
+export function registerChatRealtime() {
+  if (chatRealtimeReady) return;
 
-/**
- * Conecta ao Socket.IO
- */
-function connectSocket() {
-  // Obter URL do servidor (mesma lógica do api.js)
-  let serverUrl = window.location.origin;
-  
-  // Tentar ler de meta tag (configurado para produção)
-  const apiUrlMeta = document.querySelector('meta[name="api-url"]');
-  if (apiUrlMeta) {
-    const url = apiUrlMeta.getAttribute('content');
-    if (url && url.trim()) {
-      // Remover /api do final se existir
-      serverUrl = url.replace(/\/api\/?$/, '');
-    }
-  }
-  
-  // Tentar ler de script tag
-  const apiConfigScript = document.getElementById('api-config');
-  if (apiConfigScript && apiConfigScript.textContent) {
-    try {
-      const config = JSON.parse(apiConfigScript.textContent);
-      if (config.apiUrl) {
-        serverUrl = config.apiUrl.replace(/\/api\/?$/, '');
+  socket = connectSocket();
+  if (!socket) return;
+
+  onSocketEvent('new_message', handleNewMessage);
+  onSocketEvent('conversation_updated', () => refreshChatListSilently());
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      updateGlobalUnreadBadge();
+      if ((location.hash || '').includes('chat')) {
+        refreshChatListSilently();
+        if (currentConversationId) refreshOpenChatMessages();
       }
-    } catch (e) {
-      // Ignorar erro
     }
-  }
-  
-  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-  const socketUrl = serverUrl.startsWith('http') ? serverUrl : `${protocol}//${serverUrl}`;
-  
-  console.log('🔌 Conectando ao Socket.IO:', socketUrl);
-  
-  // Conectar
-  socket = io(socketUrl, {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    reconnectionAttempts: 5
   });
-  
-  // Eventos de conexão
-  socket.on('connect', () => {
-    console.log('✅ Socket.IO conectado:', socket.id);
-    authenticateSocket();
-  });
-  
-  socket.on('disconnect', (reason) => {
-    console.log('❌ Socket.IO desconectado:', reason);
-    showToast('Conexão perdida. Tentando reconectar...', 'warning');
-  });
-  
-  socket.on('reconnect', (attemptNumber) => {
-    console.log('🔄 Socket.IO reconectado após', attemptNumber, 'tentativas');
-    showToast('Conexão reestabelecida!', 'success');
-    authenticateSocket();
-  });
-  
-  socket.on('connect_error', (error) => {
-    console.error('❌ Erro de conexão Socket.IO:', error);
-  });
-  
-  // Eventos do chat
-  setupSocketEvents();
-}
 
-/**
- * Autentica o usuário no Socket.IO
- */
-function authenticateSocket() {
-  const token = localStorage.getItem('token');
+  socket.on('message_sent', (data) => {
+    const message = data.message || data;
+    if (sameConversationId(data.conversationId, currentConversationId)
+      || sameTicketId(data.ticketId || message.ticketId, currentTicketId)) {
+      updateMessageInChat(message);
+    }
+    refreshChatListSilently();
+  });
+
+  socket.on('whatsapp_sync_complete', (data) => {
+    if (data?.success) {
+      const ensured = data.stats?.conversationsEnsured || data.stats?.ticketsEnsured || data.stats?.chatsProcessed || 0;
+      const imported = data.stats?.messagesImported || 0;
+      const updated = data.stats?.messagesUpdated || 0;
+      const synced = imported + updated;
+      const created = data.stats?.ticketsCreated || 0;
+      showToast(
+        `WhatsApp sincronizado: ${ensured} conversas${created ? ` (${created} novas)` : ''}, ${synced} mensagens`,
+        'success'
+      );
+      loadChats({ silent: true, page: 1 });
+    } else if (data?.error) {
+      showToast(`Erro na sincronização: ${data.error}`, 'error');
+    }
+  });
+
+  socket.on('new_conversation_notification', (data) => {
+    showConversationNotification(data);
+    loadChats({ silent: true });
+  });
+
+  socket.on('conversations_purged', () => {
+    cachedTickets = [];
+    currentConversationId = null;
+    currentTicketId = null;
+    currentTicketMessages = [];
+    hasMoreOlderMessages = false;
+    document.getElementById('chatList')?.replaceChildren();
+    document.getElementById('chatListPagination')?.replaceChildren();
+    document.getElementById('chatEmptyState')?.style && (document.getElementById('chatEmptyState').style.display = 'flex');
+    document.getElementById('chatHeader')?.style && (document.getElementById('chatHeader').style.display = 'none');
+    document.getElementById('chatMessages')?.style && (document.getElementById('chatMessages').style.display = 'none');
+    document.getElementById('chatInput')?.style && (document.getElementById('chatInput').style.display = 'none');
+    loadChats({ silent: true, page: 1 });
+  });
+
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
   currentUserId = user.id;
-  
-  socket.emit('authenticate', {
-    token: token,
+  const authPayload = {
+    token: localStorage.getItem('token'),
     userId: user.id,
     name: user.name,
     role: user.role
+  };
+
+  const doAuth = () => socket.emit('authenticate', authPayload);
+  if (socket.connected) doAuth();
+  else socket.once('connect', doAuth);
+
+  startChatPolling();
+  setupNotificationButton();
+  chatRealtimeReady = true;
+  updateGlobalUnreadBadge();
+}
+
+let notificationButtonReady = false;
+
+function setupNotificationButton() {
+  if (notificationButtonReady) return;
+  const btn = document.getElementById('enableNotificationsBtn');
+  if (!btn) return;
+  notificationButtonReady = true;
+
+  const updateBtn = () => {
+    const perm = getNotificationPermission();
+    if (perm === 'unsupported' || perm === 'granted' || perm === 'denied') {
+      btn.style.display = 'none';
+      return;
+    }
+    btn.style.display = '';
+    btn.title = 'Clique para ativar notificações do navegador';
+  };
+
+  updateBtn();
+
+  btn.addEventListener('click', async () => {
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      showToast('Notificações ativadas!', 'success');
+    } else if (getNotificationPermission() === 'denied') {
+      showToast('Notificações bloqueadas. Libere nas configurações do navegador.', 'warning');
+    }
+    updateBtn();
   });
 }
 
-/**
- * Configura eventos do Socket.IO
- */
-function setupSocketEvents() {
-  // Autenticação
-  socket.on('authenticated', (data) => {
-    console.log('✅ Autenticado no chat:', data);
-  });
-  
-  // Nova mensagem
-  socket.on('new_message', (data) => {
-    console.log('📨 Nova mensagem recebida:', data);
-    handleNewMessage(data);
-  });
-  
-  // Mensagem enviada
-  socket.on('message_sent', (data) => {
-    console.log('✅ Mensagem enviada:', data);
-  });
-  
-  // Mensagem lida
+export async function initChatView() {
+  console.log('🎨 Inicializando Chat View...');
+
+  mountMediaViewer();
+  registerChatRealtime();
+  setupNotificationButton();
+
+  await loadChats();
+  setupEventListeners();
+  setupChatUiSocketEvents();
+
+  window.acceptConversation = acceptConversation;
+  window.finishConversation = finishConversation;
+  window.acceptTicketFromNotification = acceptConversationFromNotification;
+
+  console.log('✅ Chat View inicializado');
+}
+
+function setupChatUiSocketEvents() {
+  if (!socket) return;
+
+  socket.off('message_read');
+  socket.off('message_reaction');
+  socket.off('user_typing');
+  socket.off('user_stop_typing');
+  socket.off('user_online');
+  socket.off('user_offline');
+
   socket.on('message_read', (data) => {
-    console.log('👁️ Mensagem lida:', data);
     updateMessageStatus(data.messageId, 'read');
   });
-  
-  // Reação em mensagem
+
   socket.on('message_reaction', (data) => {
-    console.log('❤️ Reação adicionada:', data);
     handleMessageReaction(data);
   });
-  
-  // Usuário digitando
+
   socket.on('user_typing', (data) => {
-    console.log('⌨️ Usuário digitando:', data);
     showTypingIndicator(data);
   });
-  
-  socket.on('user_stop_typing', (data) => {
-    console.log('🛑 Usuário parou de digitar:', data);
+
+  socket.on('user_stop_typing', () => {
     hideTypingIndicator();
   });
-  
-  // Status de usuários
+
   socket.on('user_online', (data) => {
-    console.log('🟢 Usuário online:', data);
     updateUserStatus(data.userId, 'online');
   });
-  
+
   socket.on('user_offline', (data) => {
-    console.log('⚫ Usuário offline:', data);
     updateUserStatus(data.userId, 'offline');
   });
-  
-  // Ticket join/leave
-  socket.on('joined_ticket', (data) => {
-    console.log('✅ Entrou no ticket:', data);
-  });
-  
-  socket.on('user_joined_ticket', (data) => {
-    console.log('👤 Outro usuário entrou:', data);
-  });
-  
-  socket.on('user_left_ticket', (data) => {
-    console.log('👋 Usuário saiu:', data);
-  });
-  
-  // 🔔 NOVOS EVENTOS: Notificações de Tickets
-  socket.on('new_ticket_notification', (data) => {
-    console.log('🔔 Novo ticket aguardando atendente:', data);
-    showTicketNotification(data);
-    // Recarregar lista de chats para mostrar novo ticket
-    loadChats();
-  });
-  
-  socket.on('ticket_accepted', (data) => {
-    console.log('✅ Ticket aceito:', data);
-    showToast(`Ticket ${data.protocol} aceito por ${data.agentName}`, 'success');
-    loadChats();
-  });
-  
-  socket.on('ticket_rejected', (data) => {
-    console.log('⏭️ Ticket rejeitado:', data);
-    loadChats();
-  });
-  
-  socket.on('ticket_finished', (data) => {
-    console.log('🏁 Ticket finalizado:', data);
-    showToast(`Ticket ${data.protocol} finalizado`, 'info');
-    loadChats();
-  });
-  
-  socket.on('ticket_auto_assigned', (data) => {
-    console.log('🤖 Ticket atribuído automaticamente à IA:', data);
-    loadChats();
-  });
+}
+
+function startChatPolling() {
+  if (chatPollInterval) return;
+  chatPollInterval = setInterval(() => {
+    if (document.hidden) return;
+
+    updateGlobalUnreadBadge();
+
+    if (!(location.hash || '').includes('chat')) return;
+
+    refreshChatListSilently();
+    if (currentConversationId) {
+      refreshOpenChatMessages();
+    }
+  }, 8000);
+}
+
+async function refreshOpenChatMessages() {
+  if (!currentConversationId) return;
+  try {
+    const response = await loadConversationMessages(currentConversationId);
+    const messages = response?.messages || [];
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const currentCount = container.querySelectorAll('.chat-message').length;
+    if (messages.length > currentCount) {
+      currentTicketMessages = messages;
+      renderMessages(messages, { scrollToBottom: true });
+    }
+  } catch (error) {
+    console.debug('Polling mensagens:', error.message);
+  }
+}
+
+async function loadConversationMessages(conversationId, { before } = {}) {
+  const params = new URLSearchParams({ limit: String(CHAT_MESSAGES_PAGE_SIZE) });
+  if (before) params.set('before', before);
+  return apiFetch(`/chat/conversations/${conversationId}/messages?${params.toString()}`);
+}
+
+async function loadTicketMessages(ticketId, { before } = {}) {
+  const params = new URLSearchParams({ limit: String(CHAT_MESSAGES_PAGE_SIZE) });
+  if (before) params.set('before', before);
+  return apiFetch(`/chat/tickets/${ticketId}/messages?${params.toString()}`);
+}
+
+async function loadOlderMessages() {
+  if (!currentConversationId || !hasMoreOlderMessages || loadingOlderMessages) return;
+
+  const oldest = currentTicketMessages[0];
+  if (!oldest?.timestamp) return;
+
+  loadingOlderMessages = true;
+  const container = document.getElementById('chatMessages');
+  const previousHeight = container?.scrollHeight || 0;
+
+  try {
+    const response = await loadConversationMessages(currentConversationId, {
+      before: new Date(oldest.timestamp).toISOString()
+    });
+    const olderMessages = response?.messages || [];
+    if (!olderMessages.length) {
+      hasMoreOlderMessages = false;
+      return;
+    }
+
+    currentTicketMessages = [...olderMessages, ...currentTicketMessages];
+    hasMoreOlderMessages = Boolean(response?.hasMore);
+    renderMessages(currentTicketMessages, { scrollToBottom: false, preserveScroll: true, previousHeight });
+  } catch (error) {
+    console.error('Erro ao carregar mensagens antigas:', error);
+  } finally {
+    loadingOlderMessages = false;
+  }
 }
 
 /**
  * Configura event listeners
  */
 function setupEventListeners() {
+  if (chatUiListenersReady) return;
+  chatUiListenersReady = true;
+
   // Busca de conversas
   const searchInput = document.getElementById('chatSearchInput');
-  searchInput?.addEventListener('input', (e) => {
+  searchInput?.addEventListener('input', debounce((e) => {
     filterChats(e.target.value);
-  });
+  }, 300));
   
   // Filtros
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
+      const button = e.currentTarget;
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      filterChatsByStatus(e.target.dataset.filter);
+      button.classList.add('active');
+      filterChatsByStatus(button.dataset.filter);
     });
   });
   
   // Refresh
-  document.getElementById('refreshChatsBtn')?.addEventListener('click', loadChats);
+  document.getElementById('refreshChatsBtn')?.addEventListener('click', () => loadChats({ page: chatListPage }));
   
   // Enviar mensagem
   const sendBtn = document.getElementById('sendMessageBtn');
@@ -270,59 +344,270 @@ function setupEventListeners() {
     clearFileSelection();
   });
 
+  document.getElementById('recordVoiceBtn')?.addEventListener('click', toggleVoiceRecording);
+
   // Evento global para abrir chat de um ticket específico
   window.addEventListener('openChat', (event) => {
-    const ticketId = event?.detail?.ticketId;
-    if (ticketId) {
-      console.log('🎯 Abrindo chat do ticket:', ticketId);
-      openChat(ticketId);
+    const conversationId = event?.detail?.conversationId || event?.detail?.ticketId;
+    if (conversationId) {
+      console.log('🎯 Abrindo conversa:', conversationId);
+      openChat(conversationId);
     }
   });
   
-  // Painel de informações
-  document.getElementById('chatInfoToggle')?.addEventListener('click', toggleInfoPanel);
-  document.getElementById('closeInfoPanel')?.addEventListener('click', toggleInfoPanel);
-  
-  // Ações de ticket
-  document.getElementById('chatCloseBtn')?.addEventListener('click', closeTicket);
-  document.getElementById('chatArchiveBtn')?.addEventListener('click', archiveTicket);
-  document.getElementById('chatBlockBtn')?.addEventListener('click', blockContact);
+  // Painel de informações e ações do cabeçalho do chat
+  document.getElementById('chatInfoToggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeChatMenu();
+    toggleInfoPanel();
+  });
+
+  document.getElementById('closeInfoPanel')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleInfoPanel(false);
+  });
+
+  document.getElementById('chatSearchToggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeChatMenu();
+    toggleMessageSearchBar();
+  });
+
+  document.getElementById('chatMessageSearchClose')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleMessageSearchBar(false);
+  });
+
+  document.getElementById('chatMessageSearchInput')?.addEventListener('input', debounce((e) => {
+    searchMessagesInChat(e.target.value);
+  }, 200));
+
+  document.getElementById('chatMessageSearchPrev')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    goToMessageSearchMatch(messageSearchIndex - 1);
+  });
+
+  document.getElementById('chatMessageSearchNext')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    goToMessageSearchMatch(messageSearchIndex + 1);
+  });
+
+  document.getElementById('chatMenuToggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleChatMenu();
+  });
+
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('chatHeaderDropdown');
+    const toggle = document.getElementById('chatMenuToggle');
+    if (!menu || !toggle) return;
+    if (!menu.contains(e.target) && !toggle.contains(e.target)) {
+      closeChatMenu();
+    }
+  });
+
+  document.getElementById('chatCloseBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeChatMenu();
+    finishCurrentChat();
+  });
+
+  document.getElementById('chatArchiveBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeChatMenu();
+    archiveTicket();
+  });
+
+  document.getElementById('chatBlockBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeChatMenu();
+    blockContact();
+  });
+
+  document.getElementById('chatSaveContactBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeChatMenu();
+    saveContactFromChat();
+  });
+
+  document.getElementById('chatMessages')?.addEventListener('click', handleMediaClick);
+  document.getElementById('mediaViewer')?.addEventListener('click', handleMediaViewerBackdrop);
+  document.getElementById('mediaViewerClose')?.addEventListener('click', closeMediaViewer);
+  document.getElementById('mediaViewerDownload')?.addEventListener('click', (e) => e.stopPropagation());
+  document.getElementById('mediaViewerOpen')?.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMediaViewer();
+  });
+
+  const messagesContainer = document.getElementById('chatMessages');
+  messagesContainer?.addEventListener('scroll', () => {
+    if (!messagesContainer || loadingOlderMessages || !hasMoreOlderMessages) return;
+    if (messagesContainer.scrollTop < 120) {
+      loadOlderMessages();
+    }
+  });
 }
 
 /**
- * Carrega lista de conversas
+ * Carrega lista de conversas (paginada)
  */
-async function loadChats() {
+async function loadChats({ silent = false, page = chatListPage } = {}) {
   try {
-    showLoading();
-    
-    // Não passar status específicos - deixar o backend filtrar automaticamente
-    // Para agents: mostra apenas tickets atribuídos (assignedTo = userId)
-    // Para admins/managers: mostra todos os tickets ativos
-    const tickets = await apiFetch('/tickets?limit=100');
-    
-    console.log('📋 Tickets carregados para chat:', tickets);
-    
-    const ticketsArray = Array.isArray(tickets) ? tickets : [];
-    
-    // Filtrar apenas tickets relevantes para chat (ativos)
-    const activeTickets = ticketsArray.filter(t => 
-      ['open', 'in_progress', 'waiting_human'].includes(t.status)
-    );
-    
-    console.log('📋 Tickets ativos filtrados:', activeTickets.length);
-    
-    renderChatList(activeTickets);
-    
-    // Atualizar contadores
-    updateFilterCounts(activeTickets);
-    
+    if (!silent) showLoading();
+
+    const params = new URLSearchParams({
+      limit: String(CHAT_LIST_PAGE_SIZE),
+      page: String(page),
+      filter: currentChatFilter,
+      search: currentSearchText
+    });
+
+    const response = await apiFetch(`/conversations?${params.toString()}`);
+    const ticketsArray = Array.isArray(response)
+      ? response
+      : (response?.data || []);
+
+    chatListPage = response?.pagination?.page || page;
+    chatListPagination = {
+      total: response?.pagination?.total || ticketsArray.length,
+      pages: response?.pagination?.pages || 1,
+      hasMore: Boolean(response?.pagination?.hasMore)
+    };
+
+    if (response?.stats) {
+      chatListStats = response.stats;
+    }
+
+    cachedTickets = sortTicketsByRecent(ticketsArray);
+    updateFilterCounts(chatListStats);
+    renderChatList(cachedTickets);
+    renderChatListPagination();
   } catch (error) {
     console.error('❌ Erro ao carregar conversas:', error);
-    showToast('Erro ao carregar conversas', 'error');
+    if (!silent) showToast('Erro ao carregar conversas', 'error');
   } finally {
-    hideLoading();
+    if (!silent) hideLoading();
   }
+}
+
+function renderChatListPagination() {
+  const paginationEl = document.getElementById('chatListPagination');
+  if (!paginationEl) return;
+
+  const { total, pages } = chatListPagination;
+  if (!total) {
+    paginationEl.innerHTML = '';
+    paginationEl.style.display = 'none';
+    return;
+  }
+
+  paginationEl.style.display = '';
+  const start = (chatListPage - 1) * CHAT_LIST_PAGE_SIZE + 1;
+  const end = Math.min(chatListPage * CHAT_LIST_PAGE_SIZE, total);
+
+  paginationEl.innerHTML = `
+    <button type="button" class="chat-page-btn" id="chatListPrevBtn" ${chatListPage <= 1 ? 'disabled' : ''} title="Página anterior">
+      <i class="bi bi-chevron-left"></i>
+    </button>
+    <div class="chat-page-info">
+      <span class="chat-page-label">Página ${chatListPage} de ${pages}</span>
+      <span class="chat-page-range">${start}–${end} de ${total}</span>
+    </div>
+    <button type="button" class="chat-page-btn" id="chatListNextBtn" ${chatListPage >= pages ? 'disabled' : ''} title="Próxima página">
+      <i class="bi bi-chevron-right"></i>
+    </button>
+  `;
+
+  document.getElementById('chatListPrevBtn')?.addEventListener('click', () => {
+    if (chatListPage > 1) loadChats({ page: chatListPage - 1 });
+  });
+  document.getElementById('chatListNextBtn')?.addEventListener('click', () => {
+    if (chatListPage < pages) loadChats({ page: chatListPage + 1 });
+  });
+}
+
+function sortTicketsByRecent(tickets) {
+  return [...tickets].sort((a, b) => {
+    const tsA = new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime();
+    const tsB = new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime();
+    return tsB - tsA;
+  });
+}
+
+async function refreshChatListSilently() {
+  await loadChats({ silent: true });
+  if (currentConversationId) {
+    document.querySelector(`[data-conversation-id="${currentConversationId}"]`)?.classList.add('active');
+  }
+}
+
+/**
+ * Monta HTML do avatar com foto ou iniciais
+ */
+function buildAvatarInnerHtml(profilePicUrl, displayName, phone) {
+  const initials = getContactInitials(displayName, phone);
+  if (profilePicUrl) {
+    return `
+      <img src="${escapeHtml(profilePicUrl)}" class="chat-avatar-img" alt="" loading="lazy" onerror="this.remove()">
+      <span class="chat-avatar-fallback">${initials}</span>
+    `;
+  }
+  return `<span>${initials}</span>`;
+}
+
+/**
+ * Aplica foto de perfil no cabeçalho do chat
+ */
+function applyHeaderAvatar(conversation) {
+  const phone = conversation.contact?.phone || conversation.userPhone || conversation.whatsappJid || '';
+  const contactName = conversation.displayName || resolveContactDisplayName(conversation);
+  const profilePicUrl = conversation.contact?.profilePicUrl || null;
+  const initials = getContactInitials(contactName, phone);
+
+  const imgEl = document.getElementById('chatContactAvatarImg');
+  const initialsEl = document.getElementById('chatContactInitials');
+
+  if (imgEl && profilePicUrl) {
+    imgEl.src = profilePicUrl;
+    imgEl.style.display = 'block';
+    imgEl.onerror = () => {
+      imgEl.style.display = 'none';
+      imgEl.removeAttribute('src');
+      if (initialsEl) {
+        initialsEl.textContent = initials;
+        initialsEl.style.display = '';
+      }
+    };
+    if (initialsEl) {
+      initialsEl.textContent = initials;
+      initialsEl.style.display = 'none';
+    }
+    return;
+  }
+
+  if (imgEl) {
+    imgEl.style.display = 'none';
+    imgEl.removeAttribute('src');
+  }
+  if (initialsEl) {
+    initialsEl.textContent = initials;
+    initialsEl.style.display = '';
+  }
+}
+
+/**
+ * Atualiza visibilidade do menu "Salvar contato"
+ */
+function updateSaveContactMenu(conversation) {
+  const item = document.getElementById('chatSaveContactItem');
+  if (!item) return;
+
+  const source = conversation?.contact?.source;
+  const isSaved = source === 'Manual';
+  item.style.display = isSaved ? 'none' : '';
 }
 
 /**
@@ -330,12 +615,20 @@ async function loadChats() {
  */
 function renderChatList(tickets) {
   const chatList = document.getElementById('chatList');
+  if (!chatList) return;
   
   if (!tickets || tickets.length === 0) {
+    const emptyMessages = {
+      all: 'Nenhuma conversa ativa',
+      unread: 'Nenhuma conversa não lida',
+      open: 'Nenhuma conversa aberta'
+    };
+    const emptyText = emptyMessages[currentChatFilter] || emptyMessages.all;
+
     chatList.innerHTML = `
-      <div class="text-center py-5 text-muted">
-        <i class="bi bi-chat-dots fs-1"></i>
-        <p class="mt-2">Nenhuma conversa ativa</p>
+      <div class="chat-list-empty">
+        <i class="bi bi-chat-dots"></i>
+        <p>${emptyText}</p>
       </div>
     `;
     return;
@@ -345,21 +638,25 @@ function renderChatList(tickets) {
     const contact = ticket.contact || {};
     const lastMessage = ticket.lastMessage || {};
     const unreadCount = ticket.unreadMessages || 0;
+    const displayName = ticket.displayName || resolveContactDisplayName(ticket);
+    const phone = ticket.contact?.phone || ticket.userPhone || '';
+    const profilePicUrl = ticket.contact?.profilePicUrl || null;
+    const preview = formatMessagePreview(lastMessage);
     
     return `
-      <div class="chat-item ${unreadCount > 0 ? 'unread' : ''}" data-ticket-id="${ticket.id}">
+      <div class="chat-item ${unreadCount > 0 ? 'unread' : ''}" data-conversation-id="${ticket.id}">
         <div class="chat-item-avatar">
-          <span>${getInitials(contact.name)}</span>
-          ${ticket.status === 'open' ? '<span class="status-indicator online"></span>' : ''}
+          ${buildAvatarInnerHtml(profilePicUrl, displayName, phone)}
+          ${ticket.activeTicket?.status === 'in_progress' ? '<span class="status-indicator online"></span>' : ''}
         </div>
         <div class="chat-item-content">
-          <div class="chat-item-header">
-            <h6 class="chat-item-name">${contact.name || 'Sem nome'}</h6>
+          <div class="chat-item-top">
+            <h6 class="chat-item-name">${escapeHtml(displayName)}</h6>
             <span class="chat-item-time">${formatTime(lastMessage.timestamp || ticket.updatedAt)}</span>
           </div>
-          <div class="chat-item-message">
-            <p class="mb-0">${lastMessage.body || 'Sem mensagens'}</p>
-            ${unreadCount > 0 ? `<span class="badge bg-danger rounded-pill">${unreadCount}</span>` : ''}
+          <div class="chat-item-bottom">
+            <p class="chat-item-preview">${escapeHtml(preview)}</p>
+            ${unreadCount > 0 ? `<span class="chat-item-unread">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
           </div>
         </div>
       </div>
@@ -369,8 +666,8 @@ function renderChatList(tickets) {
   // Event listeners para cada item
   document.querySelectorAll('.chat-item').forEach(item => {
     item.addEventListener('click', () => {
-      const ticketId = item.dataset.ticketId;
-      openChat(ticketId);
+      const conversationId = item.dataset.conversationId;
+      openChat(conversationId);
     });
   });
 }
@@ -378,59 +675,60 @@ function renderChatList(tickets) {
 /**
  * Abre um chat
  */
-async function openChat(ticketId) {
+async function openChat(conversationId) {
   try {
     showLoading();
     
-    // Deixar ticket anterior
+    if (currentConversationId && socket) {
+      socket.emit('leave_conversation', currentConversationId);
+    }
     if (currentTicketId && socket) {
       socket.emit('leave_ticket', currentTicketId);
     }
     
-    currentTicketId = ticketId;
+    currentConversationId = conversationId;
+    currentTicketId = null;
+    currentTicketMessages = [];
+    hasMoreOlderMessages = false;
+    toggleMessageSearchBar(false);
+    toggleInfoPanel(false);
+    closeChatMenu();
+
+    const messagesResponse = await loadConversationMessages(conversationId);
+    const messages = messagesResponse?.messages || [];
+    hasMoreOlderMessages = Boolean(messagesResponse?.hasMore);
+    currentTicketMessages = messages;
     
-    // Carregar mensagens
-    const messagesResponse = await apiFetch(`/chat/tickets/${ticketId}/messages`);
-    const messages = messagesResponse?.messages || messagesResponse?.data?.messages || [];
+    const conversation = await apiFetch(`/conversations/${conversationId}`);
+    currentConversation = conversation;
+    currentTicketId = conversation?.activeTicketId || conversation?.activeTicket?.id || messagesResponse?.activeTicketId || null;
     
-    console.log('📨 Mensagens recebidas:', messages.length, messages);
+    renderChatHeader(conversation);
+    renderMessages(messages, { scrollToBottom: true });
     
-    // Carregar dados do ticket
-    const ticket = await apiFetch(`/tickets/${ticketId}`);
-    
-    console.log('📋 Ticket carregado:', ticket);
-    
-    // Renderizar chat
-    renderChatHeader(ticket);
-    renderMessages(messages);
-    
-    // Mostrar elementos do chat
     document.getElementById('chatEmptyState').style.display = 'none';
     document.getElementById('chatHeader').style.display = 'flex';
-    document.getElementById('chatMessages').style.display = 'block';
+    document.getElementById('chatMessages').style.display = 'flex';
     document.getElementById('chatInput').style.display = 'block';
     
-    // Marcar item como ativo
     document.querySelectorAll('.chat-item').forEach(item => {
       item.classList.remove('active');
     });
-    document.querySelector(`[data-ticket-id="${ticketId}"]`)?.classList.add('active');
+    document.querySelector(`[data-conversation-id="${conversationId}"]`)?.classList.add('active');
     
-    // Entrar no ticket via Socket.IO
     if (socket) {
-      socket.emit('join_ticket', ticketId);
+      socket.emit('join_conversation', conversationId);
+      if (currentTicketId) {
+        socket.emit('join_ticket', currentTicketId);
+      }
     }
     
-    // Marcar mensagens como lidas
-    markMessagesAsRead(ticketId);
+    await markMessagesAsRead(conversationId);
     
-    // Scroll para o final
-    scrollToBottom();
-    
+    hideLoading();
   } catch (error) {
     console.error('❌ Erro ao abrir chat:', error);
     showToast('Erro ao abrir conversa', 'error');
-  } finally {
     hideLoading();
   }
 }
@@ -438,26 +736,41 @@ async function openChat(ticketId) {
 /**
  * Renderiza cabeçalho do chat
  */
-function renderChatHeader(ticket) {
-  // Usar dados diretos do ticket (sem relações)
-  const contactName = ticket.userName || ticket.contact?.name || 'Sem nome';
-  const contactPhone = ticket.userPhone || ticket.contact?.number || '';
-  const queueName = ticket.department || ticket.queue?.name || '-';
-  const agentName = ticket.assignedAgent?.name || 'Não atribuído';
+function renderChatHeader(conversation) {
+  const phone = conversation.contact?.phone || conversation.userPhone || conversation.whatsappJid || '';
+  const contactName = conversation.displayName || resolveContactDisplayName(conversation);
+  const formattedPhone = formatPhoneDisplay(phone);
+  const activeTicket = conversation.activeTicket || null;
+  const queueName = activeTicket?.department || '-';
+  const agentName = activeTicket?.assignedAgent?.name || (activeTicket?.assignedTo ? 'Atendente' : 'Não atribuído');
+  const statusLabel = activeTicket
+    ? getStatusLabel(activeTicket.status)
+    : (conversation.waitingHuman ? 'Aguardando atendente' : 'Conversa');
   
   const initialsEl = document.getElementById('chatContactInitials');
-  if (initialsEl) initialsEl.textContent = getInitials(contactName);
+  if (initialsEl && !conversation.contact?.profilePicUrl) {
+    initialsEl.textContent = getContactInitials(contactName, phone);
+  }
+
+  applyHeaderAvatar(conversation);
+  updateSaveContactMenu(conversation);
   
   const nameEl = document.getElementById('chatContactName');
   if (nameEl) nameEl.textContent = contactName;
   
   const infoEl = document.getElementById('chatContactInfo');
-  if (infoEl) infoEl.textContent = contactPhone;
+  if (infoEl) {
+    const parts = [];
+    const showingPhoneAsName = normalizePhoneDigits(contactName) === normalizePhoneDigits(phone);
+    if (formattedPhone && !showingPhoneAsName) parts.push(formattedPhone);
+    parts.push(statusLabel);
+    infoEl.textContent = parts.join(' · ');
+  }
   
   // Status indicator
   const statusIndicator = document.getElementById('chatContactStatus');
   if (statusIndicator) {
-    statusIndicator.className = `status-indicator ${ticket.status === 'open' || ticket.status === 'in_progress' ? 'online' : 'offline'}`;
+    statusIndicator.className = `status-indicator ${activeTicket?.status === 'in_progress' ? 'online' : 'offline'}`;
   }
   
   // Painel de informações
@@ -465,10 +778,10 @@ function renderChatHeader(ticket) {
   if (infoNameEl) infoNameEl.textContent = contactName;
   
   const infoPhoneEl = document.getElementById('infoContactPhone');
-  if (infoPhoneEl) infoPhoneEl.textContent = contactPhone;
+  if (infoPhoneEl) infoPhoneEl.textContent = formattedPhone || phone.split('@')[0] || '-';
   
   const infoStatusEl = document.getElementById('infoTicketStatus');
-  if (infoStatusEl) infoStatusEl.textContent = getStatusLabel(ticket.status);
+  if (infoStatusEl) infoStatusEl.textContent = statusLabel;
   
   const infoQueueEl = document.getElementById('infoTicketQueue');
   if (infoQueueEl) infoQueueEl.textContent = queueName;
@@ -476,47 +789,40 @@ function renderChatHeader(ticket) {
   const infoAgentEl = document.getElementById('infoTicketAgent');
   if (infoAgentEl) infoAgentEl.textContent = agentName;
   
-  // Tags (se existirem)
   const infoTagsEl = document.getElementById('infoTicketTags');
-  if (infoTagsEl && ticket.tags && ticket.tags.length > 0) {
-    infoTagsEl.innerHTML = ticket.tags.map(tag => 
+  if (infoTagsEl && activeTicket?.tags && activeTicket.tags.length > 0) {
+    infoTagsEl.innerHTML = activeTicket.tags.map(tag => 
       `<span class="badge" style="background-color: ${tag.color}">${tag.name}</span>`
     ).join(' ');
   }
   
-  // Renderizar botões de ação (aceitar, rejeitar, finalizar)
-  renderActionButtons(ticket);
+  renderActionButtons(conversation);
 }
 
 /**
  * Renderiza botões de ação no cabeçalho (Aceitar, Rejeitar, Finalizar)
  */
-function renderActionButtons(ticket) {
+function renderActionButtons(conversation) {
   const actionsContainer = document.getElementById('chatHeaderActions');
   if (!actionsContainer) return;
   
-  // Limpar botões existentes
   actionsContainer.innerHTML = '';
   
-  // Obter usuário logado
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  
-  // Se ticket está aguardando atendente (waiting_human)
-  if (ticket.status === 'waiting_human') {
+  const activeTicket = conversation.activeTicket || null;
+  const conversationId = conversation.id;
+
+  if (!activeTicket) {
     actionsContainer.innerHTML = `
-      <button class="btn btn-success btn-sm" onclick="acceptTicket(${ticket.id})" title="Aceitar Atendimento">
+      <button class="btn btn-success btn-sm" onclick="acceptConversation('${conversationId}')" title="Aceitar Atendimento">
         <i class="bi bi-check-circle"></i> Aceitar
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick="rejectTicket(${ticket.id})" title="Rejeitar (IA assume)">
-        <i class="bi bi-x-circle"></i> Rejeitar
       </button>
     `;
   }
-  
-  // Se ticket está em progresso E atribuído ao atendente logado
-  if (ticket.status === 'in_progress' && ticket.assignedTo === currentUser.id) {
+
+  if (activeTicket?.status === 'in_progress' && activeTicket.assignedTo === currentUser.id) {
     actionsContainer.innerHTML = `
-      <button class="btn btn-primary btn-sm" onclick="finishTicket(${ticket.id})" title="Finalizar Atendimento">
+      <button class="btn btn-primary btn-sm" onclick="finishConversation('${conversationId}')" title="Finalizar Atendimento">
         <i class="bi bi-check2-all"></i> Finalizar Atendimento
       </button>
     `;
@@ -526,9 +832,9 @@ function renderActionButtons(ticket) {
 /**
  * Renderiza mensagens (Estilo WhatsApp)
  */
-function renderMessages(messages) {
+function renderMessages(messages, { scrollToBottom = true, preserveScroll = false, previousHeight = 0 } = {}) {
   const messagesContainer = document.getElementById('chatMessages');
-  
+
   if (!messages || messages.length === 0) {
     messagesContainer.innerHTML = `
       <div class="chat-system-message">
@@ -539,74 +845,154 @@ function renderMessages(messages) {
     `;
     return;
   }
-  
-  messagesContainer.innerHTML = messages.map(msg => renderMessage(msg)).join('');
-  
-  // Scroll automático para o final
-  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+  const loadMoreHint = hasMoreOlderMessages
+    ? `<div class="chat-load-more-hint" id="chatLoadMoreHint"><i class="bi bi-arrow-up"></i> Role para cima para ver mensagens mais antigas</div>`
+    : '';
+
+  messagesContainer.innerHTML = `${loadMoreHint}${messages.map((msg) => renderMessage(msg)).join('')}`;
+  enhanceChatImages();
+
+  if (preserveScroll && messagesContainer) {
+    const newHeight = messagesContainer.scrollHeight;
+    messagesContainer.scrollTop = newHeight - previousHeight;
+    return;
+  }
+
+  if (scrollToBottom) {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
 }
 
 /**
  * Renderiza uma mensagem (Estilo WhatsApp)
  */
 function renderMessage(message) {
-  // Verificar se mensagem é válida
-  if (!message || !message.body) {
+  if (!message) return '';
+
+  const hasRenderableContent = message.body
+    || message.mediaUrl
+    || message.hasMedia
+    || isBase64ImageBody(message.body);
+
+  if (!hasRenderableContent) {
     console.warn('⚠️ Mensagem inválida:', message);
     return '';
   }
-  
-  const isFromMe = message.fromMe || message.direction === 'outgoing' || message.userId === currentUserId;
+
+  const isFromMe = message.fromMe === true || message.direction === 'outgoing';
   const messageClass = isFromMe ? 'outgoing' : 'incoming';
-  
-  // Conteúdo da mensagem
-  let content = escapeHtml(message.body);
-  
-  // Formatar hora
-  const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-  
-  // Status de leitura (apenas para mensagens enviadas)
-  let statusIcon = '';
-  if (isFromMe) {
-    const isRead = message.status === 'read' || message.ack >= 3;
-    const isDelivered = message.status === 'delivered' || message.ack === 2;
-    const isSent = message.status === 'sent' || message.ack === 1;
-    
-    const statusClass = isRead ? 'read' : '';
-    
-    if (isRead || isDelivered) {
-      // Check duplo
-      statusIcon = `
-        <span class="message-status ${statusClass}">
-          <svg viewBox="0 0 18 18" width="18" height="18">
-            <path fill="currentColor" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609zm-4.892 0l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609z"/>
-          </svg>
-        </span>
-      `;
-    } else if (isSent) {
-      // Check simples
-      statusIcon = `
-        <span class="message-status">
-          <svg viewBox="0 0 12 11" width="12" height="11">
-            <path fill="currentColor" d="M11.1 2.4L9.8 1.2 4.3 6.7 2.1 4.5.9 5.7l3.4 3.4 6.8-6.7z"/>
-          </svg>
-        </span>
-      `;
-    } else {
-      // Relógio (pendente)
-      statusIcon = `
-        <span class="message-status">
-          <svg viewBox="0 0 16 16" width="14" height="14">
-            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
-            <path fill="currentColor" d="M8 4v4.5l3 1.75"/>
-          </svg>
-        </span>
-      `;
-    }
+  const time = message.timestamp
+    ? new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const statusIcon = isFromMe ? renderStatusIcon(message) : '';
+  const caption = getMessageCaption(message);
+  const imageSrc = getImageSrc(message);
+  const isImage = Boolean(imageSrc);
+  const isAudio = ['audio', 'voice', 'ptt'].includes(message.type) && Boolean(message.mediaUrl);
+  const isFile = Boolean(message.mediaUrl && !isImage && !isAudio);
+  const hasCaption = Boolean(caption);
+
+  if (isAudio) {
+    const captionHtml = hasCaption
+      ? `<div class="message-caption">${escapeHtml(caption)}</div>`
+      : '';
+
+    return `
+      <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
+        <div class="message-bubble has-media audio-message">
+          <audio controls preload="metadata" class="message-audio">
+            <source src="${escapeAttr(message.mediaUrl)}" type="audio/ogg">
+            <source src="${escapeAttr(message.mediaUrl)}" type="audio/webm">
+            <source src="${escapeAttr(message.mediaUrl)}" type="audio/mpeg">
+          </audio>
+          ${captionHtml}
+          <div class="message-footer">
+            <span class="message-time">${time}</span>
+            ${statusIcon}
+          </div>
+        </div>
+      </div>
+    `;
   }
-  
+
+  if (isImage) {
+    const overlayStatus = statusIcon
+      ? statusIcon.replace('message-status', 'message-status message-status-overlay')
+      : '';
+    const captionHtml = hasCaption
+      ? `<div class="message-caption">${escapeHtml(caption)}</div>`
+      : '';
+
+    return `
+      <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
+        <div class="message-bubble has-media image-message ${hasCaption ? 'has-caption' : 'media-only'}">
+          <div class="message-media-wrap"
+               data-media-url="${escapeAttr(imageSrc)}"
+               data-media-type="image"
+               data-media-name="${escapeAttr(message.mediaFilename || 'imagem.jpg')}"
+               role="button"
+               tabindex="0"
+               title="Clique para ampliar">
+            <img src="${escapeAttr(imageSrc)}" alt="Imagem" class="message-image" loading="lazy">
+            <div class="message-media-overlay">
+              <span class="message-time">${time}</span>
+              ${overlayStatus}
+            </div>
+          </div>
+          ${captionHtml}
+          ${hasCaption ? `<div class="message-footer"><span class="message-time">${time}</span>${statusIcon}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (isFile) {
+    const fileName = message.mediaFilename || message.fileName || 'Arquivo';
+    const fileMeta = getFileMetaLabel(message);
+    const captionHtml = hasCaption
+      ? `<div class="message-caption">${escapeHtml(caption)}</div>`
+      : '';
+
+    return `
+      <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
+        <div class="message-bubble has-media file-message">
+          <div class="message-file-card"
+               data-media-url="${escapeAttr(message.mediaUrl)}"
+               data-media-type="file"
+               data-media-name="${escapeAttr(fileName)}"
+               role="button"
+               tabindex="0"
+               title="Clique para abrir ou baixar">
+            <div class="message-file-icon">
+              <i class="bi ${getFileIcon(message.type)}"></i>
+            </div>
+            <div class="message-file-info">
+              <span class="message-file-name">${escapeHtml(fileName)}</span>
+              <span class="message-file-meta">${escapeHtml(fileMeta)}</span>
+            </div>
+            <a href="${escapeAttr(message.mediaUrl)}"
+               class="message-file-action"
+               download="${escapeAttr(fileName)}"
+               title="Baixar"
+               onclick="event.stopPropagation()">
+              <i class="bi bi-download"></i>
+            </a>
+          </div>
+          ${captionHtml}
+          <div class="message-footer">
+            <span class="message-time">${time}</span>
+            ${statusIcon}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  const content = renderTextContent(message);
+
   return `
-    <div class="chat-message ${messageClass}" data-message-id="${message.id}">
+    <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
       <div class="message-bubble">
         <div class="message-content">${content}</div>
         <div class="message-footer">
@@ -616,6 +1002,284 @@ function renderMessage(message) {
       </div>
     </div>
   `;
+}
+
+function renderStatusIcon(message) {
+  const isRead = message.status === 'read' || message.ack >= 3;
+  const isDelivered = message.status === 'delivered' || message.ack === 2;
+  const isSent = message.status === 'sent' || message.ack === 1;
+  const isFailed = message.status === 'failed';
+  const statusClass = isRead ? 'read' : '';
+
+  if (isFailed) {
+    return `<span class="message-status failed" title="Falha no envio"><i class="bi bi-exclamation-circle"></i></span>`;
+  }
+  if (isRead || isDelivered) {
+    return `
+      <span class="message-status ${statusClass}">
+        <svg viewBox="0 0 18 18" width="16" height="16">
+          <path fill="currentColor" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609zm-4.892 0l-.57-.444a.434.434 0 0 0-.609.076l-6.39 8.198a.38.38 0 0 1-.577.039l-.427-.388a.381.381 0 0 0-.578.038l-.451.576a.497.497 0 0 0 .043.645l1.575 1.51a.38.38 0 0 0 .577-.039l7.483-9.602a.436.436 0 0 0-.076-.609z"/>
+        </svg>
+      </span>
+    `;
+  }
+  if (isSent) {
+    return `
+      <span class="message-status">
+        <svg viewBox="0 0 12 11" width="12" height="11">
+          <path fill="currentColor" d="M11.1 2.4L9.8 1.2 4.3 6.7 2.1 4.5.9 5.7l3.4 3.4 6.8-6.7z"/>
+        </svg>
+      </span>
+    `;
+  }
+  return `
+    <span class="message-status">
+      <svg viewBox="0 0 16 16" width="14" height="14">
+        <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path fill="currentColor" d="M8 4v4.5l3 1.75"/>
+      </svg>
+    </span>
+  `;
+}
+
+function renderTextContent(message) {
+  if (isBase64Payload(message.body)) {
+    return `<span class="message-media-label">${escapeHtml(getMediaLabel(message.type))}</span>`;
+  }
+  return escapeHtml(message.body || '');
+}
+
+function getImageSrc(message) {
+  const type = message.type || 'text';
+  const mediaUrl = message.mediaUrl || null;
+
+  if (mediaUrl && (type === 'image' || isImageUrl(mediaUrl))) {
+    return mediaUrl;
+  }
+
+  if (isBase64ImageBody(message.body)) {
+    return message.body.startsWith('data:')
+      ? message.body
+      : `data:image/jpeg;base64,${message.body.trim()}`;
+  }
+
+  return null;
+}
+
+function getFileMetaLabel(message) {
+  const type = message.type || 'document';
+  const labels = {
+    video: 'Vídeo',
+    audio: 'Áudio',
+    voice: 'Áudio',
+    ptt: 'Áudio',
+    document: 'Documento'
+  };
+  const typeLabel = labels[type] || 'Arquivo';
+  if (message.mediaSize) return `${typeLabel} · ${formatFileSize(message.mediaSize)}`;
+  return typeLabel;
+}
+
+function getFileIcon(type) {
+  const icons = {
+    video: 'bi-file-play',
+    audio: 'bi-file-music',
+    voice: 'bi-file-music',
+    ptt: 'bi-file-music',
+    document: 'bi-file-earmark-pdf'
+  };
+  return icons[type] || 'bi-file-earmark';
+}
+
+function handleMediaClick(event) {
+  const wrap = event.target.closest('.message-media-wrap');
+  if (wrap) {
+    event.preventDefault();
+    openMediaViewer(
+      wrap.dataset.mediaUrl,
+      wrap.dataset.mediaType || 'image',
+      wrap.dataset.mediaName || 'imagem.jpg'
+    );
+    return;
+  }
+
+  const fileCard = event.target.closest('.message-file-card');
+  if (fileCard) {
+    openMediaViewer(
+      fileCard.dataset.mediaUrl,
+      'file',
+      fileCard.dataset.mediaName || 'arquivo'
+    );
+  }
+}
+
+function mountMediaViewer() {
+  const viewer = document.getElementById('mediaViewer');
+  if (viewer && viewer.parentElement !== document.body) {
+    document.body.appendChild(viewer);
+  }
+}
+
+function optimizeViewerImageSize(img) {
+  const apply = () => {
+    img.style.width = '';
+    img.style.height = '';
+
+    const maxW = window.innerWidth * 0.92;
+    const maxH = window.innerHeight * 0.86;
+    const naturalW = img.naturalWidth || 1;
+    const naturalH = img.naturalHeight || 1;
+
+    let scale = Math.min(maxW / naturalW, maxH / naturalH);
+
+    const targetMinW = Math.min(maxW * 0.75, 640);
+    if (naturalW * scale < targetMinW) {
+      scale = Math.min(targetMinW / naturalW, maxH / naturalH);
+    }
+
+    img.style.width = `${Math.round(naturalW * scale)}px`;
+    img.style.height = `${Math.round(naturalH * scale)}px`;
+  };
+
+  if (img.complete && img.naturalWidth) {
+    apply();
+  } else {
+    img.onload = () => {
+      apply();
+      img.onload = null;
+    };
+  }
+}
+
+function openMediaViewer(url, type = 'image', fileName = 'arquivo') {
+  if (!url) return;
+
+  const viewer = document.getElementById('mediaViewer');
+  const imageEl = document.getElementById('mediaViewerImage');
+  const downloadEl = document.getElementById('mediaViewerDownload');
+  const openEl = document.getElementById('mediaViewerOpen');
+  const fileEl = document.getElementById('mediaViewerFile');
+  const fileNameEl = document.getElementById('mediaViewerFileName');
+
+  if (!viewer || !imageEl || !downloadEl) return;
+
+  const isImage = type === 'image' || isImageUrl(url) || url.startsWith('data:image');
+
+  if (isImage) {
+    imageEl.style.display = 'block';
+    imageEl.src = url;
+    optimizeViewerImageSize(imageEl);
+    if (fileEl) fileEl.style.display = 'none';
+    if (openEl) {
+      openEl.href = url;
+      openEl.style.display = 'inline-flex';
+    }
+  } else {
+    imageEl.style.display = 'none';
+    imageEl.removeAttribute('src');
+    if (fileEl) {
+      fileEl.style.display = 'flex';
+      if (fileNameEl) fileNameEl.textContent = fileName;
+    }
+    if (openEl) {
+      openEl.href = url;
+      openEl.style.display = 'inline-flex';
+    }
+  }
+
+  downloadEl.href = url;
+  downloadEl.setAttribute('download', fileName);
+  viewer.style.display = 'flex';
+  viewer.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMediaViewer() {
+  const viewer = document.getElementById('mediaViewer');
+  if (!viewer) return;
+  viewer.style.display = 'none';
+  viewer.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+
+  const imageEl = document.getElementById('mediaViewerImage');
+  if (imageEl) {
+    imageEl.removeAttribute('src');
+    imageEl.style.width = '';
+    imageEl.style.height = '';
+  }
+}
+
+function handleMediaViewerBackdrop(event) {
+  if (event.target.id === 'mediaViewer' || event.target.classList.contains('media-viewer-backdrop')) {
+    closeMediaViewer();
+  }
+}
+
+function getMessageCaption(message) {
+  const body = message.body || '';
+  if (!body || isBase64Payload(body)) return '';
+  const label = getMediaLabel(message.type);
+  if (body === label) return '';
+  return body;
+}
+
+function formatMessagePreview(lastMessage) {
+  if (!lastMessage) return 'Sem mensagens';
+  let text = lastMessage.body || '';
+
+  if (isBase64Payload(text) || lastMessage.hasMedia) {
+    text = getMediaLabel(lastMessage.type) || '📎 Mídia';
+  }
+
+  if (lastMessage.direction === 'outgoing') {
+    return `Você: ${text}`;
+  }
+  return text || 'Sem mensagens';
+}
+
+function getMediaLabel(type) {
+  const labels = {
+    image: '📷 Foto',
+    video: '🎬 Vídeo',
+    audio: '🎵 Áudio',
+    voice: '🎵 Áudio',
+    ptt: '🎵 Áudio',
+    document: '📄 Arquivo',
+    sticker: '🎨 Figurinha',
+    location: '📍 Localização',
+    contact: '👤 Contato'
+  };
+  return labels[type] || '📎 Mídia';
+}
+
+function isBase64Payload(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('data:')) return true;
+  if (trimmed.length < 120) return false;
+  return /^\/9j\/|^iVBORw0KGgo|^R0lGOD|^JVBERi0|^UEsDB/.test(trimmed.substring(0, 16))
+    || (trimmed.length > 300 && /^[A-Za-z0-9+/=\s]+$/.test(trimmed.substring(0, 256)));
+}
+
+function isBase64ImageBody(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  return trimmed.startsWith('data:image/')
+    || /^\/9j\//.test(trimmed)
+    || /^iVBORw0KGgo/.test(trimmed);
+}
+
+function isImageUrl(url) {
+  return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url || '');
+}
+
+function escapeAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // Funções de status e reações removidas (design simplificado estilo WhatsApp)
@@ -631,12 +1295,16 @@ async function sendMessage() {
     return;
   }
   
-  if (!currentTicketId) {
+  if (!currentConversationId) {
     showToast('Selecione uma conversa', 'warning');
     return;
   }
-  
+
+  const sendBtn = document.getElementById('sendMessageBtn');
+  if (sendBtn?.disabled) return;
+
   try {
+    if (sendBtn) sendBtn.disabled = true;
     let mediaUrl = null;
     let mediaType = 'text';
     let fileName = null;
@@ -645,20 +1313,24 @@ async function sendMessage() {
     // Upload de arquivo primeiro
     if (selectedFile) {
       const uploadResponse = await uploadFile(selectedFile);
-      mediaUrl = uploadResponse.publicUrl;
+      mediaUrl = uploadResponse.publicUrl
+        || (uploadResponse.attachment?.storedFilename
+          ? `/uploads/chat/${uploadResponse.attachment.storedFilename}`
+          : null);
       mediaType = getMediaType(selectedFile.type);
       fileName = selectedFile.name;
       fileSize = selectedFile.size;
     }
     
     // Buscar ticket para pegar o número do destinatário
-    const ticket = await apiFetch(`/tickets/${currentTicketId}`);
+    const conversation = await apiFetch(`/conversations/${currentConversationId}`);
+    const to = conversation.whatsappJid || conversation.userPhone || conversation.contact?.phone;
     
-    // Enviar mensagem
     const message = {
-      ticketId: currentTicketId,
-      to: ticket.userPhone,  // ✅ Campo obrigatório!
-      body: body,
+      conversationId: currentConversationId,
+      ticketId: currentTicketId || null,
+      to,
+      body: body || (selectedFile ? getMediaLabel(mediaType) : ''),
       type: mediaType,
       mediaUrl: mediaUrl,
       fileName: fileName,
@@ -675,9 +1347,13 @@ async function sendMessage() {
     
     console.log('✅ Resposta da API:', response);
     
-    // Adicionar mensagem ao chat localmente
-    // A API retorna { message: {...}, success: true }
-    const sentMessage = response.message || response;
+    // Garantir campos de direção para alinhamento correto
+    const sentMessage = {
+      ...(response?.message || response),
+      direction: 'outgoing',
+      fromMe: true,
+      status: response?.message?.status || response?.status || 'sent'
+    };
     addMessageToChat(sentMessage);
     
     // Limpar input
@@ -690,7 +1366,110 @@ async function sendMessage() {
     
   } catch (error) {
     console.error('❌ Erro ao enviar mensagem:', error);
-    showToast('Erro ao enviar mensagem', 'error');
+    showToast(error.message || 'Erro ao enviar mensagem', 'error');
+  } finally {
+    const sendBtn = document.getElementById('sendMessageBtn');
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+async function toggleVoiceRecording() {
+  const btn = document.getElementById('recordVoiceBtn');
+
+  if (!isRecordingVoice) {
+    if (!currentTicketId) {
+      showToast('Selecione uma conversa', 'warning');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceChunks = [];
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+
+      voiceRecorder = new MediaRecorder(stream, { mimeType });
+      voiceRecorder.ondataavailable = (event) => {
+        if (event.data?.size) voiceChunks.push(event.data);
+      };
+      voiceRecorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        sendVoiceRecording(mimeType);
+      };
+
+      voiceRecorder.start();
+      isRecordingVoice = true;
+      btn?.classList.add('recording');
+      btn?.setAttribute('title', 'Parar e enviar áudio');
+    } catch {
+      showToast('Permita o acesso ao microfone para gravar áudio', 'warning');
+    }
+    return;
+  }
+
+  voiceRecorder?.stop();
+  isRecordingVoice = false;
+  btn?.classList.remove('recording');
+  btn?.setAttribute('title', 'Gravar mensagem de voz');
+}
+
+async function sendVoiceRecording(mimeType) {
+  if (!voiceChunks.length || !currentTicketId) return;
+
+  const btn = document.getElementById('recordVoiceBtn');
+  const sendBtn = document.getElementById('sendMessageBtn');
+
+  try {
+    if (btn) btn.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    const blob = new Blob(voiceChunks, { type: mimeType.split(';')[0] });
+    voiceChunks = [];
+
+    if (blob.size < 1000) {
+      showToast('Áudio muito curto. Grave novamente.', 'warning');
+      return;
+    }
+
+    const extension = mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const file = new File([blob], `voice_${Date.now()}.${extension}`, { type: blob.type });
+    const uploadResponse = await uploadFile(file);
+    const mediaUrl = uploadResponse.publicUrl
+      || (uploadResponse.attachment?.storedFilename
+        ? `/uploads/chat/${uploadResponse.attachment.storedFilename}`
+        : null);
+
+    const ticket = await apiFetch(`/tickets/${currentTicketId}`);
+    const response = await apiFetch('/chat/messages', {
+      method: 'POST',
+      body: {
+        ticketId: currentTicketId,
+        to: ticket.userPhone,
+        body: '🎵 Áudio',
+        type: 'ptt',
+        mediaUrl,
+        fileName: file.name,
+        fileSize: file.size
+      }
+    });
+
+    const sentMessage = {
+      ...(response?.message || response),
+      direction: 'outgoing',
+      fromMe: true,
+      status: response?.message?.status || response?.status || 'sent'
+    };
+    addMessageToChat(sentMessage);
+    scrollToBottom();
+    refreshChatListSilently();
+  } catch (error) {
+    console.error('Erro ao enviar áudio:', error);
+    showToast(error.message || 'Erro ao enviar mensagem de voz', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    voiceRecorder = null;
   }
 }
 
@@ -713,8 +1492,9 @@ async function uploadFile(file) {
   if (!response.ok) {
     throw new Error('Erro no upload');
   }
-  
-  return await response.json();
+
+  const json = await response.json();
+  return json.data || json;
 }
 
 /**
@@ -745,19 +1525,131 @@ function clearFileSelection() {
  */
 function handleNewMessage(data) {
   const message = data.message || data;
-  
-  if (data.ticketId === currentTicketId || message.ticketId === currentTicketId) {
-    addMessageToChat(message);
-    
-    // Marcar como lida
-    markMessagesAsRead(currentTicketId);
-  } else {
-    // Atualizar badge
-    updateChatItemUnread(data.ticketId || message.ticketId);
+  const conversationId = data.conversationId || message.conversationId;
+  const ticketId = data.ticketId || message.ticketId;
+  const messageKey = message.id || message.messageId;
+  const isIncoming = message.direction === 'incoming' || message.fromMe === false;
+  const isCurrentChat = sameConversationId(conversationId, currentConversationId)
+    || sameTicketId(ticketId, currentTicketId);
+  const isOnChatPage = (location.hash || '').includes('chat');
+
+  if (isCurrentChat && isOnChatPage) {
+    if (!messageKey || !document.querySelector(`[data-message-id="${messageKey}"]`)) {
+      addMessageToChat(message);
+    }
+    if (currentConversationId) {
+      markMessagesAsRead(currentConversationId);
+    }
+
+    if (isIncoming && document.hidden) {
+      const contactName = resolveContactDisplayName(data.conversation || data.contact || data);
+      notifyNewMessage({ conversationId, message, contactName });
+    }
+  } else if (isIncoming) {
+    const contactName = resolveContactDisplayName(data.conversation || data.contact || data);
+    notifyNewMessage({ conversationId, message, contactName });
   }
-  
-  // Atualizar lista de conversas
-  loadChats();
+
+  refreshChatListSilently();
+  updateGlobalUnreadBadge();
+}
+
+function sameConversationId(a, b) {
+  if (a == null || b == null) return false;
+  return String(a) === String(b);
+}
+
+function sameTicketId(a, b) {
+  if (a == null || b == null) return false;
+  return String(a) === String(b);
+}
+
+function shouldNotifyMessage(messageKey) {
+  if (!messageKey) return true;
+  if (notifiedMessageIds.has(messageKey)) return false;
+  notifiedMessageIds.add(messageKey);
+  if (notifiedMessageIds.size > 300) {
+    const oldest = notifiedMessageIds.values().next().value;
+    notifiedMessageIds.delete(oldest);
+  }
+  return true;
+}
+
+function notifyNewMessage({ conversationId, message, contactName }) {
+  const messageKey = message.id || message.messageId;
+  if (!shouldNotifyMessage(messageKey)) return;
+
+  const preview = formatMessagePreview(message);
+  const sender = contactName || 'Contato';
+
+  playNotificationSound();
+
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification('Nova mensagem', {
+      body: `${sender}: ${preview}`,
+      icon: '/images/logotipo-astro.png',
+      tag: `chat-${conversationId}`,
+      renotify: true
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      window.location.hash = '#chat';
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('openChat', { detail: { conversationId } }));
+      }, 300);
+      notification.close();
+    };
+    return;
+  }
+
+  if (!document.hidden) {
+    createToast({
+      title: 'Nova mensagem',
+      message: `${sender}: ${preview}`,
+      variant: 'primary'
+    });
+  }
+}
+
+function playNotificationSound() {
+  try {
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24g');
+    audio.volume = 0.35;
+    audio.play().catch(() => {});
+  } catch {
+    // ignore
+  }
+}
+
+async function updateGlobalUnreadBadge() {
+  try {
+    if (chatListStats.unread != null) {
+      const badge = document.getElementById('chatBadge');
+      if (badge) badge.textContent = chatListStats.unread > 99 ? '99+' : chatListStats.unread;
+      return;
+    }
+
+    const response = await apiFetch('/conversations?limit=1&page=1');
+    if (response?.stats) {
+      chatListStats = response.stats;
+      updateFilterCounts(chatListStats);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function updateMessageInChat(message) {
+  const messageKey = message.id || message.messageId;
+  if (!messageKey) return;
+
+  const existing = document.querySelector(`[data-message-id="${messageKey}"]`);
+  if (existing) {
+    existing.outerHTML = renderMessage(message);
+    return;
+  }
+  addMessageToChat(message);
 }
 
 /**
@@ -766,17 +1658,52 @@ function handleNewMessage(data) {
 function addMessageToChat(message) {
   const messagesContainer = document.getElementById('chatMessages');
   if (!messagesContainer) return;
+
+  const messageKey = message.id || message.messageId;
+  if (messageKey && document.querySelector(`[data-message-id="${messageKey}"]`)) {
+    return;
+  }
   
-  // Se container está vazio (mensagem inicial), limpar placeholder
-  if (messagesContainer.querySelector('.text-center')) {
+  if (messagesContainer.querySelector('.chat-system-message, .text-center')) {
     messagesContainer.innerHTML = '';
   }
   
   const messageHtml = renderMessage(message);
   if (messageHtml) {
     messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+    enhanceChatImages();
     scrollToBottom();
   }
+}
+
+function enhanceChatImages() {
+  document.querySelectorAll('#chatMessages .message-image').forEach((img) => {
+    const apply = () => {
+      const naturalW = img.naturalWidth;
+      if (!naturalW) return;
+
+      const maxW = 330;
+      const minW = 220;
+
+      if (naturalW < minW) {
+        const scaled = Math.min(minW, maxW);
+        img.style.width = `${scaled}px`;
+        img.style.height = 'auto';
+      } else if (naturalW > maxW) {
+        img.style.width = `${maxW}px`;
+        img.style.height = 'auto';
+      } else {
+        img.style.width = `${naturalW}px`;
+        img.style.height = 'auto';
+      }
+    };
+
+    if (img.complete && img.naturalWidth) {
+      apply();
+    } else {
+      img.addEventListener('load', apply, { once: true });
+    }
+  });
 }
 
 /**
@@ -819,16 +1746,15 @@ function hideTypingIndicator() {
 /**
  * Marca mensagens como lidas
  */
-async function markMessagesAsRead(ticketId) {
+async function markMessagesAsRead(conversationId) {
   try {
-    // apiFetch já faz JSON.stringify automaticamente
     await apiFetch('/chat/messages/read', {
       method: 'POST',
-      body: { ticketId }
+      body: { conversationId }
     });
     
     if (socket) {
-      socket.emit('read_message', { ticketId });
+      socket.emit('read_message', { conversationId });
     }
   } catch (error) {
     console.error('❌ Erro ao marcar como lido:', error);
@@ -884,58 +1810,146 @@ function scrollToBottom() {
 }
 
 /**
+ * Abre/fecha menu de opções do chat
+ */
+function toggleChatMenu(forceOpen = null) {
+  const menu = document.getElementById('chatHeaderDropdown');
+  const toggle = document.getElementById('chatMenuToggle');
+  if (!menu) return;
+
+  const shouldOpen = forceOpen === null ? !menu.classList.contains('show') : forceOpen;
+  menu.classList.toggle('show', shouldOpen);
+  if (toggle) toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+}
+
+function closeChatMenu() {
+  toggleChatMenu(false);
+}
+
+/**
+ * Abre/fecha busca de mensagens na conversa
+ */
+function toggleMessageSearchBar(forceOpen = null) {
+  const bar = document.getElementById('chatMessageSearchBar');
+  const input = document.getElementById('chatMessageSearchInput');
+  if (!bar) return;
+
+  const isOpen = bar.style.display !== 'none';
+  const shouldOpen = forceOpen === null ? !isOpen : forceOpen;
+
+  bar.style.display = shouldOpen ? 'flex' : 'none';
+
+  if (shouldOpen) {
+    toggleInfoPanel(false);
+    input?.focus();
+    if (input?.value) searchMessagesInChat(input.value);
+  } else {
+    clearMessageSearch();
+    if (input) input.value = '';
+  }
+}
+
+function clearMessageSearch() {
+  messageSearchMatches = [];
+  messageSearchIndex = -1;
+  document.querySelectorAll('#chatMessages .chat-message').forEach((el) => {
+    el.classList.remove('search-match', 'search-current');
+  });
+  updateMessageSearchCount();
+}
+
+function searchMessagesInChat(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const messages = document.querySelectorAll('#chatMessages .chat-message');
+  messageSearchMatches = [];
+  messageSearchIndex = -1;
+
+  messages.forEach((el) => {
+    el.classList.remove('search-match', 'search-current');
+    if (!q) return;
+    const text = el.textContent?.toLowerCase() || '';
+    if (text.includes(q)) {
+      messageSearchMatches.push(el);
+      el.classList.add('search-match');
+    }
+  });
+
+  updateMessageSearchCount();
+  if (messageSearchMatches.length) {
+    goToMessageSearchMatch(0);
+  }
+}
+
+function goToMessageSearchMatch(index) {
+  if (!messageSearchMatches.length) return;
+
+  messageSearchMatches.forEach((el) => el.classList.remove('search-current'));
+  messageSearchIndex = ((index % messageSearchMatches.length) + messageSearchMatches.length) % messageSearchMatches.length;
+
+  const current = messageSearchMatches[messageSearchIndex];
+  current.classList.add('search-current');
+  current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  updateMessageSearchCount();
+}
+
+function updateMessageSearchCount() {
+  const countEl = document.getElementById('chatMessageSearchCount');
+  const prevBtn = document.getElementById('chatMessageSearchPrev');
+  const nextBtn = document.getElementById('chatMessageSearchNext');
+  const total = messageSearchMatches.length;
+  const current = total ? messageSearchIndex + 1 : 0;
+
+  if (countEl) countEl.textContent = `${current}/${total}`;
+  if (prevBtn) prevBtn.disabled = total === 0;
+  if (nextBtn) nextBtn.disabled = total === 0;
+}
+
+/**
  * Toggle painel de informações
  */
-function toggleInfoPanel() {
+function toggleInfoPanel(forceOpen = null) {
   const panel = document.getElementById('chatInfoPanel');
-  if (panel.style.display === 'none' || !panel.style.display) {
-    panel.style.display = 'block';
-  } else {
-    panel.style.display = 'none';
+  if (!panel) return;
+
+  const isOpen = panel.style.display !== 'none';
+  const shouldOpen = forceOpen === null ? !isOpen : forceOpen;
+
+  panel.style.display = shouldOpen ? 'flex' : 'none';
+
+  if (shouldOpen) {
+    toggleMessageSearchBar(false);
+    closeChatMenu();
   }
 }
 
 /**
- * Filtrar conversas por texto
+ * Filtrar conversas por texto (servidor)
  */
 function filterChats(searchText) {
-  const items = document.querySelectorAll('.chat-item');
-  const search = searchText.toLowerCase();
-  
-  items.forEach(item => {
-    const name = item.querySelector('.chat-item-name').textContent.toLowerCase();
-    const message = item.querySelector('.chat-item-message p').textContent.toLowerCase();
-    
-    if (name.includes(search) || message.includes(search)) {
-      item.style.display = 'flex';
-    } else {
-      item.style.display = 'none';
-    }
-  });
+  currentSearchText = searchText || '';
+  chatListPage = 1;
+  loadChats({ page: 1 });
 }
 
 /**
- * Filtrar conversas por status
+ * Filtrar conversas por status (servidor)
  */
 function filterChatsByStatus(status) {
-  // TODO: Implementar filtro por status
-  console.log('Filtrar por status:', status);
+  currentChatFilter = status || 'all';
+  chatListPage = 1;
+  loadChats({ page: 1 });
 }
 
 /**
- * Atualizar contadores de filtros
+ * Atualizar contadores de filtros (totais globais)
  */
-function updateFilterCounts(tickets) {
-  document.getElementById('filterAllCount').textContent = tickets.length;
-  
-  const unread = tickets.filter(t => (t.unreadMessages || 0) > 0).length;
-  document.getElementById('filterUnreadCount').textContent = unread;
-  
-  const open = tickets.filter(t => t.status === 'open').length;
-  document.getElementById('filterOpenCount').textContent = open;
-  
-  // Atualizar badge do menu
-  document.getElementById('chatBadge').textContent = unread;
+function updateFilterCounts(stats = chatListStats) {
+  document.getElementById('filterAllCount').textContent = stats.all ?? 0;
+  document.getElementById('filterUnreadCount').textContent = stats.unread ?? 0;
+  document.getElementById('filterOpenCount').textContent = stats.open ?? 0;
+
+  const badge = document.getElementById('chatBadge');
+  if (badge) badge.textContent = (stats.unread ?? 0) > 99 ? '99+' : (stats.unread ?? 0);
 }
 
 /**
@@ -958,41 +1972,39 @@ function updateUserStatus(userId, status) {
 }
 
 /**
- * Fechar ticket
+ * Finalizar atendimento da conversa atual
+ */
+async function finishCurrentChat() {
+  if (!currentConversationId) {
+    showToast('Selecione uma conversa', 'warning');
+    return;
+  }
+
+  const hasActiveTicket = Boolean(currentTicketId || currentConversation?.activeTicket);
+  if (!hasActiveTicket) {
+    showToast('Nenhum atendimento ativo. Aceite a conversa antes de finalizar.', 'info');
+    return;
+  }
+
+  await finishConversation(currentConversationId);
+}
+
+/**
+ * Fechar ticket (legado)
  */
 async function closeTicket() {
-  if (!currentTicketId) return;
-  
-  if (!confirm('Deseja finalizar este ticket?')) return;
-  
-  try {
-    await apiFetch(`/tickets/${currentTicketId}`, {
-      method: 'PATCH',
-      body: { status: 'closed' }
-    });
-    
-    showToast('Ticket finalizado com sucesso!', 'success');
-    loadChats();
-    
-    // Fechar chat
-    document.getElementById('chatEmptyState').style.display = 'flex';
-    document.getElementById('chatHeader').style.display = 'none';
-    document.getElementById('chatMessages').style.display = 'none';
-    document.getElementById('chatInput').style.display = 'none';
-    currentTicketId = null;
-    
-  } catch (error) {
-    console.error('❌ Erro ao fechar ticket:', error);
-    showToast('Erro ao finalizar ticket', 'error');
-  }
+  await finishCurrentChat();
 }
 
 /**
  * Arquivar ticket
  */
 async function archiveTicket() {
-  if (!currentTicketId) return;
-  
+  if (!currentTicketId) {
+    showToast('Aceite o atendimento para arquivar o ticket.', 'info');
+    return;
+  }
+
   if (!confirm('Deseja arquivar este ticket?')) return;
   
   try {
@@ -1011,42 +2023,83 @@ async function archiveTicket() {
 }
 
 /**
+ * Salvar contato da conversa atual
+ */
+async function saveContactFromChat() {
+  if (!currentConversationId) return;
+
+  try {
+    showLoading();
+
+    const response = await apiFetch(`/conversations/${currentConversationId}/save-contact`, {
+      method: 'POST'
+    });
+
+    const conversation = response?.conversation;
+    const alreadySaved = response?.alreadySaved;
+
+    if (conversation) {
+      currentConversation = conversation;
+      renderChatHeader(conversation);
+
+      const idx = cachedTickets.findIndex((item) => item.id === currentConversationId);
+      if (idx >= 0) {
+        cachedTickets[idx] = { ...cachedTickets[idx], ...conversation };
+        renderChatList(cachedTickets);
+        document.querySelector(`[data-conversation-id="${currentConversationId}"]`)?.classList.add('active');
+      }
+    }
+
+    showToast(
+      alreadySaved ? 'Este contato já está salvo na sua agenda.' : 'Contato salvo com sucesso!',
+      alreadySaved ? 'info' : 'success'
+    );
+    hideLoading();
+  } catch (error) {
+    console.error('❌ Erro ao salvar contato:', error);
+    showToast(error.message || 'Erro ao salvar contato', 'error');
+    hideLoading();
+  }
+}
+
+/**
  * Bloquear contato
  */
 async function blockContact() {
-  if (!currentTicketId) return;
-  
-  if (!confirm('Deseja bloquear este contato? Esta ação não pode ser desfeita.')) return;
-  
+  const contactId = currentConversation?.contact?.id;
+  if (!contactId) {
+    showToast('Contato não encontrado nesta conversa.', 'warning');
+    return;
+  }
+
+  if (!confirm('Deseja bloquear este contato?')) return;
+
   try {
-    // TODO: Implementar bloqueio de contato
+    await apiFetch(`/contacts/${contactId}/toggle-block`, { method: 'POST' });
     showToast('Contato bloqueado com sucesso!', 'success');
-    
   } catch (error) {
     console.error('❌ Erro ao bloquear contato:', error);
-    showToast('Erro ao bloquear contato', 'error');
+    showToast(error.message || 'Erro ao bloquear contato', 'error');
   }
 }
 
 /**
  * Mostra notificação de novo ticket
  */
-function showTicketNotification(data) {
-  // Criar notificação sonora e visual
+function showConversationNotification(data) {
+  const conversation = data.conversation || {};
+  const conversationId = conversation.id;
   const notification = document.createElement('div');
   notification.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3';
   notification.style.zIndex = '9999';
   notification.style.minWidth = '300px';
   notification.innerHTML = `
-    <h6><i class="bi bi-bell-fill"></i> Novo Cliente Aguardando!</h6>
-    <p class="mb-2"><strong>${data.ticket.userName || 'Cliente'}</strong></p>
-    <p class="mb-3 small">${data.message || 'Nova conversa'}</p>
+    <h6><i class="bi bi-bell-fill"></i> Cliente Aguardando Atendimento!</h6>
+    <p class="mb-2"><strong>${escapeHtml(resolveContactDisplayName(conversation))}</strong></p>
+    <p class="mb-3 small">${data.message || 'Nova solicitação de atendimento'}</p>
     <div class="d-grid gap-2">
-      <button class="btn btn-success btn-sm" onclick="acceptTicketFromNotification(${data.ticket.id})">
+      <button class="btn btn-success btn-sm" onclick="acceptTicketFromNotification('${conversationId}')">
         <i class="bi bi-check-circle"></i> Aceitar Atendimento
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick="rejectTicketFromNotification(${data.ticket.id})">
-        <i class="bi bi-x-circle"></i> Rejeitar
       </button>
     </div>
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -1054,127 +2107,77 @@ function showTicketNotification(data) {
   
   document.body.appendChild(notification);
   
-  // Tocar som de notificação (opcional)
   try {
-    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24gBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24g');
-    audio.play().catch(() => {}); // Ignorar erro se não conseguir tocar
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dtv24g');
+    audio.play().catch(() => {});
   } catch (e) {}
   
-  // Auto-remover após 30 segundos
   setTimeout(() => {
     notification.remove();
   }, 30000);
 }
 
-/**
- * Aceitar ticket pela notificação
- */
-async function acceptTicketFromNotification(ticketId) {
-  await acceptTicket(ticketId);
-  // Carregar o ticket automaticamente
-  await loadTicket(ticketId);
+async function acceptConversationFromNotification(conversationId) {
+  await acceptConversation(conversationId);
+  await openChat(conversationId);
 }
 
-/**
- * Rejeitar ticket pela notificação
- */
-async function rejectTicketFromNotification(ticketId) {
-  await rejectTicket(ticketId);
-}
-
-/**
- * Aceitar ticket (atendimento humano)
- */
-async function acceptTicket(ticketId) {
+async function acceptConversation(conversationId) {
   try {
     showLoading();
     
-    const response = await apiFetch(`/tickets/${ticketId}/accept`, {
+    const response = await apiFetch(`/conversations/${conversationId}/accept`, {
       method: 'POST'
     });
     
+    const ticket = response?.ticket || response?.data?.ticket;
+    if (ticket?.id) currentTicketId = ticket.id;
+    
     showToast('✅ Atendimento aceito! Você está atendendo este cliente.', 'success');
     
-    // Recarregar ticket
-    await loadTicket(ticketId);
-    await loadChats();
+    if (currentConversationId === conversationId) {
+      const conversation = await apiFetch(`/conversations/${conversationId}`);
+      currentConversation = conversation;
+      renderChatHeader(conversation);
+      if (socket && currentTicketId) {
+        socket.emit('join_ticket', currentTicketId);
+      }
+    }
     
+    await loadChats();
     hideLoading();
   } catch (error) {
-    console.error('❌ Erro ao aceitar ticket:', error);
+    console.error('❌ Erro ao aceitar atendimento:', error);
     showToast('Erro ao aceitar atendimento', 'error');
     hideLoading();
   }
 }
 
-/**
- * Rejeitar ticket (IA assume)
- */
-async function rejectTicket(ticketId) {
+async function finishConversation(conversationId) {
   try {
-    if (!confirm('Deseja rejeitar este atendimento? A IA assumirá automaticamente.')) return;
-    
-    showLoading();
-    
-    const response = await apiFetch(`/tickets/${ticketId}/reject`, {
-      method: 'POST'
-    });
-    
-    showToast('⏭️ Atendimento rejeitado. IA assumiu o atendimento.', 'info');
-    
-    // Recarregar lista de chats
-    await loadChats();
-    
-    // Limpar chat atual
-    currentTicketId = null;
-    document.getElementById('chatEmptyState').style.display = 'flex';
-    document.getElementById('chatHeader').style.display = 'none';
-    document.getElementById('chatMessages').innerHTML = '';
-    document.getElementById('chatInputArea').style.display = 'none';
-    
-    hideLoading();
-  } catch (error) {
-    console.error('❌ Erro ao rejeitar ticket:', error);
-    showToast('Erro ao rejeitar atendimento', 'error');
-    hideLoading();
-  }
-}
-
-/**
- * Finalizar ticket (encerrar atendimento)
- */
-async function finishTicket(ticketId) {
-  try {
-    // Modal para feedback (opcional)
     const feedback = prompt('Deseja adicionar um comentário sobre este atendimento? (Opcional)');
     
     showLoading();
     
-    const response = await apiFetch(`/tickets/${ticketId}/finish`, {
+    await apiFetch(`/conversations/${conversationId}/finish`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        feedback: feedback || null
-      })
+      body: { feedback: feedback || null }
     });
     
     showToast('✅ Atendimento finalizado com sucesso!', 'success');
     
-    // Recarregar lista de chats
     await loadChats();
     
-    // Limpar chat atual
     currentTicketId = null;
-    document.getElementById('chatEmptyState').style.display = 'flex';
-    document.getElementById('chatHeader').style.display = 'none';
-    document.getElementById('chatMessages').innerHTML = '';
-    document.getElementById('chatInputArea').style.display = 'none';
+    if (currentConversationId === conversationId) {
+      const conversation = await apiFetch(`/conversations/${conversationId}`);
+      currentConversation = conversation;
+      renderChatHeader(conversation);
+    }
     
     hideLoading();
   } catch (error) {
-    console.error('❌ Erro ao finalizar ticket:', error);
+    console.error('❌ Erro ao finalizar atendimento:', error);
     showToast('Erro ao finalizar atendimento', 'error');
     hideLoading();
   }
@@ -1183,22 +2186,22 @@ async function finishTicket(ticketId) {
 /**
  * Helpers
  */
-function getInitials(name) {
-  if (!name) return '??';
-  const parts = name.split(' ');
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
 function formatTime(timestamp) {
   if (!timestamp) return '';
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+
   const now = new Date();
-  
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
-  
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return 'Ontem';
+  }
+
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
@@ -1240,15 +2243,28 @@ function escapeHtml(text) {
  * Cleanup ao sair da view
  */
 export function cleanupChatView() {
-  if (socket) {
-    if (currentTicketId) {
-      socket.emit('leave_ticket', currentTicketId);
-    }
-    socket.disconnect();
-    socket = null;
+  if (isRecordingVoice && voiceRecorder) {
+    voiceRecorder.stop();
+    voiceRecorder.stream?.getTracks().forEach((track) => track.stop());
+    isRecordingVoice = false;
+    voiceRecorder = null;
+    voiceChunks = [];
+    document.getElementById('recordVoiceBtn')?.classList.remove('recording');
   }
-  
+
+  if (socket && currentConversationId) {
+    socket.emit('leave_conversation', currentConversationId);
+  }
+  if (socket && currentTicketId) {
+    socket.emit('leave_ticket', currentTicketId);
+  }
+
+  if (chatPollInterval) {
+    clearInterval(chatPollInterval);
+    chatPollInterval = null;
+  }
+
+  currentConversationId = null;
   currentTicketId = null;
-  currentUserId = null;
 }
 

@@ -77,16 +77,12 @@ export function renderDashboard({ data, tickets, extendedMetrics, npsData, escap
  */
 function renderExtendedMetrics(metrics) {
   const elements = {
-    ticketsAtivos: 'ticketsAtivos',
-    ticketsPassivos: 'ticketsPassivos',
     ticketsAtendimento: 'ticketsAtendimento',
     ticketsAguardando: 'ticketsAguardando',
     ticketsFinalizados: 'ticketsFinalizados',
     msgsRecebidas: 'msgsRecebidas',
-    msgsEnviadas: 'msgsEnviadas',
     tempoAtendimento: 'tempoAtendimento',
     tempoEspera: 'tempoEspera',
-    ticketsPorDia: 'ticketsPorDia',
     novosContatos: 'novosContatos',
     atendentesAtivos: 'atendentesAtivos'
   };
@@ -122,36 +118,9 @@ function renderNPSWidget(npsData) {
 }
 
 /**
- * Renderiza Rankings
+ * Renderiza ranking de atendentes
  */
-export function renderRankings({ contacts, agents }) {
-  // Ranking de Contatos
-  const contactsTable = document.getElementById('rankingContatos');
-  if (contactsTable && contacts?.length) {
-    contactsTable.innerHTML = contacts.map((c, idx) => `
-      <tr>
-        <td>
-          <div class="d-flex align-items-center">
-            <div class="avatar-sm bg-primary text-white rounded-circle me-2">
-              ${c.name.substring(0, 2).toUpperCase()}
-            </div>
-            <span>${c.name}</span>
-          </div>
-        </td>
-        <td class="text-center">
-          <span class="badge bg-info">${c.ticketCount}</span>
-        </td>
-        <td>
-          <small class="text-muted"><i class="bi bi-building"></i> ${c.department}</small>
-        </td>
-        <td class="text-end">
-          <small class="text-muted"><i class="bi bi-clock"></i> ${c.totalTime}m</small>
-        </td>
-      </tr>
-    `).join('');
-  }
-
-  // Ranking de Atendentes (lista)
+export function renderRankings({ agents }) {
   const agentsList = document.getElementById('agentRankingList');
   if (agentsList && agents?.length) {
     agentsList.innerHTML = agents.map((a, idx) => `
@@ -182,79 +151,21 @@ export function renderRankings({ contacts, agents }) {
 }
 
 /**
- * Renderiza gráficos adicionais (Tempo, Hora, Distribuição)
+ * Renderiza gráfico de atividade por hora
  */
 export async function renderAdditionalCharts({ apiFetch }) {
   if (!window.Chart) return;
   window.__charts = window.__charts || {};
 
   try {
-    // Carregar dados dos novos gráficos
-    const [timeMetrics, hourlyActivity, channelDist, deptDist] = await Promise.all([
-      apiFetch('/analytics/metrics/time').catch(() => null),
-      apiFetch('/analytics/activity/hourly').catch(() => null),
-      apiFetch('/analytics/distribution/channel').catch(() => null),
-      apiFetch('/analytics/distribution/department').catch(() => null)
-    ]);
+    const hourlyActivity = await apiFetch('/analytics/activity/hourly').catch(() => null);
 
-    // Gráfico de Métricas de Tempo
-    if (timeMetrics) {
-      renderTimeMetricsChart(timeMetrics);
-    }
-
-    // Gráfico de Atividade por Hora
     if (hourlyActivity) {
       renderHourlyActivityChart(hourlyActivity);
     }
-
-    // Gráficos de Distribuição
-    if (channelDist) {
-      renderChannelDistributionChart(channelDist);
-    }
-
-    if (deptDist) {
-      renderDepartmentDistributionChart(deptDist);
-    }
-
   } catch (error) {
     console.error('Erro ao renderizar gráficos adicionais:', error);
   }
-}
-
-function renderTimeMetricsChart(data) {
-  const canvas = document.getElementById('timeMetricsChart');
-  if (!canvas) return;
-
-  window.__charts.timeMetrics?.destroy?.();
-
-  if (!data || typeof data.total !== 'number') {
-    console.warn('Dados de métricas de tempo inválidos:', data);
-    return;
-  }
-
-  const hasData = data.total > 0;
-  const emptyEl = document.getElementById('timeMetricsEmpty');
-  if (emptyEl) emptyEl.classList.toggle('is-hidden', hasData);
-
-  if (!hasData) return;
-
-  window.__charts.timeMetrics = new window.Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels: ['Atendimento', 'Espera', 'Primeira Resposta'],
-      datasets: [{
-        label: 'Minutos',
-        data: [data.tempoAtendimento, data.tempoEspera, data.tempoPrimeiraResposta],
-        backgroundColor: ['#FF9800', '#C2185B', '#2196F3']
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { callback: (v) => v + 'm' } } }
-    }
-  });
 }
 
 function renderHourlyActivityChart(data) {
@@ -294,82 +205,6 @@ function renderHourlyActivityChart(data) {
   if (peakEl && data.peak) {
     peakEl.textContent = `Pico: ${data.peak}`;
   }
-}
-
-function renderChannelDistributionChart(data) {
-  const canvas = document.getElementById('channelDistChart');
-  if (!canvas) return;
-
-  window.__charts.channelDist?.destroy?.();
-
-  if (!data || !data.channels || !Array.isArray(data.channels)) {
-    console.warn('Dados de distribuição por canal inválidos:', data);
-    return;
-  }
-
-  const labels = data.channels.map(c => c.channel);
-  const values = data.channels.map(c => c.count);
-  const colors = ['#25D366', '#0088cc', '#E1306C', '#1877F2'];
-
-  window.__charts.channelDist = new window.Chart(canvas, {
-    type: 'pie',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors.slice(0, labels.length)
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom' }
-      }
-    }
-  });
-
-  const totalEl = document.getElementById('totalCanais');
-  if (totalEl) totalEl.textContent = `${data.totalChannels} canais`;
-}
-
-function renderDepartmentDistributionChart(data) {
-  const canvas = document.getElementById('sectorDistChart');
-  if (!canvas) return;
-
-  window.__charts.deptDist?.destroy?.();
-
-  if (!data || !data.departments || !Array.isArray(data.departments)) {
-    console.warn('Dados de distribuição por departamento inválidos:', data);
-    return;
-  }
-
-  const labels = data.departments.map(d => d.department);
-  const values = data.departments.map(d => d.count);
-
-  window.__charts.deptDist = new window.Chart(canvas, {
-    type: 'pie',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: [
-          '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-          '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
-        ]
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right' }
-      }
-    }
-  });
-
-  const totalEl = document.getElementById('totalSetores');
-  if (totalEl) totalEl.textContent = `${data.totalDepartments} setores`;
 }
 
 export function renderDashboardCharts({ timelineRows, statusRows }) {

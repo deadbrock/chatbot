@@ -1,0 +1,59 @@
+/* Logotipo oficial AstroChat */
+
+:root {
+  --logo-navbar-size: 100px;
+  --logo-login-size: 100px;
+  --logo-compact-size: 59px;
+  --logo-page-size: 72px;
+}
+
+.app-logo {
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.app-logo--navbar {
+  width: var(--logo-navbar-size);
+  height: var(--logo-navbar-size);
+}
+
+.app-logo--login {
+  width: var(--logo-login-size);
+  height: var(--logo-login-size);
+  margin-bottom: 20px;
+}
+
+.app-logo--compact {
+  width: var(--logo-compact-size);
+  height: var(--logo-compact-size);
+}
+
+.app-logo--page {
+  width: var(--logo-page-size);
+  height: var(--logo-page-size);
+  margin: 0 auto 20px;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-lockup--login {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.auth-header .brand-lockup {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 767px) {
+  .auth-header .brand-lockup {
+    justify-content: center;
+    width: 100%;
+  }
+}

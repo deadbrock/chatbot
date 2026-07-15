@@ -4,6 +4,17 @@ import { getToken, logout } from './auth.js';
 // Em produção (Vercel), usar variável de ambiente ou detectar automaticamente
 // Em desenvolvimento, usar /api (proxy local)
 function getApiBaseUrl() {
+  const hostname = window.location.hostname;
+  const isLocal =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.includes('192.168') ||
+    hostname.endsWith('.local');
+
+  if (isLocal) {
+    return '/api';
+  }
+
   // 1. Tentar ler de variável de ambiente do Vercel (via script injetado)
   // O Vercel injeta variáveis de ambiente em window.__ENV__ ou similar
   if (typeof window !== 'undefined') {
@@ -43,23 +54,9 @@ function getApiBaseUrl() {
     }
   }
   
-  // 4. Detectar automaticamente baseado no hostname
-  const hostname = window.location.hostname;
-  const isProduction = hostname !== 'localhost' && 
-                       hostname !== '127.0.0.1' && 
-                       !hostname.includes('192.168') &&
-                       !hostname.includes('.local');
-  
-  if (isProduction) {
-    // Em produção, tentar construir URL baseado no domínio atual
-    // Se estiver em vercel.app, assumir que a API está em Railway
-    // Você pode configurar isso via meta tag ou variável de ambiente
-    console.warn('⚠️ API_URL não configurada. Configure via meta tag ou variável de ambiente.');
-    console.warn('   Adicione no HTML: <meta name="api-url" content="https://seu-projeto.up.railway.app">');
-    // Retornar relativo pode funcionar se houver proxy reverso configurado
-  }
-  
-  // 5. Desenvolvimento local: usar proxy relativo
+  // 4. Fallback em produção
+  console.warn('⚠️ API_URL não configurada. Configure via meta tag ou variável de ambiente.');
+  console.warn('   Adicione no HTML: <meta name="api-url" content="https://seu-projeto.up.railway.app">');
   return '/api';
 }
 
@@ -177,8 +174,15 @@ export async function apiFetch(endpoint, options = {}) {
     throw new Error(msg);
   }
 
-  // Retornar o JSON completo (com success, data, pagination, etc)
-  // Antes estava retornando apenas json.data, perdendo metadados importantes
+  // Respostas padrão { success, data } → retorna data diretamente
+  // Exceção: endpoints com paginação no nível raiz (ex: /campaigns)
+  if (json?.success) {
+    if (json.pagination !== undefined && json.data !== undefined) {
+      return json;
+    }
+    return json.data !== undefined ? json.data : json;
+  }
+
   return json;
 }
 

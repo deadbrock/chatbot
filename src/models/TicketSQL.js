@@ -81,6 +81,11 @@ const Ticket = sequelize.define('Ticket', {
   assignedAt: {
     type: DataTypes.DATE
   },
+  conversationId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Conversa WhatsApp vinculada'
+  },
   resolvedAt: {
     type: DataTypes.DATE
   },

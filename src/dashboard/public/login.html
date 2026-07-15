@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- URL da API do Railway configurada -->
   <meta name="api-url" content="https://web-production-ea053.up.railway.app">
   <script id="api-config" type="application/json" data-api-url="https://web-production-ea053.up.railway.app">
   {
@@ -11,76 +10,91 @@
   }
   </script>
   <title>AstroChat - Login</title>
+  <link rel="icon" type="image/png" href="/images/logotipo-astro.png">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
   <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/login.css">
 </head>
 <body>
   <main class="auth-shell">
-    <div class="auth-card">
-      <div class="brand">
-        <div class="brand-icon">
-          <i class="bi bi-robot"></i>
-        </div>
-        <div>
-          <div class="brand-title">AstroChat</div>
-          <div class="brand-subtitle">Painel Administrativo - Aestron</div>
-        </div>
-      </div>
-
-      <h1 class="auth-title">Entrar</h1>
-      <p class="auth-hint">Use suas credenciais para acessar tickets, sessões e métricas em tempo real.</p>
-
-      <form id="loginForm" class="mt-4" novalidate>
-        <div class="mb-3">
-          <label for="email" class="form-label">E-mail</label>
-          <div class="input-group">
-            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-            <input id="email" name="email" type="email" class="form-control" autocomplete="username" required placeholder="ex: admin@admin.com" />
+    <div class="auth-layout">
+      <section class="auth-panel" aria-hidden="true">
+        <div class="auth-panel-inner">
+          <div class="brand-lockup brand-lockup--login">
+            <img
+              src="/images/logotipo-astro.png"
+              alt="AstroChat"
+              class="app-logo app-logo--login"
+              width="85"
+              height="85"
+            >
+            <h1 class="panel-title">AstroChat</h1>
           </div>
-          <div class="invalid-feedback">Informe um e-mail válido.</div>
+          <p class="panel-subtitle">Painel Administrativo</p>
+          <p class="panel-desc">Gerencie chats, sessões e métricas do atendimento em um só lugar.</p>
         </div>
+      </section>
 
-        <div class="mb-2">
-          <label for="password" class="form-label">Senha</label>
-          <div class="input-group">
-            <span class="input-group-text"><i class="bi bi-lock"></i></span>
-            <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required placeholder="Sua senha" />
-            <button class="btn btn-outline-secondary" type="button" id="togglePassword" aria-label="Mostrar senha">
-              <i class="bi bi-eye"></i>
-            </button>
+      <section class="auth-card">
+        <header class="auth-header">
+          <div class="brand-lockup d-md-none">
+            <img
+              src="/images/logotipo-astro.png"
+              alt="AstroChat"
+              class="app-logo app-logo--compact"
+              width="40"
+              height="40"
+            >
+            <div>
+              <h2 class="auth-title mb-0">AstroChat</h2>
+              <p class="auth-hint mb-0">Painel Administrativo</p>
+            </div>
           </div>
-          <div class="invalid-feedback">Informe sua senha.</div>
-        </div>
+          <h2 class="auth-title d-none d-md-block">Entrar</h2>
+          <p class="auth-hint d-none d-md-block">Informe suas credenciais para acessar o painel.</p>
+        </header>
 
-        <div class="d-flex align-items-center justify-content-between mt-3 mb-3">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" value="1" id="rememberMe">
-            <label class="form-check-label" for="rememberMe">
-              Manter conectado
-            </label>
+        <form id="loginForm" novalidate>
+          <div class="mb-3">
+            <label for="email" class="form-label">E-mail</label>
+            <input id="email" name="email" type="email" class="form-control" autocomplete="username" required placeholder="admin@admin.com" />
+            <div class="invalid-feedback">Informe um e-mail válido.</div>
           </div>
-          <a class="auth-link" href="#" id="showDefaultCreds">Credenciais padrão</a>
-        </div>
 
-        <div class="d-grid gap-2">
-          <button class="btn btn-primary btn-lg" type="submit" id="submitBtn">
+          <div class="mb-3">
+            <label for="password" class="form-label">Senha</label>
+            <div class="password-field">
+              <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required placeholder="Sua senha" />
+              <button class="password-toggle" type="button" id="togglePassword" aria-label="Mostrar senha">Mostrar</button>
+            </div>
+            <div class="invalid-feedback">Informe sua senha.</div>
+          </div>
+
+          <div class="auth-options">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" value="1" id="rememberMe">
+              <label class="form-check-label" for="rememberMe">Manter conectado</label>
+            </div>
+            <a class="auth-link" href="#" id="showDefaultCreds">Credenciais padrão</a>
+          </div>
+
+          <button class="btn btn-primary w-100" type="submit" id="submitBtn">
             <span class="btn-text">Entrar</span>
             <span class="btn-spinner spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
           </button>
-        </div>
 
-        <div class="alert alert-danger mt-3 d-none" id="errorBox"></div>
-        <div class="alert alert-info mt-3 d-none" id="defaultCreds">
-          <div><strong>E-mail:</strong> admin@admin.com</div>
-          <div><strong>Senha:</strong> admin123</div>
-        </div>
-      </form>
+          <div class="alert alert-danger mt-3 d-none" id="errorBox"></div>
+          <div class="alert alert-info mt-3 d-none" id="defaultCreds">
+            <div><strong>E-mail:</strong> admin@admin.com</div>
+            <div><strong>Senha:</strong> admin123</div>
+          </div>
+        </form>
 
-      <div class="auth-footer">
-        <span>Ambiente de desenvolvimento (SQLite local)</span>
-      </div>
+        <footer class="auth-footer" id="authFooter">
+          Ambiente local
+        </footer>
+      </section>
     </div>
   </main>
 
@@ -88,5 +102,3 @@
   <script src="/js/login.js"></script>
 </body>
 </html>
-
-

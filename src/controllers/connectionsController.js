@@ -33,31 +33,26 @@ async function listConnections(req, res) {
       qrCode: conn.qrCode ? '***' : null
     }));
     
-    // SEMPRE verificar a conexão WPPConnect ativa, mesmo que não esteja no banco
+    // Verificar conexão WPPConnect ativa (conectada ou aguardando QR)
     const whatsappClient = req.app.get('whatsappClient');
-    if (whatsappClient && whatsappClient.isReady) {
-      // Verificar se já existe uma conexão com este instanceId no banco
+    if (whatsappClient && (whatsappClient.isReady || whatsappClient.client)) {
       const existsInDb = connections.some(conn => conn.instanceId === 'wppconnect-default');
       
       if (!existsInDb) {
-        // Adicionar conexão ativa que não está no banco
-        sanitized.push({
+        sanitized.unshift({
           id: 'wppconnect-default',
-          name: 'WhatsApp Principal (Conectado)',
+          name: 'WhatsApp Principal',
           instanceId: 'wppconnect-default',
-          phoneNumber: whatsappClient.info?.wid?.user || 'Conectado',
-          phoneNumberFormatted: whatsappClient.info?.formattedNumber || 'Conectado',
-          status: 'connected',
+          phoneNumber: whatsappClient.isReady ? 'Conectado' : '-',
+          phoneNumberFormatted: whatsappClient.isReady ? 'Conectado' : 'Aguardando QR',
+          status: whatsappClient.isReady ? 'connected' : 'connecting',
           isActive: true,
           isDefault: true,
           priority: 100,
-          deviceInfo: whatsappClient.info ? {
-            platform: whatsappClient.info.platform || 'WPPConnect',
-            pushname: whatsappClient.info.pushname || null
-          } : { platform: 'WPPConnect' },
-          lastConnectedAt: new Date(),
+          deviceInfo: { platform: 'WPPConnect' },
+          lastConnectedAt: whatsappClient.isReady ? new Date() : null,
           createdAt: new Date(),
-          _isLive: true // Flag para indicar que é uma conexão ao vivo
+          _isLive: true
         });
       }
     }
@@ -272,17 +267,32 @@ async function connectInstance(req, res) {
     if (!connection.isActive) {
       return badRequest(res, 'Conexão está inativa');
     }
-    
-    if (connection.status === 'connected') {
-      return badRequest(res, 'Conexão já está conectada');
+
+    const whatsappClient = req.app.get('whatsappClient');
+    if (!whatsappClient) {
+      return sendError(res, 'Cliente WhatsApp não inicializado', 400);
     }
-    
-    // TODO: Integrar com o serviço WhatsApp real
-    // Por enquanto, apenas simular
+
+    if (whatsappClient.isReady) {
+      await connection.updateStatus('connected', { initiatedBy: req.user?.id });
+      return sendSuccess(res, {
+        connected: true,
+        message: 'WhatsApp já está conectado',
+        connection
+      });
+    }
+
+    if (!whatsappClient.isInitializing && !whatsappClient.client) {
+      await whatsappClient.prepareForConnection({ rotateIfLocked: true });
+      whatsappClient.initialize().catch((err) => {
+        console.error('Erro ao inicializar WhatsApp:', err);
+      });
+    }
+
     await connection.updateStatus('connecting', { initiatedBy: req.user?.id });
     
     return sendSuccess(res, {
-      message: 'Iniciando conexão...',
+      message: 'Iniciando conexão. Escaneie o QR Code...',
       connection
     });
   } catch (error) {
@@ -304,12 +314,12 @@ async function disconnectInstance(req, res) {
     if (!connection) {
       return notFound(res, 'Conexão não encontrada');
     }
-    
-    if (connection.status === 'disconnected') {
-      return badRequest(res, 'Conexão já está desconectada');
+
+    const whatsappClient = req.app.get('whatsappClient');
+    if (whatsappClient?.isReady) {
+      await whatsappClient.disconnect();
     }
-    
-    // TODO: Integrar com o serviço WhatsApp real
+
     await connection.updateStatus('disconnected', { disconnectedBy: req.user?.id });
     
     return sendSuccess(res, {
@@ -328,25 +338,40 @@ async function disconnectInstance(req, res) {
  */
 async function getQRCode(req, res) {
   try {
-    const { id } = req.params;
-    
-    const connection = await WhatsAppConnection.findByPk(id);
-    
-    if (!connection) {
-      return notFound(res, 'Conexão não encontrada');
+    const whatsappClient = req.app.get('whatsappClient');
+
+    if (!whatsappClient) {
+      return sendError(res, 'Cliente WhatsApp não inicializado', 400);
     }
-    
-    if (!connection.qrCode) {
-      return badRequest(res, 'QR Code não disponível');
+
+    if (whatsappClient.isReady) {
+      return sendSuccess(res, {
+        connected: true,
+        message: 'WhatsApp já está conectado'
+      });
     }
-    
-    if (connection.qrCodeExpiresAt && new Date(connection.qrCodeExpiresAt) < new Date()) {
-      return badRequest(res, 'QR Code expirado');
+
+    const whatsappController = require('./whatsappController');
+    const stored = whatsappController.getStoredQRCode(whatsappClient);
+
+    if (stored) {
+      return sendSuccess(res, {
+        qrcode: stored.qrcode,
+        expiresIn: stored.expiresIn,
+        message: 'QR Code disponível'
+      });
     }
-    
+
+    if (!whatsappClient.isInitializing && !whatsappClient.client) {
+      await whatsappClient.prepareForConnection({ rotateIfLocked: true });
+      whatsappClient.initialize().catch((err) => {
+        console.error('Erro ao inicializar WhatsApp:', err);
+      });
+    }
+
     return sendSuccess(res, {
-      qrCode: connection.qrCode,
-      expiresAt: connection.qrCodeExpiresAt
+      qrcode: null,
+      message: 'Aguardando geração de QR Code...'
     });
   } catch (error) {
     console.error('Erro ao buscar QR Code:', error);

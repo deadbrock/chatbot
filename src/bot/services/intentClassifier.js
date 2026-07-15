@@ -567,8 +567,10 @@ RESPONDA APENAS COM JSON:
         const data = fs.readFileSync(this.configPath, 'utf8');
         const config = JSON.parse(data);
         logger.info('📂 Configurações da IA carregadas do arquivo');
+        const autoReplyEnabled = process.env.BOT_AUTO_REPLY === 'true';
         return {
           ...config,
+          enabled: autoReplyEnabled ? config.enabled : false,
           apiKey: process.env.AI_API_KEY || null
         };
       }

@@ -1,7 +1,9 @@
 import { apiFetch } from '../api.js';
+import { navigateToSection } from '../router.js';
 import { showToast } from '../ui/toast.js';
 import { showLoading, hideLoading } from '../ui/loading.js';
 import { escapeHtml } from '../ui/dom.js';
+import { resolveContactDisplayName, getContactInitials } from '../utils/contactDisplay.js';
 
 /**
  * View de Gestão de Contatos
@@ -190,18 +192,21 @@ function renderContactsTable(contacts) {
     return;
   }
 
-  tbody.innerHTML = contacts.map(contact => `
+  tbody.innerHTML = contacts.map(contact => {
+    const displayName = resolveContactDisplayName(contact);
+    const phone = contact.phone || '';
+    return `
     <tr>
       <td>
         <div class="d-flex align-items-center">
           ${contact.profilePicUrl ? 
             `<img src="${escapeHtml(contact.profilePicUrl)}" class="rounded-circle me-2" width="32" height="32" alt="">` :
             `<div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width:32px;height:32px;">
-              ${escapeHtml(contact.name.charAt(0).toUpperCase())}
+              ${escapeHtml(getContactInitials(displayName, phone))}
             </div>`
           }
           <div>
-            <strong>${escapeHtml(contact.name)}</strong>
+            <strong>${escapeHtml(displayName)}</strong>
             ${contact.tags && contact.tags.length > 0 ? `
               <div class="mt-1">
                 ${contact.tags.slice(0, 3).map(tag => `<span class="badge bg-secondary badge-sm">${escapeHtml(tag)}</span>`).join(' ')}
@@ -227,6 +232,9 @@ function renderContactsTable(contacts) {
       </td>
       <td>
         <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-success" onclick="window.startContactChat('${contact.id}')" title="Iniciar conversa">
+            <i class="bi bi-chat-dots"></i>
+          </button>
           <button class="btn btn-outline-primary" onclick="window.editContact('${contact.id}')" title="Editar">
             <i class="bi bi-pencil"></i>
           </button>
@@ -239,7 +247,8 @@ function renderContactsTable(contacts) {
         </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 /**
@@ -421,6 +430,62 @@ window.saveContact = async function() {
     renderContacts();
   } catch (error) {
     showToast(error.message || 'Erro ao salvar contato', 'error');
+  }
+};
+
+/**
+ * Iniciar conversa com contato
+ */
+window.startContactChat = async function(contactId) {
+  try {
+    showLoading();
+
+    const contactResponse = await apiFetch(`/contacts/${contactId}`);
+    const contact = contactResponse?.data || contactResponse;
+
+    if (!contact?.id) {
+      showToast('Contato não encontrado', 'error');
+      return;
+    }
+
+    if (contact.isBlocked) {
+      showToast('Este contato está bloqueado. Desbloqueie para iniciar a conversa.', 'warning');
+      return;
+    }
+
+    const conversationsResponse = await apiFetch('/conversations?limit=200');
+    const conversations = Array.isArray(conversationsResponse?.data)
+      ? conversationsResponse.data
+      : (Array.isArray(conversationsResponse) ? conversationsResponse : []);
+
+    const contactIdStr = String(contact.id);
+    const phone = contact.phone || '';
+    const whatsappId = contact.whatsappId || (phone ? `${phone}@s.whatsapp.net` : null);
+
+    let conversation = conversations.find((c) => {
+      const sameContact = String(c.contactId) === contactIdStr;
+      const sameJid = whatsappId && c.whatsappJid === whatsappId;
+      const samePhone = phone && (c.userPhone === phone || c.whatsappJid?.includes(phone));
+      return sameContact || sameJid || samePhone;
+    });
+
+    if (!conversation?.id) {
+      showToast('Conversa não encontrada. Sincronize o WhatsApp ou aguarde mensagem deste contato.', 'warning');
+      return;
+    }
+
+    navigateToSection('chat');
+
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openChat', { detail: { conversationId: conversation.id } }));
+    }, 300);
+
+    showToast(`Conversa com ${resolveContactDisplayName(contact)} aberta`, 'success');
+  } catch (error) {
+    console.error('Erro ao iniciar conversa:', error);
+    showToast(error.message || 'Erro ao iniciar conversa', 'error');
+  } finally {
+    hideLoading();
   }
 };
 

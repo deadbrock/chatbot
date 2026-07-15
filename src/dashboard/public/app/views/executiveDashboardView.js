@@ -19,13 +19,18 @@ let currentPeriod = {
 export async function initExecutiveDashboardView() {
   console.log('📊 Inicializando Executive Dashboard View...');
   
-  // Setup event listeners
+  initDateFields();
   setupEventListeners();
-  
-  // Carregar dados iniciais
   await loadDashboardData();
   
   console.log('✅ Executive Dashboard View inicializado');
+}
+
+function initDateFields() {
+  const startEl = document.getElementById('dashboardStartDate');
+  const endEl = document.getElementById('dashboardEndDate');
+  if (startEl) startEl.value = currentPeriod.startDate;
+  if (endEl) endEl.value = currentPeriod.endDate;
 }
 
 /**
@@ -92,8 +97,8 @@ async function loadDashboardData() {
     
     // Renderizar KPIs
     renderKPIs(kpis);
-    
-    // Renderizar gráficos
+    renderSummary(executive);
+    renderInsights(heatmap);
     renderCharts(executive, heatmap, performance);
     
   } catch (error) {
@@ -112,7 +117,7 @@ async function loadKPIs() {
     const response = await apiFetch('/dashboard/kpis', {
       params: currentPeriod
     });
-    return response.data;
+    return response;
   } catch (error) {
     console.error('Erro ao carregar KPIs:', error);
     return null;
@@ -127,10 +132,10 @@ async function loadExecutiveData() {
     const response = await apiFetch('/dashboard/executive', {
       params: currentPeriod
     });
-    return response.data;
+    return response;
   } catch (error) {
     console.error('Erro ao carregar dados executivos:', error);
-    return null;
+    return { timeline: [], summary: null, trends: null };
   }
 }
 
@@ -142,7 +147,7 @@ async function loadHeatmap() {
     const response = await apiFetch('/dashboard/heatmap', {
       params: currentPeriod
     });
-    return response.data;
+    return response;
   } catch (error) {
     console.error('Erro ao carregar heatmap:', error);
     return null;
@@ -157,7 +162,7 @@ async function loadPerformance() {
     const response = await apiFetch('/dashboard/performance', {
       params: { ...currentPeriod, type: 'both' }
     });
-    return response.data;
+    return response;
   } catch (error) {
     console.error('Erro ao carregar performance:', error);
     return null;
@@ -168,24 +173,90 @@ async function loadPerformance() {
  * Renderiza KPIs
  */
 function renderKPIs(data) {
-  if (!data) return;
+  if (!data?.current) {
+    setKPIPlaceholder();
+    return;
+  }
   
-  const { current, previous, variations } = data;
+  const { current, variations = {} } = data;
   
-  // Total Tickets
-  updateKPI('kpiTotalTickets', current.totalTickets, variations.totalTickets);
-  
-  // Tempo Médio de Resolução
-  updateKPI('kpiAvgResolutionTime', `${current.avgResolutionTime}min`, variations.avgResolutionTime, true);
-  
-  // NPS Score
-  updateKPI('kpiNpsScore', current.npsScore.toFixed(1), variations.npsScore);
-  
-  // Taxa de Conversão
-  updateKPI('kpiConversionRate', `${current.conversionRate.toFixed(1)}%`, variations.conversionRate);
-  
-  // Agentes Ativos
-  updateKPI('kpiActiveAgents', current.activeAgents, variations.activeAgents);
+  updateKPI('kpiTotalTickets', formatNumber(current.totalTickets), variations.totalTickets);
+  updateKPI('kpiAvgResolutionTime', `${Math.round(current.avgResolutionTime || 0)}min`, variations.avgResolutionTime, true);
+  updateKPI('kpiNpsScore', Number(current.npsScore || 0).toFixed(1), variations.npsScore);
+  updateKPI('kpiConversionRate', `${Number(current.conversionRate || 0).toFixed(1)}%`, variations.conversionRate);
+  updateKPI('kpiActiveAgents', formatNumber(current.activeAgents), variations.activeAgents);
+}
+
+function setKPIPlaceholder() {
+  ['kpiTotalTickets', 'kpiAvgResolutionTime', 'kpiNpsScore', 'kpiConversionRate', 'kpiActiveAgents'].forEach((id) => {
+    const valueEl = document.getElementById(`${id}Value`);
+    const variationEl = document.getElementById(`${id}Variation`);
+    if (valueEl) valueEl.textContent = '—';
+    if (variationEl) variationEl.innerHTML = '';
+  });
+}
+
+function formatNumber(value) {
+  const num = Number(value || 0);
+  return Number.isFinite(num) ? num.toLocaleString('pt-BR') : '0';
+}
+
+function renderSummary(executive) {
+  const panel = document.getElementById('executiveSummary');
+  const content = document.getElementById('executiveSummaryContent');
+  if (!panel || !content) return;
+
+  const summary = executive?.summary;
+  if (!summary) {
+    panel.classList.add('d-none');
+    return;
+  }
+
+  const resolutionRate = summary.totalTickets > 0
+    ? ((summary.closedTickets / summary.totalTickets) * 100).toFixed(1)
+    : '0.0';
+
+  content.innerHTML = `
+    <div class="stat-item">
+      <span>Tickets no período</span>
+      <span class="stat-value">${formatNumber(summary.totalTickets)}</span>
+    </div>
+    <div class="stat-item">
+      <span>Tickets resolvidos</span>
+      <span class="stat-value">${formatNumber(summary.closedTickets)} (${resolutionRate}%)</span>
+    </div>
+    <div class="stat-item">
+      <span>Mensagens processadas</span>
+      <span class="stat-value">${formatNumber(summary.totalMessages)}</span>
+    </div>
+    <div class="stat-item">
+      <span>NPS médio</span>
+      <span class="stat-value">${Number(summary.avgNPS || 0).toFixed(1)}</span>
+    </div>
+  `;
+
+  panel.classList.remove('d-none');
+}
+
+function renderInsights(heatmap) {
+  const container = document.getElementById('heatmapInsights');
+  if (!container) return;
+
+  if (!heatmap?.insights) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const { busiestHour, busiestDay } = heatmap.insights;
+  const peakHours = (heatmap.peakHours || []).map((h) => `${h}h`).join(', ');
+
+  container.innerHTML = `
+    <div class="d-flex flex-wrap gap-2">
+      <span class="insight-badge"><i class="bi bi-clock"></i> Pico: ${busiestHour}h</span>
+      <span class="insight-badge success"><i class="bi bi-calendar3"></i> Dia mais movimentado: ${busiestDay}</span>
+      ${peakHours ? `<span class="insight-badge warning"><i class="bi bi-lightning"></i> Horários de alta demanda: ${peakHours}</span>` : ''}
+    </div>
+  `;
 }
 
 /**
@@ -216,32 +287,46 @@ function updateKPI(elementId, value, variation, inverse = false) {
  * Renderiza todos os gráficos
  */
 function renderCharts(executive, heatmap, performance) {
-  if (!executive) return;
-  
-  // Gráfico de Timeline (Tickets)
-  renderTimelineChart(executive.timeline);
-  
-  // Gráfico de Mensagens
-  renderMessagesChart(executive.timeline);
-  
-  // Gráfico de NPS
-  renderNPSChart(executive.timeline);
-  
-  // Heatmap de Hora
+  const timeline = executive?.timeline || [];
+  const hasTimeline = timeline.length > 0;
+
+  toggleChartEmpty('ticketsTimelineEmpty', !hasTimeline);
+
+  if (!hasTimeline) {
+    destroyChart('timeline');
+    destroyChart('messages');
+    destroyChart('nps');
+  } else {
+    renderTimelineChart(timeline);
+    renderMessagesChart(timeline);
+    renderNPSChart(timeline);
+  }
+
   if (heatmap) {
-    renderHourHeatmap(heatmap.byHour);
-    renderWeekdayChart(heatmap.byWeekday);
+    renderHourHeatmap(heatmap.byHour || {});
+    renderWeekdayChart(heatmap.byWeekday || {});
   }
-  
-  // Performance
+
   if (performance) {
-    if (performance.queues) {
-      renderQueuesChart(performance.queues);
-    }
-    if (performance.agents) {
-      renderAgentsChart(performance.agents);
-    }
+    if (performance.queues) renderQueuesChart(performance.queues);
+    if (performance.agents) renderAgentsChart(performance.agents);
   }
+}
+
+function destroyChart(key) {
+  if (charts[key]) {
+    charts[key].destroy();
+    charts[key] = null;
+  }
+}
+
+function toggleChartEmpty(elementId, visible) {
+  const el = document.getElementById(elementId);
+  if (el) el.classList.toggle('d-none', !visible);
+}
+
+function getChartCtor() {
+  return window.Chart || Chart;
 }
 
 /**
@@ -255,12 +340,14 @@ function renderTimelineChart(timeline) {
   if (charts.timeline) {
     charts.timeline.destroy();
   }
+
+  if (!timeline?.length) return;
   
   const dates = timeline.map(t => moment(t.date).format('DD/MM'));
-  const totalTickets = timeline.map(t => t.tickets.total);
-  const closedTickets = timeline.map(t => t.tickets.closed);
+  const totalTickets = timeline.map(t => t.tickets?.total || 0);
+  const closedTickets = timeline.map(t => t.tickets?.closed || 0);
   
-  charts.timeline = new Chart(ctx, {
+  charts.timeline = new (getChartCtor())(ctx, {
     type: 'line',
     data: {
       labels: dates,
@@ -312,12 +399,14 @@ function renderMessagesChart(timeline) {
   if (charts.messages) {
     charts.messages.destroy();
   }
+
+  if (!timeline?.length) return;
   
   const dates = timeline.map(t => moment(t.date).format('DD/MM'));
-  const received = timeline.map(t => t.messages.received);
-  const sent = timeline.map(t => t.messages.sent);
+  const received = timeline.map(t => t.messages?.received || 0);
+  const sent = timeline.map(t => t.messages?.sent || 0);
   
-  charts.messages = new Chart(ctx, {
+  charts.messages = new (getChartCtor())(ctx, {
     type: 'bar',
     data: {
       labels: dates,
@@ -365,11 +454,13 @@ function renderNPSChart(timeline) {
   if (charts.nps) {
     charts.nps.destroy();
   }
+
+  if (!timeline?.length) return;
   
   const dates = timeline.map(t => moment(t.date).format('DD/MM'));
-  const npsScores = timeline.map(t => t.satisfaction.nps);
+  const npsScores = timeline.map(t => t.satisfaction?.nps || 0);
   
-  charts.nps = new Chart(ctx, {
+  charts.nps = new (getChartCtor())(ctx, {
     type: 'line',
     data: {
       labels: dates,
@@ -418,8 +509,9 @@ function renderHourHeatmap(byHour) {
   
   const hours = Object.keys(byHour).map(h => `${h}h`);
   const values = Object.values(byHour);
+  if (!hours.length) return;
   
-  charts.hourHeatmap = new Chart(ctx, {
+  charts.hourHeatmap = new (getChartCtor())(ctx, {
     type: 'bar',
     data: {
       labels: hours,
@@ -467,8 +559,9 @@ function renderWeekdayChart(byWeekday) {
   
   const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const values = Object.values(byWeekday);
+  if (!values.length) return;
   
-  charts.weekday = new Chart(ctx, {
+  charts.weekday = new (getChartCtor())(ctx, {
     type: 'doughnut',
     data: {
       labels: weekdays,
@@ -512,10 +605,11 @@ function renderQueuesChart(queues) {
     charts.queues.destroy();
   }
   
-  const labels = Object.keys(queues).map(id => id === 'sem-fila' ? 'Sem Fila' : `Fila ${id.substring(0, 8)}`);
+  const labels = Object.keys(queues).map((id) => id === 'sem-fila' || id === 'sem-departamento' ? 'Sem departamento' : id);
   const values = Object.values(queues);
+  if (!values.length) return;
   
-  charts.queues = new Chart(ctx, {
+  charts.queues = new (getChartCtor())(ctx, {
     type: 'pie',
     data: {
       labels,
@@ -557,15 +651,16 @@ function renderAgentsChart(agents) {
     charts.agents.destroy();
   }
   
-  const labels = Object.keys(agents).map(id => id === 'sem-agente' ? 'Sem Agente' : `Agente ${id.substring(0, 8)}`);
+  const labels = Object.keys(agents);
   const values = Object.values(agents);
   
-  // Ordenar por valor (decrescente)
   const sorted = labels.map((label, i) => ({ label, value: values[i] }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 10); // Top 10
+    .slice(0, 10);
+
+  if (!sorted.length) return;
   
-  charts.agents = new Chart(ctx, {
+  charts.agents = new (getChartCtor())(ctx, {
     type: 'bar',
     data: {
       labels: sorted.map(s => s.label),
@@ -607,9 +702,14 @@ async function exportDashboard() {
     const response = await apiFetch('/dashboard/executive', {
       params: currentPeriod
     });
+
+    const timeline = response?.data?.timeline || [];
+    if (!timeline.length) {
+      showToast('Não há dados para exportar no período selecionado.', 'warning');
+      return;
+    }
     
-    // Converter para CSV
-    const csv = convertToCSV(response.data.timeline);
+    const csv = convertToCSV(timeline);
     
     // Download
     const blob = new Blob([csv], { type: 'text/csv' });

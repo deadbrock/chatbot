@@ -32,6 +32,7 @@ const Role = require('./RoleSQL');
 // Novos modelos da Fase 3C - Chat em Tempo Real
 const ChatMessage = require('./ChatMessageSQL');
 const Attachment = require('./AttachmentSQL');
+const Conversation = require('./ConversationSQL');
 
 // Novos modelos da Fase 3D - Editor Visual de Fluxos
 const VisualFlow = require('./VisualFlowSQL');
@@ -88,6 +89,7 @@ module.exports = {
   // Novos modelos Fase 3C - Chat em Tempo Real
   ChatMessage,
   Attachment,
+  Conversation,
   
   // Novos modelos Fase 3D - Editor Visual de Fluxos
   VisualFlow,
@@ -124,5 +126,25 @@ ChatMessage.hasMany(Attachment, {
 Attachment.belongsTo(ChatMessage, {
   foreignKey: 'messageId',
   as: 'message'
+});
+
+Conversation.belongsTo(Contact, {
+  foreignKey: 'contactId',
+  as: 'contact'
+});
+
+Conversation.hasMany(ChatMessage, {
+  foreignKey: 'conversationId',
+  as: 'messages'
+});
+
+ChatMessage.belongsTo(Conversation, {
+  foreignKey: 'conversationId',
+  as: 'conversation'
+});
+
+Ticket.belongsTo(Conversation, {
+  foreignKey: 'conversationId',
+  as: 'conversation'
 });
 

@@ -24,6 +24,9 @@ class ChatSocketService {
       // Autenticação
       socket.on('authenticate', (data) => this.handleAuthentication(socket, data));
       
+      socket.on('join_conversation', (conversationId) => this.handleJoinConversation(socket, conversationId));
+      socket.on('leave_conversation', (conversationId) => this.handleLeaveConversation(socket, conversationId));
+      
       // Entrar em sala de ticket
       socket.on('join_ticket', (ticketId) => this.handleJoinTicket(socket, ticketId));
       
@@ -85,6 +88,24 @@ class ChatSocketService {
     this.io.emit('user_online', { userId, name });
     
     console.log(`✅ Usuário autenticado: ${name} (${userId})`);
+  }
+
+  handleJoinConversation(socket, conversationId) {
+    const userData = this.userSockets.get(socket.id);
+    if (!userData) {
+      socket.emit('error', { message: 'Não autenticado' });
+      return;
+    }
+
+    const room = `conversation_${conversationId}`;
+    socket.join(room);
+    socket.emit('joined_conversation', { conversationId, room });
+    console.log(`✅ ${userData.name} entrou na conversa ${conversationId}`);
+  }
+
+  handleLeaveConversation(socket, conversationId) {
+    const room = `conversation_${conversationId}`;
+    socket.leave(room);
   }
 
   /**

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/UserSQL');
+const { AGENT_DEPARTMENTS } = require('../constants/agentDepartments');
 const { ok, created, fail } = require('../utils/http');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
@@ -101,8 +102,12 @@ async function availableAgents(req, res) {
 
 async function create(req, res) {
   const logger = require('../utils/logger');
-  
+
   try {
+    if (req.user?.role === 'manager' && req.body?.role === 'admin') {
+      return fail(res, 403, 'Gestores não podem criar usuários admin');
+    }
+
     const user = await User.create(req.body);
     logger.info(`✅ Usuário criado: ${user.email} (${user.role})`);
     return created(res, { id: user.id, name: user.name, email: user.email, role: user.role });
@@ -126,6 +131,98 @@ async function create(req, res) {
   }
 }
 
+async function getById(req, res) {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      attributes: { exclude: ['password'] }
+    });
+
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    return ok(res, user);
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function listDepartments(req, res) {
+  return ok(res, AGENT_DEPARTMENTS);
+}
+
+async function update(req, res) {
+  const logger = require('../utils/logger');
+
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    if (req.user?.role === 'manager' && user.role === 'admin') {
+      return fail(res, 403, 'Gestores não podem editar usuários admin');
+    }
+
+    const { name, email, role, status, department, password } = req.body;
+    if (req.user?.role === 'manager' && role === 'admin') {
+      return fail(res, 403, 'Gestores não podem promover usuários para admin');
+    }
+
+    const updates = {};
+
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (role !== undefined) updates.role = role;
+    if (status !== undefined) updates.status = status;
+    if (department !== undefined) updates.department = department || null;
+    if (password && String(password).trim()) updates.password = password;
+
+    await user.update(updates);
+    logger.info(`✅ Usuário atualizado: ${user.email} (${user.role})`);
+
+    const { password: _pw, ...safeUser } = user.toJSON();
+    return ok(res, safeUser);
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return fail(res, 400, 'Este email já está cadastrado no sistema');
+    }
+
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map((e) => e.message).join(', ');
+      return fail(res, 400, `Erro de validação: ${messages}`);
+    }
+
+    return fail(res, 500, error.message);
+  }
+}
+
+async function remove(req, res) {
+  const logger = require('../utils/logger');
+
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    if (req.user?.role === 'manager' && user.role === 'admin') {
+      return fail(res, 403, 'Gestores não podem excluir usuários admin');
+    }
+
+    if (String(req.user?.id) === String(user.id)) {
+      return fail(res, 400, 'Não é possível excluir sua própria conta');
+    }
+
+    await user.update({ active: false, status: 'offline' });
+    logger.info(`🗑️ Usuário desativado: ${user.email}`);
+
+    return ok(res, { message: 'Atendente excluído com sucesso' });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
 async function updateStatus(req, res) {
   try {
     const { status } = req.body;
@@ -139,6 +236,16 @@ async function updateStatus(req, res) {
   }
 }
 
-module.exports = { login, list, availableAgents, create, updateStatus };
+module.exports = {
+  login,
+  list,
+  getById,
+  listDepartments,
+  availableAgents,
+  create,
+  update,
+  remove,
+  updateStatus
+};
 
 

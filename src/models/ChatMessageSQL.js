@@ -24,7 +24,13 @@ const ChatMessage = sequelize.define('ChatMessage', {
   ticketId: {
     type: DataTypes.UUID,
     allowNull: true,
-    comment: 'Ticket associado'
+    comment: 'Ticket associado (somente durante atendimento humano)'
+  },
+
+  conversationId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Conversa do inbox WhatsApp'
   },
   
   contactId: {
@@ -265,6 +271,7 @@ const ChatMessage = sequelize.define('ChatMessage', {
   indexes: [
     { fields: ['messageId'], unique: true },
     { fields: ['ticketId'] },
+    { fields: ['conversationId'] },
     { fields: ['contactId'] },
     { fields: ['userId'] },
     { fields: ['direction'] },
@@ -379,6 +386,17 @@ ChatMessage.findByTicket = async function(ticketId, options = {}) {
   });
 };
 
+ChatMessage.findByConversation = async function(conversationId, options = {}) {
+  const { limit = 50, offset = 0 } = options;
+  
+  return await ChatMessage.findAll({
+    where: { conversationId, isDeleted: false },
+    order: [['timestamp', 'DESC']],
+    limit,
+    offset
+  });
+};
+
 /**
  * Busca mensagens entre duas datas
  */
@@ -414,10 +432,11 @@ ChatMessage.findByContact = async function(contactId, options = {}) {
 /**
  * Conta mensagens não lidas de um ticket
  */
-ChatMessage.countUnread = async function(ticketId) {
+ChatMessage.countUnread = async function(conversationOrTicketId, { by = 'conversation' } = {}) {
+  const field = by === 'ticket' ? 'ticketId' : 'conversationId';
   return await ChatMessage.count({
     where: {
-      ticketId,
+      [field]: conversationOrTicketId,
       direction: 'incoming',
       status: { [sequelize.Sequelize.Op.ne]: 'read' },
       isDeleted: false

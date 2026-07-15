@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "provider": "groq",
   "model": "llama-3.1-8b-instant",
   "confidenceThreshold": 0.7,

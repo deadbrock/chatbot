@@ -1,49 +1,242 @@
 const { Op } = require('sequelize');
 const TicketService = require('../services/ticketService');
 const Ticket = require('../models/TicketSQL');
+const ChatMessage = require('../models/ChatMessageSQL');
+const Contact = require('../models/ContactSQL');
+const chatMediaUtils = require('../utils/chatMediaUtils');
+const contactDisplayUtils = require('../utils/contactDisplayUtils');
 const { ok, created, fail } = require('../utils/http');
 
 const ticketService = new TicketService();
 
+function buildChatWhere(extra = {}) {
+  const where = { ...extra };
+  where.userPhone = {
+    [Op.and]: [
+      { [Op.notLike]: '%status@broadcast%' },
+      { [Op.notLike]: '%@broadcast%' }
+    ]
+  };
+  return where;
+}
+
+function buildChatScopeBaseWhere({ department, assignedTo }) {
+  const where = buildChatWhere();
+  if (department) where.departmentId = department;
+  where.status = { [Op.in]: ['open', 'waiting_human', 'in_progress', 'closed', 'resolved', 'pending'] };
+
+  // Inbox do chat: exibir todas as conversas sincronizadas (estilo WhatsApp Web)
+  if (assignedTo) where.assignedTo = assignedTo;
+
+  return where;
+}
+
+async function getUnreadTicketIds() {
+  const rows = await ChatMessage.findAll({
+    attributes: ['ticketId'],
+    where: {
+      direction: 'incoming',
+      status: { [Op.ne]: 'read' },
+      isDeleted: false,
+      ticketId: { [Op.ne]: null }
+    },
+    group: ['ticketId'],
+    raw: true
+  });
+
+  return rows.map((row) => row.ticketId).filter(Boolean);
+}
+
+async function getChatListStats(where) {
+  const [all, open, unreadIds] = await Promise.all([
+    Ticket.count({ where }),
+    Ticket.count({ where: { ...where, status: 'open' } }),
+    getUnreadTicketIds()
+  ]);
+
+  let unread = 0;
+  if (unreadIds.length) {
+    unread = await Ticket.count({
+      where: {
+        ...where,
+        id: { [Op.in]: unreadIds }
+      }
+    });
+  }
+
+  return { all, unread, open };
+}
+
+async function enrichTickets(tickets) {
+  return Promise.all(tickets.map(async (ticket) => {
+    const json = ticket.toJSON();
+
+    const [lastMessage, unreadMessages, contact] = await Promise.all([
+      ChatMessage.findOne({
+        where: { ticketId: ticket.id },
+        order: [['timestamp', 'DESC']]
+      }),
+      ChatMessage.countUnread(ticket.id),
+      ticket.userId ? Contact.findByPk(ticket.userId) : null
+    ]);
+
+    const rawPhone = contact?.phone || (json.userPhone || '').split('@')[0];
+    const digits = contactDisplayUtils.normalizePhoneDigits(rawPhone);
+    const validPhone = contactDisplayUtils.isValidPhoneDigits(digits) ? rawPhone : null;
+
+    const displayName = contactDisplayUtils.resolveContactDisplayName({
+      name: contact?.name,
+      userName: json.userName,
+      phone: validPhone,
+      userPhone: validPhone ? null : json.userPhone
+    });
+
+    return {
+      ...json,
+      displayName,
+      contact: contact
+        ? { id: contact.id, name: displayName, displayName, phone: validPhone || contact.phone }
+        : { name: displayName, displayName, phone: validPhone },
+      lastMessage: lastMessage
+        ? {
+            body: chatMediaUtils.sanitizeBodyForDisplay(
+              lastMessage.body,
+              lastMessage.type,
+              lastMessage.hasMedia
+            ),
+            timestamp: lastMessage.timestamp,
+            direction: lastMessage.direction,
+            type: lastMessage.type,
+            hasMedia: lastMessage.hasMedia,
+            mediaUrl: lastMessage.mediaUrl
+          }
+        : null,
+      unreadMessages
+    };
+  }));
+}
+
 async function list(req, res) {
   try {
-    const { status, department, limit = 50, assignedTo } = req.query;
-    const loggedUser = req.user; // Usuário autenticado
+    const {
+      status,
+      department,
+      limit = 50,
+      assignedTo,
+      scope,
+      page = 1,
+      filter = 'all',
+      search = ''
+    } = req.query;
+    const loggedUser = req.user;
 
-    const where = {};
+    const isChatScope = scope === 'chat' || scope === 'all';
+
+    if (isChatScope) {
+      const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+      const parsedLimit = Math.min(100, Math.max(20, parseInt(limit, 10) || 50));
+      const offset = (parsedPage - 1) * parsedLimit;
+      const searchText = String(search || '').trim();
+
+      let where = buildChatScopeBaseWhere({ department, assignedTo });
+
+      if (searchText) {
+        where[Op.and] = [
+          ...(where[Op.and] || []),
+          {
+            [Op.or]: [
+              { userName: { [Op.like]: `%${searchText}%` } },
+              { userPhone: { [Op.like]: `%${searchText}%` } }
+            ]
+          }
+        ];
+      }
+
+      if (filter === 'unread') {
+        const unreadIds = await getUnreadTicketIds();
+        where.id = {
+          [Op.in]: unreadIds.length
+            ? unreadIds
+            : ['00000000-0000-0000-0000-000000000000']
+        };
+      } else if (filter === 'open') {
+        where.status = 'open';
+      }
+
+      const statsWhere = buildChatScopeBaseWhere({ department, assignedTo });
+
+      const [{ count, rows }, stats] = await Promise.all([
+        Ticket.findAndCountAll({
+          where,
+          order: [['updatedAt', 'DESC']],
+          limit: parsedLimit,
+          offset
+        }),
+        getChatListStats(statsWhere)
+      ]);
+
+      const enriched = await enrichTickets(rows);
+      enriched.sort((a, b) => {
+        const tsA = new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime();
+        const tsB = new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime();
+        return tsB - tsA;
+      });
+
+      const pages = Math.max(1, Math.ceil(count / parsedLimit));
+
+      return res.json({
+        success: true,
+        data: enriched,
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total: count,
+          pages,
+          hasMore: parsedPage < pages
+        },
+        stats
+      });
+    }
+
+    let where = buildChatWhere();
     if (department) where.departmentId = department;
 
     if (status) {
-      // Se status é uma string com vírgulas, transformar em array
       const statusArray = typeof status === 'string' && status.includes(',')
         ? status.split(',').map(s => s.trim())
         : [status];
-      
-      where.status = statusArray.length > 1 
+
+      where.status = statusArray.length > 1
         ? { [Op.in]: statusArray }
         : statusArray[0];
     } else {
-      // Padrão: mostrar apenas tickets ativos
       where.status = { [Op.in]: ['open', 'waiting_human', 'in_progress'] };
     }
 
-    // 🎯 FILTRO POR ATENDENTE:
-    // Se o usuário é 'agent', mostrar APENAS seus tickets
-    // Se é 'admin' ou 'manager', mostrar TODOS (ou filtrar por assignedTo se especificado)
     if (loggedUser && loggedUser.role === 'agent') {
-      where.assignedTo = loggedUser.id;
+      where[Op.or] = [
+        { assignedTo: loggedUser.id },
+        { assignedTo: null }
+      ];
     } else if (assignedTo) {
-      // Admin/Manager pode filtrar por atendente específico via query param
       where.assignedTo = assignedTo;
     }
 
+    const parsedLimit = parseInt(limit, 10) || 50;
+
     const tickets = await Ticket.findAll({
       where,
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit, 10) || 50
+      order: [['updatedAt', 'DESC']],
+      limit: parsedLimit
     });
 
-    return ok(res, tickets);
+    const enriched = await enrichTickets(tickets);
+    enriched.sort((a, b) => {
+      const tsA = new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime();
+      const tsB = new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime();
+      return tsB - tsA;
+    });
+    return ok(res, enriched);
   } catch (error) {
     return fail(res, 500, error.message);
   }

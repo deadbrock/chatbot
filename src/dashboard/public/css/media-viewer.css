@@ -1,0 +1,127 @@
+/* Visualizador fullscreen de mídia */
+
+.media-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.media-viewer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.93);
+  cursor: zoom-out;
+}
+
+.media-viewer-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10002;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: background 0.15s;
+}
+
+.media-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.media-viewer-stage {
+  position: relative;
+  z-index: 10001;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 20px 88px;
+  pointer-events: none;
+}
+
+.media-viewer-image {
+  display: block;
+  max-width: 92vw;
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 3px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  cursor: default;
+}
+
+.media-viewer-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #e9edef;
+  font-size: 1.05rem;
+  padding: 32px;
+  pointer-events: auto;
+}
+
+.media-viewer-file i {
+  font-size: 3.5rem;
+  color: #25d366;
+}
+
+.media-viewer-toolbar {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(32, 44, 51, 0.92);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+}
+
+.media-viewer-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 1.15rem;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.media-viewer-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+@media (max-width: 768px) {
+  .media-viewer-close {
+    top: 12px;
+    right: 12px;
+  }
+
+  .media-viewer-toolbar {
+    bottom: 16px;
+  }
+}

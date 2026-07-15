@@ -2,8 +2,39 @@ const { Op, fn, col, literal } = require('sequelize');
 const Ticket = require('../models/TicketSQL');
 const Session = require('../models/SessionSQL');
 const User = require('../models/UserSQL');
+const Contact = require('../models/ContactSQL');
+const ChatMessage = require('../models/ChatMessageSQL');
 const { ok, fail } = require('../utils/http');
 const { formatDateStr, dateDiffMinutes, dateDiffMillis, rawExtractHourSQL } = require('../utils/dbHelpers');
+
+const STAFF_ROLES = ['agent', 'manager'];
+
+function buildStaffUserWhere({ onlineOnly = false } = {}) {
+  const where = {
+    active: true,
+    role: { [Op.in]: STAFF_ROLES }
+  };
+
+  if (onlineOnly) {
+    where.status = 'online';
+  }
+
+  return where;
+}
+
+async function countStaffUsers(options = {}) {
+  return User.count({ where: buildStaffUserWhere(options) });
+}
+
+function buildFinishedTodayWhere(today, tomorrow) {
+  return {
+    status: { [Op.in]: ['closed', 'resolved'] },
+    [Op.or]: [
+      { closedAt: { [Op.gte]: today, [Op.lt]: tomorrow } },
+      { resolvedAt: { [Op.gte]: today, [Op.lt]: tomorrow } }
+    ]
+  };
+}
 
 async function dashboard(req, res) {
   try {
@@ -15,9 +46,7 @@ async function dashboard(req, res) {
       where: { status: { [Op.in]: ['open', 'waiting_human', 'in_progress'] } }
     });
     const sessionsActive = await Session.count({ where: { active: true } });
-    const agentsOnline = await User.count({
-      where: { status: 'online', role: { [Op.in]: ['agent', 'manager'] } }
-    });
+    const agentsOnline = await countStaffUsers({ onlineOnly: true });
 
     const avgRatingRow = await Ticket.findOne({
       attributes: [[fn('AVG', col('rating')), 'avg']],
@@ -162,76 +191,78 @@ async function extendedMetrics(req, res) {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Tickets Ativos vs Passivos (simulação - adicionar campo 'type' ao modelo se necessário)
-    const ticketsAtivos = 0; // Tickets iniciados pela empresa
-    const ticketsPassivos = await Ticket.count({
-      where: { status: { [Op.in]: ['open', 'in_progress'] } }
-    });
-
-    // Em Atendimento
     const ticketsAtendimento = await Ticket.count({
       where: { status: 'in_progress' }
     });
 
-    // Aguardando (na fila)
     const ticketsAguardando = await Ticket.count({
-      where: { status: 'open' }
+      where: { status: { [Op.in]: ['open', 'waiting_human'] } }
     });
 
-    // Finalizados (no período)
     const ticketsFinalizados = await Ticket.count({
-      where: { 
-        status: 'closed',
-        closedAt: { [Op.gte]: today }
+      where: buildFinishedTodayWhere(today, tomorrow)
+    });
+
+    const msgsRecebidas = await ChatMessage.count({
+      where: {
+        timestamp: { [Op.gte]: today, [Op.lt]: tomorrow },
+        [Op.or]: [{ fromMe: false }, { direction: 'incoming' }]
       }
     });
 
-    // Mensagens (simulação - adicionar tracking de mensagens se necessário)
-    const msgsRecebidas = ticketsFinalizados * 3;
-    const msgsEnviadas = ticketsFinalizados * 5;
+    const msgsEnviadas = await ChatMessage.count({
+      where: {
+        timestamp: { [Op.gte]: today, [Op.lt]: tomorrow },
+        [Op.or]: [{ fromMe: true }, { direction: 'outgoing' }]
+      }
+    });
 
-    // Tempo médio de atendimento
-    const avgAtendimentoRow = await Ticket.findOne({
-      attributes: [[fn('AVG', dateDiffMinutes('closedAt', 'assignedAt')), 'avg']],
-      where: { closedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
+    const avgAtendimentoResolvedRow = await Ticket.findOne({
+      attributes: [[fn('AVG', dateDiffMinutes('resolvedAt', 'assignedAt')), 'avg']],
+      where: { resolvedAt: { [Op.ne]: null }, assignedAt: { [Op.ne]: null } },
       raw: true
     });
 
-    // Tempo médio de espera
+    const avgAtendimentoClosedRow = await Ticket.findOne({
+      attributes: [[fn('AVG', dateDiffMinutes('closedAt', 'assignedAt')), 'avg']],
+      where: {
+        closedAt: { [Op.ne]: null },
+        assignedAt: { [Op.ne]: null },
+        resolvedAt: null
+      },
+      raw: true
+    });
+
+    const avgResolved = Number(avgAtendimentoResolvedRow?.avg || 0);
+    const avgClosed = Number(avgAtendimentoClosedRow?.avg || 0);
+    const tempoAtendimento = Math.round(avgResolved && avgClosed
+      ? (avgResolved + avgClosed) / 2
+      : (avgResolved || avgClosed || 0));
+
     const avgEsperaRow = await Ticket.findOne({
       attributes: [[fn('AVG', dateDiffMinutes('assignedAt', 'createdAt')), 'avg']],
       where: { assignedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null } },
       raw: true
     });
 
-    // Tickets por dia
-    const ticketsPorDia = Math.round(ticketsFinalizados / 1) || 0;
-
-    // Novos Contatos
-    const novosContatos = await Session.count({
-      where: { createdAt: { [Op.gte]: today } }
+    const novosContatos = await Contact.count({
+      where: { createdAt: { [Op.gte]: today, [Op.lt]: tomorrow } }
     });
 
-    // Atendentes Ativos
-    const atendentesOnline = await User.count({
-      where: { status: 'online', role: { [Op.in]: ['agent', 'manager'] } }
-    });
-    const atendentesTotal = await User.count({
-      where: { role: { [Op.in]: ['agent', 'manager'] } }
-    });
+    const atendentesOnline = await countStaffUsers({ onlineOnly: true });
+    const atendentesTotal = await countStaffUsers();
 
     return ok(res, {
-      ticketsAtivos,
-      ticketsPassivos,
       ticketsAtendimento,
       ticketsAguardando,
       ticketsFinalizados,
       msgsRecebidas,
       msgsEnviadas,
-      tempoAtendimento: Math.round(avgAtendimentoRow?.avg || 0),
+      tempoAtendimento,
       tempoEspera: Math.round(avgEsperaRow?.avg || 0),
-      ticketsPorDia,
       novosContatos,
       atendentesAtivos: `${atendentesOnline}/${atendentesTotal}`
     });
@@ -257,17 +288,30 @@ async function contactsRanking(req, res) {
       where: { userId: { [Op.ne]: null } },
       group: ['userId', 'department'],
       order: [[col('ticketCount'), 'DESC']],
-      limit: parseInt(limit),
+      limit: parseInt(limit, 10),
       raw: true
     });
 
-    const formattedRankings = rankings.map(r => ({
-      userId: r.userId,
-      name: r.userId.split('@')[0],
-      ticketCount: parseInt(r.ticketCount),
-      department: r.department || 'Sem departamento',
-      totalTime: Math.round(r.totalTime || 0)
-    }));
+    const contactIds = rankings.map((r) => r.userId).filter(Boolean);
+    const contacts = contactIds.length
+      ? await Contact.findAll({
+          where: { id: { [Op.in]: contactIds } },
+          attributes: ['id', 'name', 'phone'],
+          raw: true
+        })
+      : [];
+    const contactMap = new Map(contacts.map((c) => [String(c.id), c]));
+
+    const formattedRankings = rankings.map((r) => {
+      const contact = contactMap.get(String(r.userId));
+      return {
+        userId: r.userId,
+        name: contact?.name || r.userId,
+        ticketCount: parseInt(r.ticketCount, 10),
+        department: r.department || 'Sem departamento',
+        totalTime: Math.round(r.totalTime || 0)
+      };
+    });
 
     return ok(res, formattedRankings);
   } catch (error) {
@@ -336,16 +380,44 @@ async function timeMetrics(req, res) {
       raw: true
     });
 
-    // firstResponseAt não existe na tabela, usar uma estimativa baseada em createdAt
-    const avgPrimeiraRespostaRow = await Ticket.findOne({
-      attributes: [[fn('AVG', dateDiffMinutes('updatedAt', 'createdAt')), 'avg']],
-      where: { updatedAt: { [Op.ne]: null }, createdAt: { [Op.ne]: null }, status: { [Op.ne]: 'open' } },
+    const outgoingMessages = await ChatMessage.findAll({
+      attributes: ['ticketId', 'timestamp'],
+      where: {
+        ticketId: { [Op.ne]: null },
+        [Op.or]: [{ fromMe: true }, { direction: 'outgoing' }]
+      },
+      order: [['timestamp', 'ASC']],
       raw: true
     });
 
+    const firstByTicket = new Map();
+    for (const msg of outgoingMessages) {
+      if (!firstByTicket.has(msg.ticketId)) {
+        firstByTicket.set(msg.ticketId, msg.timestamp);
+      }
+    }
+
+    let tempoPrimeiraResposta = 0;
+    if (firstByTicket.size > 0) {
+      const tickets = await Ticket.findAll({
+        where: { id: { [Op.in]: [...firstByTicket.keys()] } },
+        attributes: ['id', 'createdAt'],
+        raw: true
+      });
+
+      const responseMinutes = tickets.map((ticket) => {
+        const firstAt = firstByTicket.get(ticket.id);
+        if (!firstAt || !ticket.createdAt) return null;
+        return Math.max(0, Math.round((new Date(firstAt) - new Date(ticket.createdAt)) / 60000));
+      }).filter((v) => v !== null);
+
+      tempoPrimeiraResposta = responseMinutes.length
+        ? Math.round(responseMinutes.reduce((a, b) => a + b, 0) / responseMinutes.length)
+        : 0;
+    }
+
     const tempoAtendimento = Math.round(avgAtendimentoRow?.avg || 0);
     const tempoEspera = Math.round(avgEsperaRow?.avg || 0);
-    const tempoPrimeiraResposta = Math.round(avgPrimeiraRespostaRow?.avg || 0);
 
     return ok(res, {
       tempoAtendimento,

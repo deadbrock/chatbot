@@ -4,6 +4,7 @@
  */
 
 const logger = require('../utils/logger');
+const { isAutoReplyEnabled } = require('../config/bot');
 const UserSession = require('../models/UserSessionSQL');
 const flowManager = require('./services/flowManager');
 const scheduleService = require('./services/scheduleService');
@@ -12,10 +13,42 @@ const automationService = require('../services/automationService');
 const Ticket = require('../models/TicketSQL');
 const ChatMessage = require('../models/ChatMessageSQL');
 const Contact = require('../models/ContactSQL');
+const inboxConversationService = require('../services/inboxConversationService');
+const contactDisplayUtils = require('../utils/contactDisplayUtils');
+const { resolveWhatsAppTimestamp } = require('../utils/whatsappMessageUtils');
 const AIClassificationLog = require('../models/AIClassificationLog');
 const crypto = require('crypto');
+const chatMediaUtils = require('../utils/chatMediaUtils');
+const chatMediaService = require('../services/chatMediaService');
 
 class FlowMessageHandler {
+  /**
+   * Resolve corpo da mensagem (texto ou placeholder para mídia)
+   */
+  resolveMessageBody(message) {
+    const type = chatMediaUtils.normalizeMessageType(message.type);
+    const hasMedia = Boolean(
+      message.hasMedia
+      || message.isMedia
+      || ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(type)
+    );
+
+    if (hasMedia) {
+      const caption = message.caption || '';
+      if (caption.trim() && !chatMediaUtils.isBase64Payload(caption)) {
+        return caption.trim();
+      }
+      return chatMediaUtils.getMediaPreviewLabel(type, true);
+    }
+
+    const body = message.body || '';
+    if (body.trim() && !chatMediaUtils.isBase64Payload(body)) {
+      return body.trim();
+    }
+
+    return chatMediaUtils.getMediaPreviewLabel(type, hasMedia);
+  }
+
   /**
    * Handler principal - Processa mensagem do usuário
    * @param {Object} whatsappClient - Cliente WhatsApp (Baileys)
@@ -26,16 +59,45 @@ class FlowMessageHandler {
     try {
       const phone = contact.number || contact.id.split('@')[0];
       const jid = contact.id; // JID completo com @lid ou @s.whatsapp.net
-      const messageBody = message.body || '';
-      const name = contact.name || contact.pushName || '';
+      const rawName = contact.name || contact.pushName || '';
+      const name = contactDisplayUtils.resolveContactNameForStorage(rawName, phone);
+      const messageBody = this.resolveMessageBody(message);
 
-      // Ignorar mensagens vazias (reações, status, etc)
+      // Ignorar status do WhatsApp, newsletters e mensagens de sistema
+      if (!jid || jid.includes('@broadcast') || jid === 'status@broadcast') {
+        logger.debug(`⏭️ Mensagem de sistema ignorada: ${jid}`);
+        return;
+      }
+
+      // Ignorar mensagens vazias (reações sem texto, etc)
       if (!messageBody.trim()) {
-        logger.info(`⏭️ Mensagem vazia/sem texto ignorada de ${name} (${phone})`);
+        logger.info(`⏭️ Mensagem vazia/sem conteúdo ignorada de ${name} (${phone})`);
         return;
       }
 
       logger.info(`📨 Mensagem de ${name} (${phone}) JID: ${jid}: ${messageBody.substring(0, 50)}...`);
+
+      const rawId = message.id;
+      const incomingMessageId = typeof rawId === 'object'
+        ? (rawId._serialized || rawId.id || null)
+        : rawId;
+
+      if (incomingMessageId) {
+        const existingMessage = await ChatMessage.findOne({
+          where: { messageId: incomingMessageId }
+        });
+        if (existingMessage) {
+          logger.debug(`⏭️ Mensagem já sincronizada: ${incomingMessageId}`);
+          return;
+        }
+      }
+
+      // Ignorar replay de histórico durante sincronização em massa
+      const whatsappSyncService = require('../services/whatsappSyncService');
+      if (whatsappSyncService.syncInProgress) {
+        logger.debug(`⏭️ Sync em andamento — mensagem ao vivo ignorada: ${incomingMessageId || 'sem-id'}`);
+        return;
+      }
 
       // Criar ou buscar contato
       const whatsappId = contact.id || `${phone}@s.whatsapp.net`;
@@ -45,47 +107,82 @@ class FlowMessageHandler {
           whatsappId,
           phone,
           name,
-          isActive: true
+          isActive: true,
+          source: 'whatsapp_sync'
         });
         logger.info(`✅ Novo contato criado: ${name} (${phone})`);
       } else {
-        // Atualizar nome se mudou
-        if (contactRecord.name !== name && name) {
-          contactRecord.name = name;
+        // Atualizar nome se mudou para um nome real do WhatsApp
+        const resolvedName = contactDisplayUtils.resolveContactNameForStorage(rawName, phone);
+        if (!contactDisplayUtils.isGenericContactName(resolvedName)
+          && contactRecord.name !== resolvedName) {
+          contactRecord.name = resolvedName;
           await contactRecord.save();
         }
       }
 
-      // Criar ou buscar ticket (passar JID completo para envio correto)
-      let ticket = await this.findOrCreateTicket(phone, name, contactRecord.id, whatsappId);
+      // Criar ou buscar conversa (ticket só quando atendente aceitar)
+      const conversation = await inboxConversationService.findOrCreateConversation(
+        phone,
+        name,
+        contactRecord.id,
+        whatsappId
+      );
+
+      if (!contactRecord.profilePicUrl) {
+        const whatsappProfilePicService = require('../services/whatsappProfilePicService');
+        whatsappProfilePicService.refreshContactProfilePic(contactRecord.id, whatsappId)
+          .catch(() => {});
+      }
+
+      let ticket = null;
+      if (conversation.activeTicketId) {
+        ticket = await Ticket.findByPk(conversation.activeTicketId);
+      }
 
       // Salvar mensagem recebida no banco
-      await this.saveIncomingMessage(ticket.id, contactRecord.id, phone, name, messageBody, message);
+      const chatMessage = await this.saveIncomingMessage({
+        conversationId: conversation.id,
+        ticketId: ticket?.id || null,
+        contactId: contactRecord.id,
+        phone,
+        name,
+        body: messageBody,
+        rawMessage: message,
+        whatsappClient
+      });
 
-      // Emitir evento Socket.IO para o dashboard
-      this.notifyDashboard(ticket, contactRecord, messageBody, 'incoming');
+      if (this.isRecentWhatsAppMessage(message, chatMessage)) {
+        this.notifyDashboard(conversation, ticket, contactRecord, chatMessage, 'incoming');
+      } else {
+        logger.debug(`⏭️ Mensagem histórica — sem notificação em tempo real (${incomingMessageId || 'sem-id'})`);
+      }
 
-      // 👤 VERIFICAR SE TEM ATENDENTE HUMANO ATRIBUÍDO
-      if (ticket.assignedTo && ticket.status === 'in_progress') {
-        logger.info(`👤 [ATENDIMENTO HUMANO] Ticket ${ticket.protocol} está com atendente ${ticket.assignedTo}. IA bloqueada.`);
-        logger.info(`📨 [ATENDIMENTO HUMANO] Mensagem encaminhada apenas para o atendente. Sem resposta automática.`);
-        
-        // Notificar atendente via Socket.IO (mensagem já foi salva e notificada acima)
-        // Não processar pela IA - retornar sem resposta
+      // Modo manual: sem boas-vindas, IA, fluxos ou automações
+      if (!isAutoReplyEnabled) {
+        logger.info(`🔇 [MODO MANUAL] Resposta automática desabilitada. Conversa ${conversation.id} aguardando atendente.`);
         return;
       }
 
-      // 🔔 SE TICKET ESTÁ AGUARDANDO ATENDENTE (waiting_human)
-      if (ticket.status === 'waiting_human') {
-        logger.info(`⏳ [AGUARDANDO ATENDENTE] Ticket ${ticket.protocol} aguardando atribuição. Cliente tentou enviar mensagem.`);
+      // 👤 VERIFICAR SE TEM ATENDENTE HUMANO ATRIBUÍDO
+      if (ticket?.assignedTo && ticket.status === 'in_progress') {
+        logger.info(`👤 [ATENDIMENTO HUMANO] Ticket ${ticket.protocol} está com atendente ${ticket.assignedTo}. IA bloqueada.`);
+        logger.info(`📨 [ATENDIMENTO HUMANO] Mensagem encaminhada apenas para o atendente. Sem resposta automática.`);
+        return;
+      }
+
+      const waitingHuman = Boolean(conversation.metadata?.waitingHuman) || ticket?.status === 'waiting_human';
+
+      // 🔔 SE ESTÁ AGUARDANDO ATENDENTE
+      if (waitingHuman) {
+        logger.info(`⏳ [AGUARDANDO ATENDENTE] Conversa ${conversation.id} aguardando atribuição.`);
         
-        // Enviar mensagem ao cliente pedindo para aguardar (não notificar novamente)
         await whatsappClient.sendMessage(
           message.from,
           '⏳ *Por favor, aguarde...*\n\nSua solicitação de atendimento já foi registrada e está na fila.\n\nUm de nossos atendentes responderá em breve.\n\n_Obrigado pela paciência!_ 🙏'
         );
         
-        return; // Não processar pela IA
+        return;
       }
 
       // Obter ou criar sessão
@@ -119,16 +216,15 @@ class FlowMessageHandler {
           await whatsappClient.sendMessage(message.from, automationResult.response.message);
           
           // Salvar resposta no banco
-          await this.saveOutgoingMessage(
-            ticket.id,
-            contactRecord.id,
+          await this.saveOutgoingMessage({
+            conversationId: conversation.id,
+            ticketId: ticket?.id || null,
+            contactId: contactRecord.id,
             phone,
-            name,
-            automationResult.response.message
-          );
+            body: automationResult.response.message
+          });
           
-          // Notificar dashboard
-          this.notifyDashboard(ticket, contactRecord, automationResult.response.message, 'outgoing');
+          this.notifyDashboard(conversation, ticket, contactRecord, automationResult.response.message, 'outgoing');
           
           // Se completou e criou ticket, atualizar status
           if (automationResult.execution.status === 'completed' && automationResult.execution.ticketId) {
@@ -140,7 +236,11 @@ class FlowMessageHandler {
       } else {
         // Verificar se deve iniciar nova automação
         logger.info(`🎯 [AUTOMAÇÃO] Verificando se mensagem aciona alguma regra...`);
-        const automationResult = await automationService.processMessage(contactRecord.id, messageBody, ticket.id);
+        const automationResult = await automationService.processMessage(
+          contactRecord.id,
+          messageBody,
+          ticket?.id || null
+        );
         
         if (automationResult) {
           logger.info(`🤖 [AUTOMAÇÃO] Regra acionada: ${automationResult.response.message}`);
@@ -149,29 +249,28 @@ class FlowMessageHandler {
           await whatsappClient.sendMessage(message.from, automationResult.response.message);
           
           // Salvar resposta no banco
-          await this.saveOutgoingMessage(
-            ticket.id,
-            contactRecord.id,
+          await this.saveOutgoingMessage({
+            conversationId: conversation.id,
+            ticketId: ticket?.id || null,
+            contactId: contactRecord.id,
             phone,
-            name,
-            automationResult.response.message
-          );
+            body: automationResult.response.message
+          });
           
-          // Notificar dashboard
-          this.notifyDashboard(ticket, contactRecord, automationResult.response.message, 'outgoing');
+          this.notifyDashboard(conversation, ticket, contactRecord, automationResult.response.message, 'outgoing');
           
           // Se precisa de input adicional, aguardar próxima mensagem
           if (automationResult.response.needsInput) {
             const slotPrompt = automationResult.response.slotPrompt || `Por favor, informe ${automationResult.response.nextSlot}:`;
             await whatsappClient.sendMessage(message.from, slotPrompt);
             
-            await this.saveOutgoingMessage(
-              ticket.id,
-              contactRecord.id,
+            await this.saveOutgoingMessage({
+              conversationId: conversation.id,
+              ticketId: ticket?.id || null,
+              contactId: contactRecord.id,
               phone,
-              name,
-              slotPrompt
-            );
+              body: slotPrompt
+            });
           }
           
           return; // Não processar fluxo padrão
@@ -182,14 +281,20 @@ class FlowMessageHandler {
       await session.updateLastInteraction();
 
       // Processar mensagem baseada no fluxo atual
-      const response = await this.processMessageFlow(session, messageBody, whatsappClient, ticket, message.from);
+      const response = await this.processMessageFlow(
+        session,
+        messageBody,
+        whatsappClient,
+        conversation,
+        ticket,
+        message.from
+      );
 
       logger.info(`🎯 Resposta gerada: ${response ? (typeof response === 'object' ? JSON.stringify(response).substring(0, 100) : response.substring(0, 100)) : 'NULL'}`);
 
-      // Enviar resposta(s)
       if (response) {
         logger.info(`📤 Enviando resposta para ${jid}...`);
-        await this.sendResponse(whatsappClient, jid, response, session, ticket, contactRecord);
+        await this.sendResponse(whatsappClient, jid, response, session, conversation, ticket, contactRecord);
       } else {
         logger.warn(`⚠️ Nenhuma resposta gerada! Fluxo: ${session.currentFlow}, Step: ${session.currentStep}`);
       }
@@ -204,10 +309,12 @@ class FlowMessageHandler {
       }
       
       try {
-        await whatsappClient.sendMessage(
-          message.from,
-          '⚠️ Desculpe, ocorreu um erro. Digite *menu* para recomeçar.'
-        );
+        if (isAutoReplyEnabled) {
+          await whatsappClient.sendMessage(
+            message.from,
+            '⚠️ Desculpe, ocorreu um erro. Digite *menu* para recomeçar.'
+          );
+        }
       } catch (sendError) {
         logger.error('❌ Erro ao enviar mensagem de erro:', sendError);
       }
@@ -217,7 +324,7 @@ class FlowMessageHandler {
   /**
    * Processa mensagem baseada no fluxo
    */
-  async processMessageFlow(session, messageBody, whatsappClient, ticket = null, jid = null) {
+  async processMessageFlow(session, messageBody, whatsappClient, conversation = null, ticket = null, jid = null) {
     const currentFlow = session.currentFlow;
     const currentStep = session.currentStep;
 
@@ -255,10 +362,10 @@ class FlowMessageHandler {
         // Se IA identificou necessidade de atendente humano
         if (aiResult.needsHuman) {
           logger.info(`🤚 [MODO IA PURA] IA solicitou atendimento humano`);
-          if (ticket && jid) {
-            await this.requestHumanAttendance(ticket, whatsappClient, jid, 'Cliente solicitou atendimento humano');
+          if (conversation && jid) {
+            await this.requestHumanAttendance(conversation, whatsappClient, jid, 'Cliente solicitou atendimento humano');
           } else {
-            logger.error('❌ Não foi possível solicitar atendimento humano: ticket ou jid não disponível');
+            logger.error('❌ Não foi possível solicitar atendimento humano: conversa ou jid não disponível');
           }
           return null; // Mensagem já foi enviada pela requestHumanAttendance
         }
@@ -404,7 +511,7 @@ class FlowMessageHandler {
   /**
    * Envia resposta ao usuário
    */
-  async sendResponse(whatsappClient, jid, response, session, ticket, contact) {
+  async sendResponse(whatsappClient, jid, response, session, conversation, ticket, contact) {
     try {
       logger.info(`📱 JID para envio: ${jid}`);
       
@@ -425,9 +532,15 @@ class FlowMessageHandler {
           if (textToSend.trim()) {
             await whatsappClient.sendMessage(jid, textToSend);
             // Salvar resposta no banco
-            if (ticket && contact) {
-              await this.saveOutgoingMessage(ticket.id, contact.id, phone, textToSend);
-              this.notifyDashboard(ticket, contact, textToSend, 'outgoing');
+            if (conversation && contact) {
+              await this.saveOutgoingMessage({
+                conversationId: conversation.id,
+                ticketId: ticket?.id || conversation.activeTicketId || null,
+                contactId: contact.id,
+                phone,
+                body: textToSend
+              });
+              this.notifyDashboard(conversation, ticket, contact, textToSend, 'outgoing');
             }
             await this.delay(800); // Delay entre mensagens
           }
@@ -444,9 +557,15 @@ class FlowMessageHandler {
             if (textToSend.trim()) {
               await whatsappClient.sendMessage(jid, textToSend);
               // Salvar resposta no banco
-              if (ticket && contact) {
-                await this.saveOutgoingMessage(ticket.id, contact.id, phone, textToSend);
-                this.notifyDashboard(ticket, contact, textToSend, 'outgoing');
+              if (conversation && contact) {
+                await this.saveOutgoingMessage({
+                  conversationId: conversation.id,
+                  ticketId: ticket?.id || conversation.activeTicketId || null,
+                  contactId: contact.id,
+                  phone,
+                  body: textToSend
+                });
+                this.notifyDashboard(conversation, ticket, contact, textToSend, 'outgoing');
               }
               await this.delay(800);
             }
@@ -457,9 +576,15 @@ class FlowMessageHandler {
           if (textToSend.trim()) {
             await whatsappClient.sendMessage(jid, textToSend);
             // Salvar resposta no banco
-            if (ticket && contact) {
-              await this.saveOutgoingMessage(ticket.id, contact.id, phone, textToSend);
-              this.notifyDashboard(ticket, contact, textToSend, 'outgoing');
+            if (conversation && contact) {
+              await this.saveOutgoingMessage({
+                conversationId: conversation.id,
+                ticketId: ticket?.id || conversation.activeTicketId || null,
+                contactId: contact.id,
+                phone,
+                body: textToSend
+              });
+              this.notifyDashboard(conversation, ticket, contact, textToSend, 'outgoing');
             }
           }
         }
@@ -467,9 +592,16 @@ class FlowMessageHandler {
         // Se tem próximo fluxo, processar
         if (response.next) {
           await this.delay(1000);
-          const nextResponse = await this.processMessageFlow(session, '', whatsappClient, ticket, jid);
+          const nextResponse = await this.processMessageFlow(
+            session,
+            '',
+            whatsappClient,
+            conversation,
+            ticket,
+            jid
+          );
           if (nextResponse) {
-            await this.sendResponse(whatsappClient, jid, nextResponse, session, ticket, contact);
+            await this.sendResponse(whatsappClient, jid, nextResponse, session, conversation, ticket, contact);
           }
         }
         
@@ -480,9 +612,15 @@ class FlowMessageHandler {
       if (typeof response === 'string' && response.trim()) {
         await whatsappClient.sendMessage(jid, response);
         // Salvar resposta no banco
-        if (ticket && contact) {
-          await this.saveOutgoingMessage(ticket.id, contact.id, phone, response);
-          this.notifyDashboard(ticket, contact, response, 'outgoing');
+        if (conversation && contact) {
+          await this.saveOutgoingMessage({
+            conversationId: conversation.id,
+            ticketId: ticket?.id || conversation.activeTicketId || null,
+            contactId: contact.id,
+            phone,
+            body: response
+          });
+          this.notifyDashboard(conversation, ticket, contact, response, 'outgoing');
         }
       }
 
@@ -709,99 +847,93 @@ class FlowMessageHandler {
     };
   }
 
-  /**
-   * Busca ou cria ticket para o contato
-   */
-  async findOrCreateTicket(phone, name, contactId, whatsappJid = null) {
-    try {
-      // Salvar JID completo no userPhone para envio correto
-      const phoneToSave = whatsappJid || phone;
-      
-      logger.info(`📱 findOrCreateTicket - phone: ${phone}, whatsappJid: ${whatsappJid}, saving: ${phoneToSave}`);
-      
-      // Buscar ticket aberto existente (buscar por JID ou número)
-      let ticket = await Ticket.findOne({
-        where: {
-          [Ticket.sequelize.Sequelize.Op.or]: [
-            { userPhone: phoneToSave },
-            { userPhone: phone }
-          ],
-          status: ['open', 'waiting_human', 'in_progress']
-        },
-        order: [['createdAt', 'DESC']]
-      });
-
-      if (ticket) {
-        // Atualizar última interação e JID se necessário
-        ticket.updatedAt = new Date();
-        if (whatsappJid && !ticket.userPhone.includes('@')) {
-          logger.info(`📱 Atualizando userPhone de ${ticket.userPhone} para ${whatsappJid}`);
-          ticket.userPhone = whatsappJid;
-        }
-        await ticket.save();
-        return ticket;
-      }
-
-      // Criar novo ticket em estado 'open' (IA processa primeiro)
-      const protocol = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-      
-      ticket = await Ticket.create({
-        protocol,
-        userId: contactId, // ID do contato como userId
-        userName: name,
-        userPhone: phoneToSave, // Salvar JID completo!
-        department: 'Atendimento',
-        status: 'open', // ✅ IA processa primeiro
-        priority: 'normal',
-        subject: 'Atendimento via WhatsApp',
-        description: 'Conversa iniciada via WhatsApp',
-        messages: [],
-        attachments: []
-      });
-
-      logger.info(`🎫 Novo ticket criado: ${protocol} para ${name} (JID: ${phoneToSave}) - STATUS: open (IA processando)`);
-      
-      // Emitir evento de novo ticket
-      this.emitSocketEvent('new_ticket', {
-        ticket: ticket.toJSON()
-      });
-
-      return ticket;
-    } catch (error) {
-      logger.error('❌ Erro ao criar/buscar ticket:', error);
-      throw error;
-    }
-  }
 
   /**
    * Salva mensagem recebida no banco
    */
-  async saveIncomingMessage(ticketId, contactId, phone, name, body, rawMessage) {
+  async saveIncomingMessage({
+    conversationId,
+    ticketId = null,
+    contactId,
+    phone,
+    name,
+    body,
+    rawMessage,
+    whatsappClient
+  }) {
     try {
-      const messageId = rawMessage.id || `msg_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-      
+      const rawId = rawMessage.id;
+      const messageId = typeof rawId === 'object'
+        ? (rawId._serialized || rawId.id || JSON.stringify(rawId))
+        : (rawId || `msg_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`);
+
+      const msgType = chatMediaUtils.normalizeMessageType(rawMessage.type);
+      const hasMedia = Boolean(
+        rawMessage.hasMedia
+        || rawMessage.isMedia
+        || ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(msgType)
+      );
+
+      let mediaUrl = null;
+      let mediaType = null;
+      let mediaFilename = null;
+      let mediaSize = null;
+
+      if (hasMedia && whatsappClient) {
+        const saved = await chatMediaService.processIncomingMedia(whatsappClient, rawMessage);
+        if (saved) {
+          mediaUrl = saved.publicUrl;
+          mediaType = saved.mimetype;
+          mediaFilename = saved.filename;
+          mediaSize = saved.size;
+        } else if (chatMediaUtils.isBase64Payload(rawMessage.body)) {
+          const fallback = await chatMediaService.saveBase64Body(rawMessage.body, msgType);
+          if (fallback) {
+            mediaUrl = fallback.publicUrl;
+            mediaType = fallback.mimetype;
+            mediaFilename = fallback.filename;
+            mediaSize = fallback.size;
+          }
+        }
+      }
+
+      const displayBody = chatMediaUtils.sanitizeBodyForDisplay(body, msgType, hasMedia);
+      const messageTimestamp = resolveWhatsAppTimestamp(rawMessage) || new Date();
+
       const chatMessage = await ChatMessage.create({
         messageId,
+        conversationId,
         ticketId,
         contactId,
         direction: 'incoming',
         from: phone,
         to: 'bot',
         fromName: name,
-        body,
-        type: rawMessage.type || 'text',
-        status: 'received',
+        body: displayBody,
+        type: hasMedia ? msgType : 'text',
+        status: 'delivered',
         fromMe: false,
-        timestamp: rawMessage.timestamp ? new Date(rawMessage.timestamp * 1000) : new Date(),
-        isRead: false,
+        hasMedia: Boolean(mediaUrl) || hasMedia,
+        mediaUrl,
+        mediaType,
+        mediaFilename,
+        mediaSize,
+        timestamp: messageTimestamp,
+        createdAt: messageTimestamp,
+        updatedAt: messageTimestamp,
         metadata: {
           rawMessageId: rawMessage.id,
-          hasMedia: rawMessage.hasMedia || false
+          hasMedia
         }
       });
 
       logger.info(`💾 Mensagem salva no banco: ${messageId}`);
-      
+
+      await inboxConversationService.touchConversation(conversationId, messageTimestamp);
+      if (ticketId) {
+        await Ticket.update({ updatedAt: messageTimestamp }, { where: { id: ticketId } });
+      }
+
       return chatMessage;
     } catch (error) {
       logger.error('❌ Erro ao salvar mensagem:', error);
@@ -812,12 +944,20 @@ class FlowMessageHandler {
   /**
    * Salva mensagem enviada (resposta do bot) no banco
    */
-  async saveOutgoingMessage(ticketId, contactId, phone, body) {
+  async saveOutgoingMessage({
+    conversationId,
+    ticketId = null,
+    contactId,
+    phone,
+    body
+  }) {
     try {
       const messageId = `msg_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+      const messageTimestamp = new Date();
       
       const chatMessage = await ChatMessage.create({
         messageId,
+        conversationId,
         ticketId,
         contactId,
         direction: 'outgoing',
@@ -828,11 +968,17 @@ class FlowMessageHandler {
         type: 'text',
         status: 'sent',
         fromMe: true,
-        timestamp: new Date(),
-        isRead: true
+        timestamp: messageTimestamp,
+        createdAt: messageTimestamp,
+        updatedAt: messageTimestamp
       });
 
       logger.info(`📤 Resposta salva no banco: ${messageId}`);
+
+      await inboxConversationService.touchConversation(conversationId, messageTimestamp);
+      if (ticketId) {
+        await Ticket.update({ updatedAt: messageTimestamp }, { where: { id: ticketId } });
+      }
       
       return chatMessage;
     } catch (error) {
@@ -1198,52 +1344,75 @@ class FlowMessageHandler {
   }
 
   /**
+   * Mensagem recebida agora (não replay de histórico na conexão/sync)
+   */
+  isRecentWhatsAppMessage(rawMessage, chatMessage) {
+    const messageTime = resolveWhatsAppTimestamp(rawMessage)
+      || (chatMessage?.timestamp ? new Date(chatMessage.timestamp) : null);
+
+    if (!messageTime || Number.isNaN(messageTime.getTime())) {
+      return false;
+    }
+
+    const ageMs = Date.now() - messageTime.getTime();
+    return ageMs <= 3 * 60 * 1000;
+  }
+
+  /**
    * Notifica dashboard sobre nova mensagem
    */
-  notifyDashboard(ticket, contact, messageBody, direction) {
+  notifyDashboard(conversation, ticket, contact, chatMessage, direction) {
     try {
+      const conversationJson = conversation.toJSON ? conversation.toJSON() : conversation;
+      const messagePayload = typeof chatMessage === 'string'
+        ? {
+            body: chatMessage,
+            direction,
+            timestamp: new Date(),
+            from: direction === 'incoming' ? contact.phone : 'bot'
+          }
+        : {
+            ...chatMessage.toJSON(),
+            direction: chatMessage.direction || direction
+          };
+
       this.emitSocketEvent('new_message', {
-        ticketId: ticket.id,
-        ticket: ticket.toJSON(),
-        contact: contact.toJSON(),
-        message: {
-          body: messageBody,
-          direction,
-          timestamp: new Date(),
-          from: direction === 'incoming' ? contact.phone : 'bot'
-        }
+        conversationId: conversationJson.id,
+        ticketId: ticket?.id || null,
+        conversation: conversationJson,
+        ticket: ticket ? ticket.toJSON() : null,
+        contact: contact.toJSON ? contact.toJSON() : contact,
+        message: messagePayload
       });
 
-      // Atualizar lista de tickets
-      this.emitSocketEvent('ticket_updated', {
-        ticketId: ticket.id,
-        ticket: ticket.toJSON()
+      this.emitSocketEvent('conversation_updated', {
+        conversationId: conversationJson.id,
+        conversation: { ...conversationJson, updatedAt: new Date() }
       });
+
+      if (ticket) {
+        this.emitSocketEvent('ticket_updated', {
+          ticketId: ticket.id,
+          ticket: { ...ticket.toJSON(), updatedAt: new Date() }
+        });
+      }
     } catch (error) {
       logger.error('❌ Erro ao notificar dashboard:', error);
     }
   }
 
   /**
-   * IA solicita atendimento humano (quando identifica necessidade)
+   * IA solicita atendimento humano (sem criar ticket — só ao aceitar)
    */
-  async requestHumanAttendance(ticket, whatsappClient, jid, reason = 'Solicitação de atendimento') {
+  async requestHumanAttendance(conversation, whatsappClient, jid, reason = 'Solicitação de atendimento') {
     try {
-      logger.info(`🤚 [IA] Solicitando atendimento humano para ticket ${ticket.protocol}. Motivo: ${reason}`);
-      
-      // Mudar status do ticket para 'waiting_human'
-      ticket.status = 'waiting_human';
-      ticket.subject = reason;
-      await ticket.save();
-      
-      // Buscar contato
-      const Contact = require('../models/ContactSQL');
-      const contact = await Contact.findOne({ where: { phone: ticket.userPhone.split('@')[0] } });
-      
-      // Notificar atendentes disponíveis
-      await this.notifyAvailableAgents(ticket, contact, reason);
-      
-      // Informar cliente
+      logger.info(`🤚 [IA] Solicitando atendimento humano para conversa ${conversation.id}. Motivo: ${reason}`);
+
+      await inboxConversationService.markWaitingHuman(conversation, reason);
+
+      const contact = await Contact.findByPk(conversation.contactId);
+      await this.notifyAvailableAgents(conversation, contact, reason);
+
       await whatsappClient.sendMessage(
         jid,
         '🤝 *Atendimento Humano Solicitado*\n\n' +
@@ -1251,22 +1420,20 @@ class FlowMessageHandler {
         'Estou direcionando você para um de nossos atendentes.\n\n' +
         '⏳ _Por favor, aguarde. Você será atendido em breve._'
       );
-      
-      logger.info(`✅ [IA] Atendimento humano solicitado com sucesso para ${ticket.protocol}`);
-      
+
+      logger.info(`✅ [IA] Atendimento humano solicitado para conversa ${conversation.id}`);
     } catch (error) {
       logger.error('❌ Erro ao solicitar atendimento humano:', error);
     }
   }
 
   /**
-   * Notifica atendentes disponíveis sobre novo ticket
+   * Notifica atendentes disponíveis sobre conversa aguardando humano
    */
-  async notifyAvailableAgents(ticket, contact, messageBody) {
+  async notifyAvailableAgents(conversation, contact, messageBody) {
     try {
       const User = require('../models/UserSQL');
-      
-      // Buscar atendentes online
+
       const availableAgents = await User.findAll({
         where: {
           role: ['agent', 'manager', 'admin'],
@@ -1276,53 +1443,41 @@ class FlowMessageHandler {
 
       if (availableAgents.length === 0) {
         logger.warn('⚠️ Nenhum atendente online disponível!');
-        
-        // Se não há atendentes, mudar status para 'open' e deixar IA assumir após timeout
-        ticket.status = 'open';
-        await ticket.save();
         return;
       }
 
       logger.info(`🔔 Notificando ${availableAgents.length} atendentes disponíveis...`);
 
-      // Emitir evento para todos os atendentes
-      const { io } = require('../server');
+      const io = global.io || require('../server').io;
       if (io) {
-        io.emit('new_ticket_notification', {
-          ticket: ticket.toJSON(),
-          contact: contact.toJSON(),
+        io.emit('new_conversation_notification', {
+          conversation: conversation.toJSON ? conversation.toJSON() : conversation,
+          contact: contact?.toJSON ? contact.toJSON() : contact,
           message: messageBody,
           timestamp: new Date()
         });
-        
-        logger.info(`✅ Notificação enviada para atendentes`);
       }
 
-      // Iniciar timeout de 30 segundos - se ninguém aceitar, IA assume
+      const conversationId = conversation.id;
       setTimeout(async () => {
         try {
-          // Recarregar ticket para verificar status atual
-          await ticket.reload();
-          
-          // Se ainda está waiting_human, ninguém aceitou - mudar para 'open'
-          if (ticket.status === 'waiting_human') {
-            logger.info(`⏰ Timeout! Nenhum atendente aceitou o ticket ${ticket.protocol}. IA assumindo...`);
-            ticket.status = 'open';
-            await ticket.save();
-            
-            // Emitir evento de timeout
-            if (io) {
-              io.emit('ticket_auto_assigned', {
-                ticketId: ticket.id,
-                reason: 'timeout'
+          const refreshed = await inboxConversationService.getConversationById(conversationId);
+          if (refreshed?.waitingHuman && !refreshed.activeTicketId) {
+            logger.info(`⏰ Timeout! Nenhum atendente aceitou a conversa ${conversationId}.`);
+            const conv = await require('../models/ConversationSQL').findByPk(conversationId);
+            if (conv) {
+              await conv.update({
+                metadata: { ...(conv.metadata || {}), waitingHuman: false }
               });
+            }
+            if (io) {
+              io.emit('conversation_timeout', { conversationId, reason: 'timeout' });
             }
           }
         } catch (error) {
           logger.error('❌ Erro no timeout de atendimento:', error);
         }
-      }, 30000); // 30 segundos
-
+      }, 30000);
     } catch (error) {
       logger.error('❌ Erro ao notificar atendentes:', error);
     }
@@ -1333,11 +1488,12 @@ class FlowMessageHandler {
    */
   emitSocketEvent(event, data) {
     try {
-      // Tentar obter io do app global
-      const { io } = require('../server');
+      const io = global.io || require('../server').io;
       if (io) {
         io.emit(event, data);
         logger.info(`📡 Evento Socket.IO emitido: ${event}`);
+      } else {
+        logger.warn(`⚠️ Socket.IO não disponível para emitir evento: ${event}`);
       }
     } catch (error) {
       logger.warn(`⚠️ Socket.IO não disponível para emitir evento: ${event}`);

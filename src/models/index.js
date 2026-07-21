@@ -20,7 +20,6 @@ const TicketStatus = require('./TicketStatusSQL');
 const Queue = require('./QueueSQL');
 
 // Novos modelos da Fase 2
-const Campaign = require('./CampaignSQL');
 const MessageTemplateAdvanced = require('./MessageTemplateAdvancedSQL');
 
 // Novos modelos da Fase 3B - Administração
@@ -54,9 +53,6 @@ const CustomReport = require('./CustomReportSQL');
 // Novo modelo para Sistema de Fluxo de Chatbot
 const UserSession = require('./UserSessionSQL');
 
-// Novos modelos de Automação Inteligente
-const AutomationRule = require('./AutomationRuleSQL');
-const AutomationExecution = require('./AutomationExecutionSQL');
 const AIConfig = require('./AIConfigSQL');
 
 module.exports = {
@@ -77,7 +73,6 @@ module.exports = {
   Queue,
   
   // Novos modelos Fase 2
-  Campaign,
   MessageTemplateAdvanced,
   
   // Novos modelos Fase 3B - Administração
@@ -110,10 +105,7 @@ module.exports = {
   
   // Sistema de Fluxo de Chatbot
   UserSession,
-  
-  // Automação Inteligente
-  AutomationRule,
-  AutomationExecution,
+
   AIConfig
 };
 

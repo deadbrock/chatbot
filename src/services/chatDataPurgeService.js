@@ -65,12 +65,6 @@ class ChatDataPurgeService {
         transaction
       });
 
-      stats.automationExecutionsDeleted = await safeDestroy(
-        sequelize.models.AutomationExecution,
-        { where: { ticketId: { [Op.ne]: null } }, transaction },
-        'AutomationExecution'
-      );
-
       stats.ticketsDeleted = await Ticket.destroy({ where: {}, transaction });
       stats.conversationsDeleted = await Conversation.destroy({ where: {}, transaction });
       stats.contactsDeleted = await Contact.destroy({

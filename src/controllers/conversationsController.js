@@ -8,7 +8,8 @@ async function list(req, res) {
       page,
       limit,
       filter,
-      search
+      search,
+      loggedUser: req.user
     });
 
     return res.json({
@@ -17,6 +18,24 @@ async function list(req, res) {
       pagination: result.pagination,
       stats: result.stats
     });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function pending(req, res) {
+  try {
+    const loggedUser = req.user;
+    if (!loggedUser) {
+      return fail(res, 401, 'Usuário não autenticado');
+    }
+
+    if (loggedUser.role === 'admin') {
+      return ok(res, []);
+    }
+
+    const items = await inboxConversationService.listPendingForAgent(loggedUser.id);
+    return ok(res, items);
   } catch (error) {
     return fail(res, 500, error.message);
   }
@@ -80,10 +99,10 @@ async function finish(req, res) {
       return fail(res, 401, 'Usuário não autenticado');
     }
 
-    const { conversation, ticket } = await inboxConversationService.finishConversation(
+    const { conversation, ticket, postAttendance } = await inboxConversationService.finishConversation(
       req.params.id,
       loggedUser,
-      { feedback: req.body?.feedback }
+      { feedback: req.body?.feedback, initiatedBy: 'agent' }
     );
 
     const io = req.app.get('io');
@@ -101,7 +120,8 @@ async function finish(req, res) {
     return ok(res, {
       conversation,
       ticket,
-      message: 'Atendimento finalizado'
+      postAttendance,
+      message: 'Atendimento finalizado. Cliente receberá solicitação de avaliação.'
     });
   } catch (error) {
     const status = error.message.includes('não encontrado') || error.message.includes('Nenhum')
@@ -143,4 +163,4 @@ async function saveContact(req, res) {
   }
 }
 
-module.exports = { list, get, accept, finish, saveContact };
+module.exports = { list, get, pending, accept, finish, saveContact };

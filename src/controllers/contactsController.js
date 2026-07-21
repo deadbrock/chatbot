@@ -1,7 +1,41 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const Contact = require('../models/ContactSQL');
+const Conversation = require('../models/ConversationSQL');
 const { ok, fail } = require('../utils/http');
+const {
+  EMPLOYEE_CATEGORY,
+  REGISTERED_EMPLOYEE_SOURCES,
+  EMPLOYEE_POSITIONS
+} = require('../constants/employeeContact');
+const employeeContactService = require('../services/employeeContactService');
+
+function buildEmployeeListWhere(extra = {}) {
+  return {
+    category: EMPLOYEE_CATEGORY,
+    source: { [Op.in]: REGISTERED_EMPLOYEE_SOURCES },
+    ...extra
+  };
+}
+
+function normalizeEmployeePayload(data = {}) {
+  const payload = { ...data };
+
+  if (payload.phone && !payload.whatsappId) {
+    payload.whatsappId = employeeContactService.buildWhatsappId(payload.phone);
+  }
+
+  payload.category = EMPLOYEE_CATEGORY;
+  payload.source = payload.source && REGISTERED_EMPLOYEE_SOURCES.includes(payload.source)
+    ? payload.source
+    : 'Manual';
+
+  if (payload.position && !EMPLOYEE_POSITIONS.includes(payload.position)) {
+    throw new Error(`Cargo inválido. Use: ${EMPLOYEE_POSITIONS.join(', ')}`);
+  }
+
+  return payload;
+}
 
 /**
  * Controller de Contatos
@@ -18,7 +52,7 @@ async function listContacts(req, res) {
       page = 1,
       limit = 50,
       search = '',
-      category = '',
+      position = '',
       isActive = '',
       assignedTo = '',
       sortBy = 'name',
@@ -26,7 +60,7 @@ async function listContacts(req, res) {
     } = req.query;
 
     const offset = (page - 1) * limit;
-    const where = {};
+    const where = buildEmployeeListWhere();
 
     // Filtros
     if (search) {
@@ -34,11 +68,17 @@ async function listContacts(req, res) {
         { name: { [Op.like]: `%${search}%` } },
         { phone: { [Op.like]: `%${search}%` } },
         { email: { [Op.like]: `%${search}%` } },
-        { company: { [Op.like]: `%${search}%` } }
+        { company: { [Op.like]: `%${search}%` } },
+        { contract: { [Op.like]: `%${search}%` } },
+        { position: { [Op.like]: `%${search}%` } },
+        { city: { [Op.like]: `%${search}%` } },
+        { state: { [Op.like]: `%${search}%` } }
       ];
     }
 
-    if (category) where.category = category;
+    if (position && EMPLOYEE_POSITIONS.includes(position)) {
+      where.position = position;
+    }
     if (isActive !== '') where.isActive = isActive === 'true';
     if (assignedTo) where.assignedTo = assignedTo;
 
@@ -89,23 +129,34 @@ async function getContact(req, res) {
  */
 async function createContact(req, res) {
   try {
-    const data = req.body;
+    const { conversationId, ...body } = req.body || {};
+    const data = normalizeEmployeePayload(body);
     const userId = req.user?.id;
 
-    // Verificar se já existe
     const existing = await Contact.findOne({
-      where: { whatsappId: data.whatsappId }
+      where: {
+        [Op.or]: [
+          { whatsappId: data.whatsappId },
+          { phone: data.phone }
+        ]
+      }
     });
 
     if (existing) {
-      return fail(res, 400, 'Contato já existe com este WhatsApp ID');
+      return fail(res, 400, 'Já existe um funcionário com este telefone/WhatsApp');
     }
 
     const contact = await Contact.create({
       ...data,
-      createdBy: userId,
-      source: data.source || 'Manual'
+      createdBy: userId
     });
+
+    if (conversationId) {
+      const conversation = await Conversation.findByPk(conversationId);
+      if (conversation) {
+        await conversation.update({ contactId: contact.id });
+      }
+    }
 
     return ok(res, contact, 201);
   } catch (error) {
@@ -120,7 +171,9 @@ async function createContact(req, res) {
 async function updateContact(req, res) {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = normalizeEmployeePayload(req.body);
+    delete data.source;
+    delete data.category;
     const userId = req.user?.id;
 
     const contact = await Contact.findByPk(id);
@@ -189,23 +242,26 @@ async function toggleBlock(req, res) {
  */
 async function getStats(req, res) {
   try {
-    const total = await Contact.count();
-    const active = await Contact.count({ where: { isActive: true } });
-    const blocked = await Contact.count({ where: { isBlocked: true } });
+    const employeeWhere = buildEmployeeListWhere();
+    const total = await Contact.count({ where: employeeWhere });
+    const active = await Contact.count({ where: { ...employeeWhere, isActive: true } });
+    const blocked = await Contact.count({ where: { ...employeeWhere, isBlocked: true } });
 
     const byCategory = await Contact.findAll({
       attributes: [
         'category',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
+      where: employeeWhere,
       group: ['category'],
       raw: true
     });
 
     const recentContacts = await Contact.count({
       where: {
+        ...employeeWhere,
         createdAt: {
-          [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // últimos 30 dias
+          [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         }
       }
     });
@@ -261,9 +317,11 @@ async function importContacts(req, res) {
         }
 
         await Contact.create({
-          ...contactData,
-          createdBy: userId,
-          source: 'Importação'
+          ...normalizeEmployeePayload({
+            ...contactData,
+            source: 'Importação'
+          }),
+          createdBy: userId
         });
 
         results.success++;
@@ -293,16 +351,14 @@ async function importContacts(req, res) {
  */
 async function exportContacts(req, res) {
   try {
-    const { category = '', isActive = '' } = req.query;
-    const where = {};
-
-    if (category) where.category = category;
+    const { isActive = '' } = req.query;
+    const where = buildEmployeeListWhere();
     if (isActive !== '') where.isActive = isActive === 'true';
 
     const contacts = await Contact.findAll({
       where,
       attributes: [
-        'whatsappId', 'name', 'email', 'phone', 'company',
+        'whatsappId', 'name', 'email', 'phone', 'company', 'contract', 'position',
         'category', 'birthDate', 'city', 'state', 'notes'
       ],
       raw: true
@@ -363,6 +419,24 @@ async function removeTag(req, res) {
   }
 }
 
+async function lookupEmployeeByPhone(req, res) {
+  try {
+    const phone = req.params.phone || req.query.phone;
+    if (!phone) {
+      return fail(res, 400, 'Telefone é obrigatório');
+    }
+
+    const employee = await employeeContactService.findEmployeeByPhone({ phone });
+    if (!employee) {
+      return ok(res, { found: false, employee: null });
+    }
+
+    return ok(res, { found: true, employee });
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
 module.exports = {
   listContacts,
   getContact,
@@ -374,6 +448,8 @@ module.exports = {
   importContacts,
   exportContacts,
   addTags,
-  removeTag
+  removeTag,
+  lookupEmployeeByPhone,
+  EMPLOYEE_POSITIONS
 };
 

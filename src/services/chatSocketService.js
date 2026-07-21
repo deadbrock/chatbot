@@ -394,14 +394,24 @@ class ChatSocketService {
    * Emite evento para um usuário específico
    */
   emitToUser(userId, event, data) {
-    const socketId = this.connectedUsers.get(String(userId));
-    
-    if (socketId) {
-      this.io.to(socketId).emit(event, data);
-      return true;
+    const key = String(userId);
+    const connections = this.userConnections.get(key);
+    let delivered = false;
+
+    if (connections?.size) {
+      for (const socketId of connections) {
+        this.io.to(socketId).emit(event, data);
+        delivered = true;
+      }
+    } else {
+      const socketId = this.connectedUsers.get(key);
+      if (socketId) {
+        this.io.to(socketId).emit(event, data);
+        delivered = true;
+      }
     }
-    
-    return false;
+
+    return delivered;
   }
 
   /**

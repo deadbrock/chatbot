@@ -1,5 +1,6 @@
 import { getStoredUser } from './auth.js';
 import { resolveSectionForRole } from './permissions.js';
+import { syncSidebarSubmenu } from './menuController.js';
 
 let onSectionChangeCb = null;
 let onAccessDeniedCb = null;
@@ -9,6 +10,7 @@ function setActiveNav(section) {
     const s = link.getAttribute('data-section');
     link.classList.toggle('active', s === section);
   });
+  syncSidebarSubmenu(section);
 }
 
 function setActiveSection(section) {

@@ -182,6 +182,21 @@ async function syncDatabase() {
     
     const syncTime = Date.now() - startTime;
     logger.info(`✅ Banco de dados sincronizado (${syncTime}ms)`);
+
+    try {
+      const { ensureSchema } = require('../services/inboxConversationService');
+      await ensureSchema();
+    } catch (schemaError) {
+      logger.warn(`⚠️  Patches de schema: ${schemaError.message}`);
+    }
+
+    try {
+      const { ensureUserProfileSchema } = require('../services/userProfileService');
+      await ensureUserProfileSchema();
+    } catch (schemaError) {
+      logger.warn(`⚠️  Patches de perfil: ${schemaError.message}`);
+    }
+
     return true;
   } catch (error) {
     logger.error('❌ ERRO ao sincronizar banco:');

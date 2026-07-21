@@ -11,6 +11,11 @@ const crypto = require('crypto');
 const logger = require('../utils/logger');
 const chatMediaUtils = require('../utils/chatMediaUtils');
 const chatMediaService = require('../services/chatMediaService');
+const User = require('../models/UserSQL');
+const {
+  formatAgentWhatsAppMessage,
+  resolveMessageContactId
+} = require('../utils/chatMessageUtils');
 
 /**
  * Controller de Chat em Tempo Real
@@ -194,23 +199,31 @@ async function sendMessage(req, res) {
     }
 
     const effectiveConversationId = conversation?.id || conversationId || null;
-    const effectiveTicketId = ticket?.id || null;
+    const effectiveTicketId = ticket?.id || (ticketId ? Number(ticketId) : null) || null;
+
+    const agent = req.user?.id ? await User.findByPk(req.user.id, { attributes: ['id', 'name'] }) : null;
+    const agentName = agent?.name || req.user?.name || 'Atendente';
+    const resolvedContactId = resolveMessageContactId({ contactId, conversation });
+
+    const inboxConversationService = require('../services/inboxConversationService');
+    await inboxConversationService.ensureSchema();
 
     const messageId = `msg_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
     const displayBody = hasMedia
       ? (body?.trim() || chatMediaUtils.getMediaPreviewLabel(type, true))
       : body;
+    const whatsappBody = formatAgentWhatsAppMessage(agentName, displayBody);
 
     const message = await ChatMessage.create({
       messageId,
       conversationId: effectiveConversationId,
       ticketId: effectiveTicketId,
-      contactId: contactId || conversation?.contactId || ticket?.userId,
-      userId: req.user?.id,
+      contactId: resolvedContactId,
+      userId: agent?.id || req.user?.id || null,
       direction: 'outgoing',
       from: 'agent',
       to,
-      fromName: req.user?.name || 'Atendente',
+      fromName: agentName,
       body: displayBody,
       type: hasMedia ? type : 'text',
       status: 'pending',
@@ -220,7 +233,11 @@ async function sendMessage(req, res) {
       mediaFilename: fileName || null,
       mediaSize: fileSize || null,
       timestamp: new Date(),
-      quotedMessageId
+      quotedMessageId,
+      metadata: {
+        agentName,
+        whatsappBody: whatsappBody !== displayBody ? whatsappBody : undefined
+      }
     });
 
     const whatsappClient = require('../bot/whatsapp');
@@ -230,7 +247,10 @@ async function sendMessage(req, res) {
       return sendError(res, 'WhatsApp não está conectado. Vá em Administração → Conexões e reconecte.', 503);
     }
 
-    const formattedNumber = whatsappClient.normalizeChatId(to);
+    const rawTarget = conversation?.whatsappJid || to;
+    const formattedNumber = String(rawTarget).includes('@')
+      ? String(rawTarget).trim()
+      : whatsappClient.normalizeChatId(to);
     logger.info(`🔍 [CHAT] Enviando para: ${formattedNumber}`);
 
     try {
@@ -245,7 +265,7 @@ async function sendMessage(req, res) {
             formattedNumber,
             filePath,
             fileName || 'imagem.jpg',
-            body || ''
+            formatAgentWhatsAppMessage(agentName, body || '')
           );
         } else if (type === 'ptt' || type === 'voice') {
           await whatsappClient.sendVoiceMessage(
@@ -255,12 +275,12 @@ async function sendMessage(req, res) {
           );
         } else {
           await whatsappClient.client.sendFile(formattedNumber, filePath, {
-            caption: body || '',
+            caption: formatAgentWhatsAppMessage(agentName, body || ''),
             filename: fileName || path.basename(filePath)
           });
         }
       } else {
-        await whatsappClient.sendMessage(formattedNumber, body);
+        await whatsappClient.sendMessage(formattedNumber, whatsappBody);
       }
 
       await message.updateStatus('sent', 1);

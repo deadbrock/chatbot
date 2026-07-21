@@ -47,7 +47,7 @@ async function findAgent(config) {
   for (const fragment of nameFragments) {
     const byName = await User.findOne({
       where: {
-        name: { [Op.like]: `%${fragment}%` }
+        name: { [Op.iLike]: `%${fragment}%` }
       }
     });
     if (byName) return byName;

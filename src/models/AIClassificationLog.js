@@ -41,13 +41,14 @@ const AIClassificationLog = sequelize.define('AIClassificationLog', {
   // Resultado da classificação
   intent: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
     index: true
   },
   
   targetFlow: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true,
+    defaultValue: 'ai_chat'
   },
   
   confidence: {
@@ -56,7 +57,7 @@ const AIClassificationLog = sequelize.define('AIClassificationLog', {
   },
   
   method: {
-    type: DataTypes.ENUM('keywords', 'openai', 'claude', 'local'),
+    type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: 'keywords'
   },

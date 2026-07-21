@@ -1,3 +1,5 @@
+import { setNavBadge } from '../ui/dom.js';
+
 function formatDate(dateString) {
   if (!dateString) return '—';
   const d = new Date(dateString);
@@ -27,8 +29,9 @@ export function renderDashboard({ data, tickets, extendedMetrics, npsData, escap
   setTextIfExists('ticketsOpen', data?.ticketsOpen ?? 0);
   setTextIfExists('sessionsActive', data?.sessionsActive ?? 0);
   setTextIfExists('agentsOnline', data?.agentsOnline ?? 0);
-  setTextIfExists('ticketsBadge', data?.ticketsOpen ?? 0);
-  setTextIfExists('sessionsBadge', data?.sessionsActive ?? 0);
+
+  setNavBadge('ticketsBadge', data?.ticketsOpen ?? 0);
+  setNavBadge('sessionsBadge', data?.sessionsActive ?? 0);
 
   // Métricas estendidas (11 cards) - se disponível
   if (extendedMetrics) {

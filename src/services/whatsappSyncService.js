@@ -502,14 +502,15 @@ class WhatsappSyncService {
     const identity = await this.resolveChatIdentity(client, chat, chatId);
     const { jid, phone, displayPhone, name } = identity;
 
-    const { contact, created, updated } = await this.upsertContact(jid, phone, displayPhone, name);
-    if (created) result.contactsCreated += 1;
+    const { contact, updated } = await this.resolveRegisteredEmployeeContact(jid, phone, displayPhone, name);
     if (updated) result.contactsUpdated += 1;
 
-    try {
-      await whatsappProfilePicService.updateContactProfilePic(client, contact, jid);
-    } catch (err) {
-      logger.debug(`Foto de perfil não obtida para ${jid}: ${err.message}`);
+    if (contact) {
+      try {
+        await whatsappProfilePicService.updateContactProfilePic(client, contact, jid);
+      } catch (err) {
+        logger.debug(`Foto de perfil não obtida para ${jid}: ${err.message}`);
+      }
     }
 
     const { conversation, created: conversationCreated } = await inboxConversationService.ensureConversation(
@@ -536,7 +537,7 @@ class WhatsappSyncService {
 
     let lastTs = null;
     for (const msg of messages) {
-      const mapped = this.mapMessageToRow(msg, conversation.id, contact.id, phone, name, jid);
+      const mapped = this.mapMessageToRow(msg, conversation.id, contact?.id || null, phone, name, jid);
       if (!mapped) {
         result.messagesSkipped += 1;
         continue;
@@ -558,7 +559,9 @@ class WhatsappSyncService {
         { lastMessageAt: lastTs, updatedAt: lastTs },
         { where: { id: conversation.id } }
       );
-      await contact.update({ lastInteraction: lastTs });
+      if (contact) {
+        await contact.update({ lastInteraction: lastTs });
+      }
     }
 
     return result;
@@ -966,41 +969,37 @@ class WhatsappSyncService {
     return sortMessagesChronologically(Array.from(unique.values())).slice(-hardLimit);
   }
 
-  async upsertContact(whatsappId, phone, displayPhone, name) {
-    let contact = await Contact.findOne({ where: { whatsappId } });
-    let created = false;
+  /**
+   * Busca funcionário cadastrado manualmente — NÃO cria contato automaticamente.
+   */
+  async resolveRegisteredEmployeeContact(whatsappId, phone, displayPhone, name) {
+    const employeeContactService = require('./employeeContactService');
+    const employee = await employeeContactService.findEmployeeByPhone({
+      phone: displayPhone || phone,
+      whatsappId
+    });
+
+    if (!employee) {
+      return { contact: null, created: false, updated: false };
+    }
+
+    const linked = await employeeContactService.linkEmployeeIdentifiers(employee, {
+      phone: displayPhone || phone,
+      whatsappId
+    });
+
     let updated = false;
-
-    const phoneToStore = displayPhone || phone;
-
-    if (!contact && displayPhone) {
-      contact = await Contact.findOne({ where: { phone: displayPhone } });
-    }
-    if (!contact) {
-      contact = await Contact.findOne({ where: { phone: phoneToStore } });
+    if (name && linked.name !== name && require('../utils/contactDisplayUtils').isGenericContactName(linked.name)) {
+      await linked.update({ name });
+      updated = true;
     }
 
-    if (contact) {
-      const updates = {};
-      if (name && contact.name !== name) updates.name = name;
-      if (contact.whatsappId !== whatsappId) updates.whatsappId = whatsappId;
-      if (displayPhone && contact.phone !== displayPhone) updates.phone = displayPhone;
-      if (Object.keys(updates).length) {
-        await contact.update(updates);
-        updated = true;
-      }
-    } else {
-      contact = await Contact.create({
-        whatsappId,
-        phone: phoneToStore,
-        name: name || 'Contato',
-        isActive: true,
-        source: 'whatsapp_sync'
-      });
-      created = true;
-    }
+    return { contact: linked, created: false, updated };
+  }
 
-    return { contact, created, updated };
+  /** @deprecated use resolveRegisteredEmployeeContact */
+  async upsertContact(whatsappId, phone, displayPhone, name) {
+    return this.resolveRegisteredEmployeeContact(whatsappId, phone, displayPhone, name);
   }
 
   mapMessageToRow(msg, conversationId, contactId, phone, name, chatId) {

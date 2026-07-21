@@ -9,7 +9,7 @@ const Conversation = sequelize.define('Conversation', {
   },
   contactId: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: true
   },
   whatsappJid: {
     type: DataTypes.STRING,

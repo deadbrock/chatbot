@@ -1,26 +1,41 @@
 /* Administration Section Styles */
 
-/* Tab Content */
 .admin-tab-content {
-    display: none;
+  display: none;
 }
 
 .admin-tab-content.active {
-    display: block;
+  display: block;
+}
+
+.administration-tabs .nav-link {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 0.65rem 1rem;
+}
+
+.administration-tabs .nav-link.active {
+  color: var(--primary);
+  background: var(--surface);
+  border-color: var(--border) var(--border) var(--surface);
 }
 
 /* API Keys */
 .api-key-display {
-    font-family: 'Courier New', monospace;
-    background-color: #f8f9fa;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    display: inline-block;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  font-family: 'Courier New', monospace;
+  background-color: var(--surface-2);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .api-key-display:hover {

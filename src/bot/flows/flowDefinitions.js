@@ -388,8 +388,18 @@ const flows = {
   employee_flow: {
     id: 'employee_flow',
     name: 'Colaborador',
-    
+
     steps: {
+      start: {
+        message: `Olá! Como posso ajudar você hoje?\n\nDigite 👇🏽\n\n1️⃣ Assuntos de DP (holerite, férias, benefícios)\n2️⃣ Financeiro (RDV, diárias, salários)\n3️⃣ Ex-colaborador\n4️⃣ Voltar ao menu anterior`,
+        options: {
+          '1': { next: 'dp_menu' },
+          '2': { next: 'employee_options' },
+          '3': { next: 'ex_employee_flow' },
+          '4': { next: 'main_menu' }
+        }
+      },
+
       employee_type: {
         message: `Digite 👇🏽\n\n1️⃣ Colaborador\n2️⃣ Ex colaborador\n3️⃣ Voltar ao menu anterior`,
         
@@ -583,11 +593,11 @@ const flows = {
     
     steps: {
       ask_rating: {
-        message: '🤝 *Agradecemos o seu contato.*\n\nAgora, conta pra gente como você se sentiu neste atendimento digitando a sua nota de 0 a 10.',
+        message: '🙏 *Obrigado pelo contato!*\n\nComo você avalia nosso atendimento?\n\nResponda com uma nota de *1 a 5* (1 = ruim, 5 = excelente).',
         collect: 'nps_score',
         validate: (value) => {
-          const num = parseInt(value);
-          return num >= 0 && num <= 10;
+          const num = parseInt(value, 10);
+          return num >= 1 && num <= 5;
         },
         next: 'farewell'
       },

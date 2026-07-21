@@ -37,12 +37,12 @@ import { renderSchedules } from './views/schedulesView.js';
 import { renderContacts } from './views/contactsView.js';
 import { renderTicketStatuses } from './views/ticketStatusesView.js';
 import { renderQueues } from './views/queuesView.js';
-import { initCampaignsView } from './views/campaignsView.js';
 import { initAdministrationView } from './views/administrationView.js';
 import { initChatView, cleanupChatView } from './views/chatView.js';
 import { initExecutiveDashboardView, cleanupExecutiveDashboardView } from './views/executiveDashboardView.js';
 import { initThemeToggle } from './theme.js';
 import { initWhatsappSyncProgress, triggerLoginSync } from './ui/syncProgressOverlay.js';
+import { initGlobalTicketNotifications, loadPendingTicketNotifications } from './ticketNotifications.js';
 
 // 🌐 EXPORTAR apiFetch para window (para scripts não-módulos como aiPlaygroundView.js)
 window.apiFetch = apiFetch;
@@ -53,15 +53,78 @@ const state = {
   agents: []
 };
 
+function getInitials(name = '') {
+  return String(name)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || '?';
+}
+
 function hydrateUser() {
   const user = getStoredUser();
-  if (user?.name) {
-    const el = document.getElementById('userName');
-    if (el) {
-      const roleLabel = getRoleLabel(user.role);
-      el.textContent = `${user.name} (${roleLabel})`;
-    }
+  if (!user) return;
+
+  const el = document.getElementById('userName');
+  if (el && user.name) {
+    const roleLabel = getRoleLabel(user.role);
+    el.textContent = `${user.name} (${roleLabel})`;
   }
+
+  const avatarImg = document.getElementById('userAvatarImg');
+  const avatarFallback = document.getElementById('userAvatarFallback');
+  if (!avatarImg || !avatarFallback) return;
+
+  if (user.avatar) {
+    avatarImg.src = user.avatar;
+    avatarImg.hidden = false;
+    avatarFallback.hidden = true;
+    avatarImg.onerror = () => {
+      avatarImg.hidden = true;
+      avatarFallback.hidden = false;
+      avatarFallback.textContent = getInitials(user.name);
+    };
+  } else {
+    avatarImg.hidden = true;
+    avatarImg.removeAttribute('src');
+    avatarFallback.hidden = false;
+    avatarFallback.textContent = getInitials(user.name);
+  }
+}
+
+function initSidebarToggle() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebarToggle');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  if (!sidebar || !toggle) return;
+
+  const closeSidebar = () => {
+    sidebar.classList.remove('show');
+    backdrop?.classList.remove('show');
+  };
+
+  const openSidebar = () => {
+    sidebar.classList.add('show');
+    backdrop?.classList.add('show');
+  };
+
+  toggle.addEventListener('click', () => {
+    if (sidebar.classList.contains('show')) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
+  });
+
+  backdrop?.addEventListener('click', closeSidebar);
+
+  sidebar.querySelectorAll('.nav-link[data-section]').forEach((link) => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 992) closeSidebar();
+    });
+  });
 }
 
 function wireEvents() {
@@ -69,6 +132,8 @@ function wireEvents() {
     e.preventDefault();
     logout();
   });
+
+  initSidebarToggle();
 
   document.getElementById('refreshBtn')?.addEventListener('click', async () => {
     await loadDashboard();
@@ -284,10 +349,6 @@ async function loadQueues() {
   await renderQueues();
 }
 
-async function loadCampaigns() {
-  await initCampaignsView();
-}
-
 async function loadAIPlayground() {
   console.log('🔍 Tentando carregar AI Playground...');
   console.log('🔍 window.aiPlaygroundView existe?', !!window.aiPlaygroundView);
@@ -313,34 +374,6 @@ async function loadAIPlayground() {
     console.error('❌ AI Playground View não está disponível após aguardar');
     console.error('❌ Verifique se o script /app/views/aiPlaygroundView.js foi carregado');
     createToast({ title: 'Erro', message: 'AI Playground não está disponível. Recarregue a página.', variant: 'danger' });
-  }
-}
-
-async function loadAutomations() {
-  console.log('🔍 Tentando carregar Automações...');
-  console.log('🔍 window.automationsView existe?', !!window.automationsView);
-  
-  // Aguardar um pouco caso o script ainda esteja carregando
-  if (!window.automationsView) {
-    console.log('⏳ Aguardando carregamento de Automações...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  
-  // Usar a instância global do automationsView
-  if (window.automationsView) {
-    console.log('✅ Automações encontrado, renderizando...');
-    const automationsSection = document.getElementById('automationsSection');
-    if (automationsSection) {
-      automationsSection.innerHTML = '<div id="content"></div>';
-      await window.automationsView.render();
-      console.log('✅ Automações renderizado com sucesso!');
-    } else {
-      console.error('❌ Seção #automationsSection não encontrada no DOM');
-    }
-  } else {
-    console.error('❌ Automations View não está disponível após aguardar');
-    console.error('❌ Verifique se o script /app/views/automationsView.js foi carregado');
-    createToast({ title: 'Erro', message: 'Automações não está disponível. Recarregue a página.', variant: 'danger' });
   }
 }
 
@@ -401,14 +434,8 @@ async function onSectionChange(section) {
     case 'queues':
       await loadQueues();
       break;
-    case 'campaigns':
-      await loadCampaigns();
-      break;
     case 'ai-playground':
       await loadAIPlayground();
-      break;
-    case 'automations':
-      await loadAutomations();
       break;
     case 'administration':
       await loadAdministration();
@@ -441,6 +468,12 @@ async function init() {
     }
   );
 
+  window.addEventListener('user:updated', (event) => {
+    if (event.detail) {
+      hydrateUser();
+    }
+  });
+
   connectSocket({
     onNewTicket: (data) => {
       createToast({ title: 'Novo ticket', message: `Ticket ${data.protocol} criado.`, variant: 'primary' });
@@ -458,8 +491,10 @@ async function init() {
   });
 
   registerChatRealtime();
+  initGlobalTicketNotifications();
   initWhatsappSyncProgress();
   await triggerLoginSync();
+  await loadPendingTicketNotifications();
 
   // primeira carga baseada no hash
   const initial = (location.hash || '#dashboard').replace('#', '');

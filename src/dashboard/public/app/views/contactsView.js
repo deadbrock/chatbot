@@ -5,18 +5,33 @@ import { showLoading, hideLoading } from '../ui/loading.js';
 import { escapeHtml } from '../ui/dom.js';
 import { resolveContactDisplayName, getContactInitials } from '../utils/contactDisplay.js';
 
-/**
- * View de Gestão de Contatos
- */
+const EMPLOYEE_POSITIONS = [
+  'Gestor',
+  'Coordenador',
+  'Supervisor',
+  'Encarregado',
+  'Demais Cargos'
+];
 
 let currentPage = 1;
 let currentFilters = {};
 let contactModal = null;
 let importModal = null;
 
-/**
- * Renderizar lista de contatos
- */
+function normalizePhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function buildWhatsappId(phone) {
+  const digits = normalizePhoneDigits(phone);
+  return digits ? `${digits}@s.whatsapp.net` : '';
+}
+
+function isRegisteredEmployee(contact) {
+  return contact?.category === 'Colaborador'
+    && ['Manual', 'Importação'].includes(contact?.source);
+}
+
 export async function renderContacts() {
   const container = document.getElementById('contactsContent');
   if (!container) return;
@@ -25,23 +40,20 @@ export async function renderContacts() {
 
   try {
     const data = await apiFetch(`/contacts?page=${currentPage}&limit=50&${new URLSearchParams(currentFilters)}`);
-    
+
     container.innerHTML = `
       <div class="contacts-toolbar mb-3">
         <div class="row g-3">
           <div class="col-md-4">
             <div class="input-group">
               <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input type="text" class="form-control" id="contactSearch" placeholder="Buscar por nome, telefone, email...">
+              <input type="text" class="form-control" id="contactSearch" placeholder="Buscar por nome, telefone, contrato...">
             </div>
           </div>
           <div class="col-md-2">
-            <select class="form-select" id="categoryFilter">
-              <option value="">Todas as categorias</option>
-              <option value="Cliente">Cliente</option>
-              <option value="Lead">Lead</option>
-              <option value="Fornecedor">Fornecedor</option>
-              <option value="Parceiro">Parceiro</option>
+            <select class="form-select" id="positionFilter">
+              <option value="">Todos os cargos</option>
+              ${EMPLOYEE_POSITIONS.map((p) => `<option value="${p}">${p}</option>`).join('')}
             </select>
           </div>
           <div class="col-md-2">
@@ -59,19 +71,18 @@ export async function renderContacts() {
               <i class="bi bi-upload"></i> Importar
             </button>
             <button class="btn btn-primary" id="newContactBtn">
-              <i class="bi bi-plus-lg"></i> Novo Contato
+              <i class="bi bi-plus-lg"></i> Novo Funcionário
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Estatísticas -->
       <div class="row g-3 mb-4">
         <div class="col-md-3">
           <div class="card text-center">
             <div class="card-body">
               <h3 class="text-primary mb-0" id="totalContacts">0</h3>
-              <small class="text-muted">Total de Contatos</small>
+              <small class="text-muted">Total de Funcionários</small>
             </div>
           </div>
         </div>
@@ -101,7 +112,6 @@ export async function renderContacts() {
         </div>
       </div>
 
-      <!-- Tabela de Contatos -->
       <div class="card">
         <div class="card-body">
           <div class="table-responsive">
@@ -110,60 +120,47 @@ export async function renderContacts() {
                 <tr>
                   <th>Nome</th>
                   <th>Telefone</th>
-                  <th>Email</th>
-                  <th>Categoria</th>
-                  <th>Empresa</th>
+                  <th>Contrato</th>
+                  <th>Cargo</th>
+                  <th>Cidade/UF</th>
                   <th>Tickets</th>
                   <th>Status</th>
                   <th>Ações</th>
                 </tr>
               </thead>
-              <tbody id="contactsTableBody">
-                <!-- Contatos serão carregados aqui -->
-              </tbody>
+              <tbody id="contactsTableBody"></tbody>
             </table>
           </div>
 
-          <!-- Paginação -->
-          <nav aria-label="Paginação de contatos">
-            <ul class="pagination justify-content-center" id="contactsPagination">
-              <!-- Paginação será carregada aqui -->
-            </ul>
+          <nav aria-label="Paginação de funcionários">
+            <ul class="pagination justify-content-center" id="contactsPagination"></ul>
           </nav>
         </div>
       </div>
     `;
 
-    // Carregar estatísticas
     loadContactStats();
 
-    // Renderizar tabela
     const contacts = Array.isArray(data.contacts) ? data.contacts : (data.data?.contacts || data.data || []);
     const pagination = data.pagination || data.data?.pagination || { page: 1, pages: 1, total: contacts.length };
-    
+
     renderContactsTable(contacts);
-    if (pagination && pagination.page && pagination.pages) {
+    if (pagination?.page && pagination?.pages) {
       renderPagination(pagination);
     }
 
-    // Event listeners
     setupEventListeners();
-
   } catch (error) {
-    showToast('Erro ao carregar contatos', 'error');
+    showToast('Erro ao carregar funcionários', 'error');
     console.error(error);
   } finally {
     hideLoading();
   }
 }
 
-/**
- * Carregar estatísticas
- */
 async function loadContactStats() {
   try {
     const stats = await apiFetch('/contacts/stats');
-    
     document.getElementById('totalContacts').textContent = stats.total || 0;
     document.getElementById('activeContacts').textContent = stats.active || 0;
     document.getElementById('blockedContacts').textContent = stats.blocked || 0;
@@ -173,61 +170,54 @@ async function loadContactStats() {
   }
 }
 
-/**
- * Renderizar tabela de contatos
- */
 function renderContactsTable(contacts) {
   const tbody = document.getElementById('contactsTableBody');
   if (!tbody) return;
 
-  if (!contacts || contacts.length === 0) {
+  if (!contacts?.length) {
     tbody.innerHTML = `
       <tr>
         <td colspan="8" class="text-center text-muted py-4">
           <i class="bi bi-inbox" style="font-size: 2rem;"></i>
-          <p class="mt-2">Nenhum contato encontrado</p>
+          <p class="mt-2">Nenhum funcionário cadastrado</p>
         </td>
       </tr>
     `;
     return;
   }
 
-  tbody.innerHTML = contacts.map(contact => {
+  tbody.innerHTML = contacts.map((contact) => {
     const displayName = resolveContactDisplayName(contact);
     const phone = contact.phone || '';
+    const location = [contact.city, contact.state].filter(Boolean).join(' / ') || '-';
+
     return `
     <tr>
       <td>
         <div class="d-flex align-items-center">
-          ${contact.profilePicUrl ? 
-            `<img src="${escapeHtml(contact.profilePicUrl)}" class="rounded-circle me-2" width="32" height="32" alt="">` :
-            `<div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width:32px;height:32px;">
+          ${contact.profilePicUrl
+            ? `<img src="${escapeHtml(contact.profilePicUrl)}" class="rounded-circle me-2" width="32" height="32" alt="">`
+            : `<div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width:32px;height:32px;">
               ${escapeHtml(getContactInitials(displayName, phone))}
             </div>`
           }
           <div>
             <strong>${escapeHtml(displayName)}</strong>
-            ${contact.tags && contact.tags.length > 0 ? `
-              <div class="mt-1">
-                ${contact.tags.slice(0, 3).map(tag => `<span class="badge bg-secondary badge-sm">${escapeHtml(tag)}</span>`).join(' ')}
-              </div>
-            ` : ''}
+            ${contact.email ? `<div class="small text-muted">${escapeHtml(contact.email)}</div>` : ''}
           </div>
         </div>
       </td>
-      <td>${escapeHtml(contact.phone)}</td>
-      <td>${contact.email ? escapeHtml(contact.email) : '-'}</td>
-      <td>
-        ${contact.category ? `<span class="badge bg-info">${escapeHtml(contact.category)}</span>` : '-'}
-      </td>
-      <td>${contact.company ? escapeHtml(contact.company) : '-'}</td>
+      <td>${escapeHtml(contact.phone || '-')}</td>
+      <td>${contact.contract ? escapeHtml(contact.contract) : '-'}</td>
+      <td>${contact.position ? `<span class="badge bg-info">${escapeHtml(contact.position)}</span>` : '-'}</td>
+      <td>${escapeHtml(location)}</td>
       <td><span class="badge bg-primary">${contact.ticketsCount || 0}</span></td>
       <td>
-        ${contact.isBlocked ? 
-          '<span class="badge bg-danger">Bloqueado</span>' :
-          contact.isActive ? 
-            '<span class="badge bg-success">Ativo</span>' :
-            '<span class="badge bg-secondary">Inativo</span>'
+        ${contact.isBlocked
+          ? '<span class="badge bg-danger">Bloqueado</span>'
+          : contact.isActive
+            ? '<span class="badge bg-success">Ativo</span>'
+            : '<span class="badge bg-secondary">Inativo</span>'
         }
       </td>
       <td>
@@ -251,29 +241,17 @@ function renderContactsTable(contacts) {
   }).join('');
 }
 
-/**
- * Renderizar paginação
- */
 function renderPagination(pagination) {
   const container = document.getElementById('contactsPagination');
   if (!container) return;
 
-  if (!pagination || typeof pagination !== 'object') {
-    container.innerHTML = '';
-    return;
-  }
-
   const { page = 1, pages = 1 } = pagination;
-  let html = '';
-
-  // Botão anterior
-  html += `
+  let html = `
     <li class="page-item ${page === 1 ? 'disabled' : ''}">
       <a class="page-link" href="#" data-page="${page - 1}">Anterior</a>
     </li>
   `;
 
-  // Páginas
   for (let i = 1; i <= pages; i++) {
     if (i === 1 || i === pages || (i >= page - 2 && i <= page + 2)) {
       html += `
@@ -286,7 +264,6 @@ function renderPagination(pagination) {
     }
   }
 
-  // Botão próximo
   html += `
     <li class="page-item ${page === pages ? 'disabled' : ''}">
       <a class="page-link" href="#" data-page="${page + 1}">Próximo</a>
@@ -294,12 +271,10 @@ function renderPagination(pagination) {
   `;
 
   container.innerHTML = html;
-
-  // Event listeners para paginação
-  container.querySelectorAll('a.page-link').forEach(link => {
+  container.querySelectorAll('a.page-link').forEach((link) => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      const newPage = parseInt(e.target.dataset.page);
+      const newPage = parseInt(e.target.dataset.page, 10);
       if (newPage && newPage !== currentPage) {
         currentPage = newPage;
         renderContacts();
@@ -308,11 +283,7 @@ function renderPagination(pagination) {
   });
 }
 
-/**
- * Setup event listeners
- */
 function setupEventListeners() {
-  // Busca
   const searchInput = document.getElementById('contactSearch');
   if (searchInput) {
     let searchTimeout;
@@ -326,35 +297,32 @@ function setupEventListeners() {
     });
   }
 
-  // Filtros
-  const categoryFilter = document.getElementById('categoryFilter');
-  if (categoryFilter) {
-    categoryFilter.addEventListener('change', (e) => {
-      currentFilters.category = e.target.value;
-      currentPage = 1;
-      renderContacts();
-    });
-  }
+  document.getElementById('positionFilter')?.addEventListener('change', (e) => {
+    currentFilters.position = e.target.value;
+    currentPage = 1;
+    renderContacts();
+  });
 
-  const statusFilter = document.getElementById('statusFilter');
-  if (statusFilter) {
-    statusFilter.addEventListener('change', (e) => {
-      currentFilters.isActive = e.target.value;
-      currentPage = 1;
-      renderContacts();
-    });
-  }
+  document.getElementById('statusFilter')?.addEventListener('change', (e) => {
+    currentFilters.isActive = e.target.value;
+    currentPage = 1;
+    renderContacts();
+  });
 
-  // Botões
   document.getElementById('newContactBtn')?.addEventListener('click', () => openContactModal());
   document.getElementById('exportBtn')?.addEventListener('click', exportContacts);
   document.getElementById('importBtn')?.addEventListener('click', openImportModal);
+
+  const phoneInput = document.getElementById('contactPhone');
+  phoneInput?.addEventListener('input', (e) => {
+    const whatsappField = document.getElementById('contactWhatsappId');
+    if (whatsappField) {
+      whatsappField.value = buildWhatsappId(e.target.value);
+    }
+  });
 }
 
-/**
- * Abrir modal de contato
- */
-function openContactModal(contactId = null) {
+export function openContactModal(contactId = null, prefill = {}) {
   const modal = document.getElementById('contactModal');
   if (!modal) return;
 
@@ -362,43 +330,53 @@ function openContactModal(contactId = null) {
   const form = document.getElementById('contactForm');
 
   if (contactId) {
-    title.textContent = 'Editar Contato';
+    title.textContent = 'Editar Funcionário';
     loadContactData(contactId);
   } else {
-    title.textContent = 'Novo Contato';
+    title.textContent = 'Novo Funcionário';
     form.reset();
     document.getElementById('contactId').value = '';
+    document.getElementById('contactConversationId').value = prefill.conversationId || '';
+
+    if (prefill.name) document.getElementById('contactName').value = prefill.name;
+    if (prefill.phone) {
+      document.getElementById('contactPhone').value = prefill.phone;
+      document.getElementById('contactWhatsappId').value = prefill.whatsappId || buildWhatsappId(prefill.phone);
+    }
+    if (prefill.contract) document.getElementById('contactContract').value = prefill.contract;
+    if (prefill.position) document.getElementById('contactPosition').value = prefill.position;
+    if (prefill.city) document.getElementById('contactCity').value = prefill.city;
+    if (prefill.state) document.getElementById('contactState').value = prefill.state;
+    if (prefill.email) document.getElementById('contactEmail').value = prefill.email;
+    if (prefill.company) document.getElementById('contactCompany').value = prefill.company;
   }
 
   contactModal = new bootstrap.Modal(modal);
   contactModal.show();
 }
 
-/**
- * Carregar dados do contato
- */
 async function loadContactData(contactId) {
   try {
     const contact = await apiFetch(`/contacts/${contactId}`);
-    
+
     document.getElementById('contactId').value = contact.id;
+    document.getElementById('contactConversationId').value = '';
     document.getElementById('contactName').value = contact.name || '';
     document.getElementById('contactPhone').value = contact.phone || '';
-    document.getElementById('contactWhatsappId').value = contact.whatsappId || '';
+    document.getElementById('contactWhatsappId').value = contact.whatsappId || buildWhatsappId(contact.phone);
     document.getElementById('contactEmail').value = contact.email || '';
-    document.getElementById('contactCategory').value = contact.category || '';
+    document.getElementById('contactContract').value = contact.contract || '';
     document.getElementById('contactCompany').value = contact.company || '';
     document.getElementById('contactPosition').value = contact.position || '';
+    document.getElementById('contactCity').value = contact.city || '';
+    document.getElementById('contactState').value = contact.state || '';
     document.getElementById('contactNotes').value = contact.notes || '';
   } catch (error) {
-    showToast('Erro ao carregar dados do contato', 'error');
+    showToast('Erro ao carregar dados do funcionário', 'error');
   }
 }
 
-/**
- * Salvar contato
- */
-window.saveContact = async function() {
+window.saveContact = async function saveContact() {
   const form = document.getElementById('contactForm');
   if (!form.checkValidity()) {
     form.reportValidity();
@@ -406,37 +384,49 @@ window.saveContact = async function() {
   }
 
   const contactId = document.getElementById('contactId').value;
+  const phone = document.getElementById('contactPhone').value;
+  const conversationId = document.getElementById('contactConversationId').value || null;
+
   const data = {
     name: document.getElementById('contactName').value,
-    phone: document.getElementById('contactPhone').value,
-    whatsappId: document.getElementById('contactWhatsappId').value,
+    phone,
+    whatsappId: document.getElementById('contactWhatsappId').value || buildWhatsappId(phone),
     email: document.getElementById('contactEmail').value || null,
-    category: document.getElementById('contactCategory').value || null,
+    contract: document.getElementById('contactContract').value,
     company: document.getElementById('contactCompany').value || null,
-    position: document.getElementById('contactPosition').value || null,
+    position: document.getElementById('contactPosition').value,
+    city: document.getElementById('contactCity').value || null,
+    state: document.getElementById('contactState').value || null,
     notes: document.getElementById('contactNotes').value || null
   };
+
+  if (!contactId && conversationId) {
+    data.conversationId = conversationId;
+  }
 
   try {
     if (contactId) {
       await apiFetch(`/contacts/${contactId}`, { method: 'PUT', body: data });
-      showToast('Contato atualizado com sucesso!', 'success');
+      showToast('Funcionário atualizado com sucesso!', 'success');
     } else {
       await apiFetch('/contacts', { method: 'POST', body: data });
-      showToast('Contato criado com sucesso!', 'success');
+      showToast('Funcionário cadastrado com sucesso!', 'success');
     }
 
-    contactModal.hide();
+    contactModal?.hide();
     renderContacts();
+
+    if (conversationId) {
+      window.dispatchEvent(new CustomEvent('employeeRegistered', {
+        detail: { conversationId }
+      }));
+    }
   } catch (error) {
-    showToast(error.message || 'Erro ao salvar contato', 'error');
+    showToast(error.message || 'Erro ao salvar funcionário', 'error');
   }
 };
 
-/**
- * Iniciar conversa com contato
- */
-window.startContactChat = async function(contactId) {
+window.startContactChat = async function startContactChat(contactId) {
   try {
     showLoading();
 
@@ -444,12 +434,12 @@ window.startContactChat = async function(contactId) {
     const contact = contactResponse?.data || contactResponse;
 
     if (!contact?.id) {
-      showToast('Contato não encontrado', 'error');
+      showToast('Funcionário não encontrado', 'error');
       return;
     }
 
     if (contact.isBlocked) {
-      showToast('Este contato está bloqueado. Desbloqueie para iniciar a conversa.', 'warning');
+      showToast('Este funcionário está bloqueado.', 'warning');
       return;
     }
 
@@ -460,9 +450,9 @@ window.startContactChat = async function(contactId) {
 
     const contactIdStr = String(contact.id);
     const phone = contact.phone || '';
-    const whatsappId = contact.whatsappId || (phone ? `${phone}@s.whatsapp.net` : null);
+    const whatsappId = contact.whatsappId || buildWhatsappId(phone);
 
-    let conversation = conversations.find((c) => {
+    const conversation = conversations.find((c) => {
       const sameContact = String(c.contactId) === contactIdStr;
       const sameJid = whatsappId && c.whatsappJid === whatsappId;
       const samePhone = phone && (c.userPhone === phone || c.whatsappJid?.includes(phone));
@@ -470,12 +460,11 @@ window.startContactChat = async function(contactId) {
     });
 
     if (!conversation?.id) {
-      showToast('Conversa não encontrada. Sincronize o WhatsApp ou aguarde mensagem deste contato.', 'warning');
+      showToast('Conversa não encontrada. Aguarde mensagem deste funcionário ou sincronize o WhatsApp.', 'warning');
       return;
     }
 
     navigateToSection('chat');
-
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('openChat', { detail: { conversationId: conversation.id } }));
     }, 300);
@@ -489,18 +478,12 @@ window.startContactChat = async function(contactId) {
   }
 };
 
-/**
- * Editar contato
- */
-window.editContact = function(contactId) {
+window.editContact = function editContact(contactId) {
   openContactModal(contactId);
 };
 
-/**
- * Bloquear/Desbloquear contato
- */
-window.toggleBlockContact = async function(contactId) {
-  if (!confirm('Deseja alterar o status de bloqueio deste contato?')) return;
+window.toggleBlockContact = async function toggleBlockContact(contactId) {
+  if (!confirm('Deseja alterar o status de bloqueio deste funcionário?')) return;
 
   try {
     await apiFetch(`/contacts/${contactId}/toggle-block`, { method: 'POST' });
@@ -511,67 +494,50 @@ window.toggleBlockContact = async function(contactId) {
   }
 };
 
-/**
- * Excluir contato
- */
-window.deleteContact = async function(contactId) {
-  if (!confirm('Deseja realmente excluir este contato? Esta ação não pode ser desfeita.')) return;
+window.deleteContact = async function deleteContact(contactId) {
+  if (!confirm('Deseja realmente excluir este funcionário? Esta ação não pode ser desfeita.')) return;
 
   try {
     await apiFetch(`/contacts/${contactId}`, { method: 'DELETE' });
-    showToast('Contato excluído com sucesso!', 'success');
+    showToast('Funcionário excluído com sucesso!', 'success');
     renderContacts();
   } catch (error) {
-    showToast('Erro ao excluir contato', 'error');
+    showToast('Erro ao excluir funcionário', 'error');
   }
 };
 
-/**
- * Exportar contatos
- */
 async function exportContacts() {
   try {
     const contacts = await apiFetch(`/contacts/export?${new URLSearchParams(currentFilters)}`);
-    
-    // Converter para CSV
     const csv = convertToCSV(contacts);
-    
-    // Download
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `contatos_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `funcionarios_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    
-    showToast('Contatos exportados com sucesso!', 'success');
+    showToast('Funcionários exportados com sucesso!', 'success');
   } catch (error) {
-    showToast('Erro ao exportar contatos', 'error');
+    showToast('Erro ao exportar funcionários', 'error');
   }
 }
 
-/**
- * Converter para CSV
- */
 function convertToCSV(data) {
-  if (!data || data.length === 0) return '';
-  
+  if (!data?.length) return '';
+
   const headers = Object.keys(data[0]);
   const csvRows = [headers.join(',')];
-  
+
   for (const row of data) {
-    const values = headers.map(header => {
+    const values = headers.map((header) => {
       const value = row[header];
       return value ? `"${String(value).replace(/"/g, '""')}"` : '';
     });
     csvRows.push(values.join(','));
   }
-  
+
   return csvRows.join('\n');
 }
 
-/**
- * Abrir modal de importação
- */
 function openImportModal() {
   const modal = document.getElementById('importModal');
   if (!modal) return;
@@ -580,24 +546,19 @@ function openImportModal() {
   importModal.show();
 }
 
-/**
- * Importar contatos
- */
-window.importContacts = async function() {
+window.importContacts = async function importContacts() {
   const fileInput = document.getElementById('importFile');
-  if (!fileInput.files || !fileInput.files[0]) {
+  if (!fileInput.files?.[0]) {
     showToast('Selecione um arquivo para importar', 'warning');
     return;
   }
 
-  const file = fileInput.files[0];
   const reader = new FileReader();
-
   reader.onload = async (e) => {
     try {
       const csv = e.target.result;
       const contacts = parseCSV(csv);
-      
+
       const result = await apiFetch('/contacts/import', {
         method: 'POST',
         body: JSON.stringify({ contacts })
@@ -607,34 +568,38 @@ window.importContacts = async function() {
       importModal.hide();
       renderContacts();
     } catch (error) {
-      showToast('Erro ao importar contatos', 'error');
+      showToast('Erro ao importar funcionários', 'error');
     }
   };
 
-  reader.readAsText(file);
+  reader.readAsText(fileInput.files[0]);
 };
 
-/**
- * Parse CSV
- */
 function parseCSV(csv) {
   const lines = csv.split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+  const headers = lines[0].split(',').map((h) => h.trim().replace(/"/g, ''));
   const contacts = [];
 
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
-    
-    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+
+    const values = lines[i].split(',').map((v) => v.trim().replace(/"/g, ''));
     const contact = {};
-    
+
     headers.forEach((header, index) => {
       contact[header] = values[index] || null;
     });
-    
+
     contacts.push(contact);
   }
 
   return contacts;
 }
 
+window.addEventListener('openEmployeeModal', (event) => {
+  const detail = event.detail || {};
+  navigateToSection('contacts');
+  setTimeout(() => openContactModal(null, detail), 200);
+});
+
+export { isRegisteredEmployee };

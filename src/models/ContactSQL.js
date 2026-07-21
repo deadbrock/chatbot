@@ -110,6 +110,12 @@ const Contact = sequelize.define('Contact', {
     allowNull: true,
     comment: 'Cargo/Posição'
   },
+
+  contract: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Contrato do colaborador (facilities/operacional)'
+  },
   
   // Categorização
   tags: {

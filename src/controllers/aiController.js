@@ -46,10 +46,11 @@ class AIController {
       logger.info('🔧 [AI-CONTROLLER] Recebendo requisição PUT /api/ai/config');
       logger.info('🔧 [AI-CONTROLLER] Body recebido:', JSON.stringify(req.body, null, 2));
 
-      const { enabled, provider, apiKey, model, confidenceThreshold, maxTokens, temperature } = req.body;
+      const { enabled, mode, provider, apiKey, model, confidenceThreshold, maxTokens, temperature } = req.body;
 
       const updates = {};
       if (typeof enabled !== 'undefined') updates.enabled = enabled;
+      if (mode) updates.mode = mode;
       if (provider) updates.provider = provider;
       if (apiKey) updates.apiKey = apiKey;
       if (model) updates.model = model;

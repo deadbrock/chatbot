@@ -1,10 +1,11 @@
-/* Logotipo oficial AstroChat */
+/* Logotipo AstroChat */
 
 :root {
-  --logo-navbar-size: 100px;
-  --logo-login-size: 100px;
-  --logo-compact-size: 59px;
-  --logo-page-size: 72px;
+  --logo-navbar-size: 32px;
+  --logo-login-size: 72px;
+  --logo-compact-size: 40px;
+  --logo-page-size: 64px;
+  --logo-sidebar-size: 36px;
 }
 
 .app-logo {
@@ -21,7 +22,7 @@
 .app-logo--login {
   width: var(--logo-login-size);
   height: var(--logo-login-size);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .app-logo--compact {

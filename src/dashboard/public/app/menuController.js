@@ -2,6 +2,39 @@
  * Menu Controller - Controla o comportamento do menu cascata
  */
 
+export function syncSidebarSubmenu(activeSection) {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  sidebar.querySelectorAll('.nav-dropdown-toggle').forEach((toggle) => {
+    toggle.classList.remove('has-active-child');
+  });
+
+  const activeLink = activeSection
+    ? sidebar.querySelector(`.nav-link[data-section="${activeSection}"]`)
+    : sidebar.querySelector('.nav-submenu .nav-link.active');
+
+  if (!activeLink) {
+    sidebar.querySelectorAll('.nav-item.has-submenu.open').forEach((item) => {
+      item.classList.remove('open');
+    });
+    return;
+  }
+
+  const parentItem = activeLink.closest('.nav-item.has-submenu');
+
+  sidebar.querySelectorAll('.nav-item.has-submenu.open').forEach((item) => {
+    if (item !== parentItem) {
+      item.classList.remove('open');
+    }
+  });
+
+  if (!parentItem) return;
+
+  parentItem.classList.add('open');
+  parentItem.querySelector('.nav-dropdown-toggle')?.classList.add('has-active-child');
+}
+
 export function initMenuController() {
   const sidebar = document.getElementById('sidebar');
   
@@ -50,14 +83,7 @@ export function initMenuController() {
       // Adicionar active no link clicado
       link.classList.add('active');
       
-      // Adicionar destaque visual no dropdown pai
-      const parentItem = link.closest('.nav-item.has-submenu');
-      if (parentItem) {
-        const parentToggle = parentItem.querySelector('.nav-dropdown-toggle');
-        if (parentToggle) {
-          parentToggle.classList.add('has-active-child');
-        }
-      }
+      syncSidebarSubmenu(link.getAttribute('data-section'));
     });
   });
 
@@ -78,19 +104,16 @@ export function initMenuController() {
       sidebar.querySelectorAll('.nav-item.has-submenu.open').forEach(item => {
         item.classList.remove('open');
       });
+
+      sidebar.querySelectorAll('.nav-dropdown-toggle').forEach((toggle) => {
+        toggle.classList.remove('has-active-child');
+      });
     });
   });
 
   // Abrir automaticamente o submenu se houver um item ativo dentro dele
   const activeSubmenuLink = sidebar.querySelector('.nav-submenu .nav-link.active');
   if (activeSubmenuLink) {
-    const parentItem = activeSubmenuLink.closest('.nav-item.has-submenu');
-    if (parentItem) {
-      parentItem.classList.add('open');
-      const parentToggle = parentItem.querySelector('.nav-dropdown-toggle');
-      if (parentToggle) {
-        parentToggle.classList.add('has-active-child');
-      }
-    }
+    syncSidebarSubmenu(activeSubmenuLink.getAttribute('data-section'));
   }
 }

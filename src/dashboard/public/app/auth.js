@@ -22,6 +22,19 @@ export function getStoredUser() {
   }
 }
 
+export function setStoredUser(user) {
+  if (!user) {
+    localStorage.removeItem('user');
+    return;
+  }
+  localStorage.setItem('user', JSON.stringify(user));
+}
+
+export function updateStoredUser(partial = {}) {
+  const current = getStoredUser() || {};
+  setStoredUser({ ...current, ...partial });
+}
+
 export function logout() {
   disconnectSocket();
   localStorage.removeItem('token');

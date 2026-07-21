@@ -13,8 +13,46 @@ const logger = require('../utils/logger');
 let schemaReady = false;
 
 async function ensureSchema() {
-  if (schemaReady) return;
   const qi = sequelize.getQueryInterface();
+
+  // Sempre verificar colunas incrementais (podem ter sido adicionadas após schemaReady)
+  try {
+    const contacts = await qi.describeTable('contacts');
+    if (contacts && !contacts.contract) {
+      await qi.addColumn('contacts', 'contract', {
+        type: DataTypes.STRING,
+        allowNull: true
+      });
+      logger.info('✅ Coluna contacts.contract adicionada');
+    }
+  } catch (err) {
+    logger.warn('ensureSchema contacts.contract:', err.message);
+  }
+
+  try {
+    const cmTypes = await qi.describeTable('chat_messages');
+    if (cmTypes?.ticketId?.type && String(cmTypes.ticketId.type).toUpperCase().includes('UUID')) {
+      await sequelize.query(`
+        ALTER TABLE "chat_messages"
+        ALTER COLUMN "ticketId" DROP DEFAULT,
+        ALTER COLUMN "ticketId" TYPE INTEGER USING NULL
+      `);
+      logger.info('✅ Coluna chat_messages.ticketId convertida para INTEGER');
+    }
+
+    if (cmTypes?.userId?.type && String(cmTypes.userId.type).toUpperCase().includes('UUID')) {
+      await sequelize.query(`
+        ALTER TABLE "chat_messages"
+        ALTER COLUMN "userId" DROP DEFAULT,
+        ALTER COLUMN "userId" TYPE INTEGER USING NULL
+      `);
+      logger.info('✅ Coluna chat_messages.userId convertida para INTEGER');
+    }
+  } catch (err) {
+    logger.warn('ensureSchema chat_messages types:', err.message);
+  }
+
+  if (schemaReady) return;
 
   try {
     const cm = await qi.describeTable('chat_messages');
@@ -46,6 +84,19 @@ async function ensureSchema() {
     await Conversation.sync({ alter: false });
   } catch (err) {
     logger.debug('ensureSchema conversations:', err.message);
+  }
+
+  try {
+    const conv = await qi.describeTable('conversations');
+    if (conv?.contactId && conv.contactId.allowNull === false) {
+      await qi.changeColumn('conversations', 'contactId', {
+        type: DataTypes.UUID,
+        allowNull: true
+      });
+      logger.info('✅ conversations.contactId agora aceita NULL');
+    }
+  } catch (err) {
+    logger.debug('ensureSchema conversations.contactId:', err.message);
   }
 
   schemaReady = true;
@@ -121,6 +172,14 @@ async function enrichConversations(conversations) {
         : null
     ]);
 
+    let assignedAgent = null;
+    if (activeTicket?.assignedTo) {
+      const User = require('../models/UserSQL');
+      assignedAgent = await User.findByPk(activeTicket.assignedTo, {
+        attributes: ['id', 'name', 'email', 'role', 'departmentId']
+      });
+    }
+
     const rawPhone = contact?.phone || (json.userPhone || json.whatsappJid || '').split('@')[0];
     const digits = contactDisplayUtils.normalizePhoneDigits(rawPhone);
     const validPhone = contactDisplayUtils.isValidPhoneDigits(digits) ? rawPhone : null;
@@ -145,10 +204,20 @@ async function enrichConversations(conversations) {
             source: contact.source || null
           }
         : { name: displayName, displayName, phone: validPhone },
-      activeTicket: activeTicket ? activeTicket.toJSON() : null,
+      activeTicket: activeTicket
+        ? {
+            ...activeTicket.toJSON(),
+            assignedAgent: assignedAgent
+              ? { id: assignedAgent.id, name: assignedAgent.name, email: assignedAgent.email }
+              : null
+          }
+        : null,
       ticketStatus: activeTicket?.status || null,
       assignedTo: activeTicket?.assignedTo || null,
-      waitingHuman: Boolean(json.metadata?.waitingHuman),
+      assignedAgent: assignedAgent
+        ? { id: assignedAgent.id, name: assignedAgent.name, email: assignedAgent.email }
+        : null,
+      waitingHuman: Boolean(json.metadata?.waitingHuman || json.metadata?.pendingAcceptance),
       lastMessage: lastMessage
         ? {
             body: chatMediaUtils.sanitizeBodyForDisplay(
@@ -173,6 +242,7 @@ async function ensureConversation(contact, identity, source = 'inbound') {
 
   const { jid, phone, displayPhone, name } = identity;
   const phoneToStore = displayPhone || phone || jid.split('@')[0];
+  const contactId = contact?.id || null;
 
   let conversation = await Conversation.findOne({
     where: { whatsappJid: jid }
@@ -188,7 +258,9 @@ async function ensureConversation(contact, identity, source = 'inbound') {
     if (phoneToStore && conversation.userPhone !== phoneToStore) {
       updates.userPhone = phoneToStore;
     }
-    if (conversation.contactId !== contact.id) updates.contactId = contact.id;
+    if (contactId && conversation.contactId !== contactId) {
+      updates.contactId = contactId;
+    }
     if (Object.keys(updates).length) {
       await conversation.update(updates);
     }
@@ -196,7 +268,7 @@ async function ensureConversation(contact, identity, source = 'inbound') {
   }
 
   conversation = await Conversation.create({
-    contactId: contact.id,
+    contactId,
     whatsappJid: jid,
     userPhone: phoneToStore,
     displayName: name || 'Contato',
@@ -209,23 +281,49 @@ async function ensureConversation(contact, identity, source = 'inbound') {
   return { conversation, created };
 }
 
-async function findOrCreateConversation(phone, name, contactId, whatsappJid = null) {
+async function findOrCreateConversationByIdentity(phone, name, whatsappJid = null) {
   await ensureSchema();
 
-  const jid = whatsappJid || phone;
-  const contact = await Contact.findByPk(contactId);
-  if (!contact) {
-    throw new Error(`Contato ${contactId} não encontrado`);
+  const employeeContactService = require('./employeeContactService');
+  const jid = whatsappJid || employeeContactService.buildWhatsappId(phone) || phone;
+  const employee = await employeeContactService.findEmployeeByPhone({ phone, whatsappId: jid });
+
+  if (employee) {
+    await employeeContactService.linkEmployeeIdentifiers(employee, { phone, whatsappId: jid });
   }
 
   const identity = {
     jid,
     phone,
     displayPhone: phone,
-    name
+    name: employee?.name || name
   };
 
-  const { conversation } = await ensureConversation(contact, identity, 'inbound');
+  const { conversation } = await ensureConversation(employee, identity, 'inbound');
+  return { conversation, employee: employee || null };
+}
+
+async function findOrCreateConversation(phone, name, contactId, whatsappJid = null) {
+  await ensureSchema();
+
+  if (contactId) {
+    const contact = await Contact.findByPk(contactId);
+    if (!contact) {
+      throw new Error(`Contato ${contactId} não encontrado`);
+    }
+
+    const identity = {
+      jid: whatsappJid || contact.whatsappId || phone,
+      phone,
+      displayPhone: phone,
+      name: contact.name || name
+    };
+
+    const { conversation } = await ensureConversation(contact, identity, 'inbound');
+    return conversation;
+  }
+
+  const { conversation } = await findOrCreateConversationByIdentity(phone, name, whatsappJid);
   return conversation;
 }
 
@@ -233,7 +331,8 @@ async function listConversations({
   page = 1,
   limit = 50,
   filter = 'all',
-  search = ''
+  search = '',
+  loggedUser = null
 } = {}) {
   await ensureSchema();
 
@@ -266,11 +365,22 @@ async function listConversations({
     };
   } else if (filter === 'open') {
     where.activeTicketId = { [Op.ne]: null };
+  } else if (filter === 'pending' && loggedUser?.id && loggedUser.role !== 'admin') {
+    const pendingItems = await listPendingForAgent(loggedUser.id);
+    const pendingConversationIds = pendingItems
+      .map((item) => item.conversationId)
+      .filter(Boolean);
+
+    where.id = {
+      [Op.in]: pendingConversationIds.length
+        ? pendingConversationIds
+        : ['00000000-0000-0000-0000-000000000000']
+    };
   }
 
   const statsWhere = buildInboxBaseWhere();
 
-  const [{ count, rows }, stats] = await Promise.all([
+  const [{ count, rows }, statsBase] = await Promise.all([
     Conversation.findAndCountAll({
       where,
       order: [['lastMessageAt', 'DESC'], ['updatedAt', 'DESC']],
@@ -279,6 +389,14 @@ async function listConversations({
     }),
     getInboxStats(statsWhere)
   ]);
+
+  const stats = { ...statsBase };
+  if (loggedUser?.id && loggedUser.role !== 'admin') {
+    const pendingItems = await listPendingForAgent(loggedUser.id);
+    stats.pending = pendingItems.length;
+  } else {
+    stats.pending = 0;
+  }
 
   const enriched = await enrichConversations(rows);
   enriched.sort((a, b) => {
@@ -333,12 +451,15 @@ async function saveConversationContact(conversationId, loggedUser) {
     throw new Error('Conversa não encontrada');
   }
 
-  const contact = await Contact.findByPk(conversation.contactId);
+  const contact = conversation.contactId
+    ? await Contact.findByPk(conversation.contactId)
+    : null;
+
   if (!contact) {
-    throw new Error('Contato não encontrado');
+    throw new Error('Esta conversa ainda não possui funcionário cadastrado. Cadastre o colaborador em Contatos com o telefone do WhatsApp.');
   }
 
-  if (contact.source === 'Manual') {
+  if (contact.source === 'Manual' || contact.source === 'Importação') {
     return { conversation, contact, alreadySaved: true };
   }
 
@@ -375,22 +496,53 @@ async function acceptConversation(conversationId, loggedUser) {
   if (conversation.activeTicketId) {
     const existing = await Ticket.findByPk(conversation.activeTicketId);
     if (existing && ['waiting_human', 'in_progress', 'open'].includes(existing.status)) {
-      if (existing.status !== 'in_progress' || !existing.assignedTo) {
+      const isAgent = loggedUser.role === 'agent';
+      const isAdmin = loggedUser.role === 'admin';
+
+      if (existing.assignedTo && Number(existing.assignedTo) !== Number(loggedUser.id)) {
+        if (isAgent || isAdmin) {
+          throw new Error('Este atendimento está atribuído a outro atendente');
+        }
         existing.assignedTo = loggedUser.id;
         existing.assignedAt = new Date();
+      }
+
+      if (existing.status === 'waiting_human') {
+        if (!existing.assignedTo) {
+          existing.assignedTo = loggedUser.id;
+          existing.assignedAt = new Date();
+        }
         existing.status = 'in_progress';
         await existing.save();
+      } else if (
+        existing.status === 'in_progress'
+        && existing.assignedTo
+        && Number(existing.assignedTo) !== Number(loggedUser.id)
+        && isAgent
+      ) {
+        throw new Error('Este atendimento pertence a outro agente');
       }
-      return { conversation, ticket: existing, created: false };
+
+      const metadata = {
+        ...(conversation.metadata || {}),
+        waitingHuman: false,
+        pendingAcceptance: false
+      };
+      await conversation.update({ metadata });
+
+      const enriched = await getConversationById(conversation.id);
+      return { conversation: enriched || conversation, ticket: existing, created: false };
     }
   }
 
-  const contact = await Contact.findByPk(conversation.contactId);
+  const contact = conversation.contactId
+    ? await Contact.findByPk(conversation.contactId)
+    : null;
   const protocol = await Ticket.generateProtocol();
 
   const ticket = await Ticket.create({
     protocol,
-    userId: conversation.contactId,
+    userId: conversation.contactId || conversation.id,
     userName: conversation.displayName || contact?.name || 'Contato',
     userPhone: conversation.whatsappJid,
     conversationId: conversation.id,
@@ -405,7 +557,7 @@ async function acceptConversation(conversationId, loggedUser) {
     attachments: []
   });
 
-  const metadata = { ...(conversation.metadata || {}), waitingHuman: false };
+  const metadata = { ...(conversation.metadata || {}), waitingHuman: false, pendingAcceptance: false };
   await conversation.update({
     activeTicketId: ticket.id,
     metadata
@@ -416,7 +568,7 @@ async function acceptConversation(conversationId, loggedUser) {
   return { conversation, ticket, created: true };
 }
 
-async function finishConversation(conversationId, loggedUser, { feedback } = {}) {
+async function finishConversation(conversationId, loggedUser, { feedback, initiatedBy = 'agent' } = {}) {
   await ensureSchema();
 
   const conversation = await Conversation.findByPk(conversationId);
@@ -429,7 +581,12 @@ async function finishConversation(conversationId, loggedUser, { feedback } = {})
     throw new Error('Ticket não encontrado');
   }
 
-  if (ticket.assignedTo && ticket.assignedTo !== loggedUser.id && loggedUser.role === 'agent') {
+  if (
+    initiatedBy !== 'customer'
+    && ticket.assignedTo
+    && ticket.assignedTo !== loggedUser?.id
+    && loggedUser?.role === 'agent'
+  ) {
     throw new Error('Este atendimento pertence a outro agente');
   }
 
@@ -438,9 +595,136 @@ async function finishConversation(conversationId, loggedUser, { feedback } = {})
   if (feedback) ticket.feedback = feedback;
   await ticket.save();
 
-  await conversation.update({ activeTicketId: null });
+  const metadata = {
+    ...(conversation.metadata || {}),
+    waitingHuman: false,
+    pendingAcceptance: false
+  };
 
-  return { conversation, ticket };
+  let postAttendance = { sent: false };
+  try {
+    const postAttendanceService = require('./postAttendanceService');
+    postAttendance = await postAttendanceService.startPostAttendanceFlow({
+      conversation,
+      ticket,
+      initiatedBy
+    });
+  } catch (error) {
+    logger.error('Erro ao iniciar fluxo de avaliação pós-atendimento:', error.message);
+    await conversation.update({ activeTicketId: null, metadata });
+  }
+
+  const refreshed = await getConversationById(conversation.id);
+  return {
+    conversation: refreshed || conversation,
+    ticket,
+    postAttendance
+  };
+}
+
+async function listPendingForAgent(userId) {
+  await ensureSchema();
+
+  const parsedUserId = parseInt(userId, 10);
+  if (!parsedUserId) return [];
+
+  const ticketMap = new Map();
+
+  const assignedTickets = await Ticket.findAll({
+    where: {
+      status: 'waiting_human',
+      assignedTo: parsedUserId
+    },
+    order: [['assignedAt', 'ASC'], ['createdAt', 'ASC']]
+  });
+
+  for (const ticket of assignedTickets) {
+    ticketMap.set(ticket.id, ticket);
+  }
+
+  const conversations = await Conversation.findAll({
+    where: {
+      ...buildInboxBaseWhere(),
+      activeTicketId: { [Op.ne]: null }
+    }
+  });
+
+  const extraTicketIds = [];
+  for (const conversation of conversations) {
+    const metadata = conversation.metadata || {};
+    const suggestedAgentId = Number(metadata.suggestedAgentId);
+    const isPending = metadata.pendingAcceptance || metadata.waitingHuman;
+
+    if (
+      isPending
+      && suggestedAgentId === parsedUserId
+      && conversation.activeTicketId
+      && !ticketMap.has(conversation.activeTicketId)
+    ) {
+      extraTicketIds.push(conversation.activeTicketId);
+    }
+  }
+
+  if (extraTicketIds.length) {
+    const extraTickets = await Ticket.findAll({
+      where: {
+        id: { [Op.in]: extraTicketIds },
+        status: 'waiting_human'
+      }
+    });
+
+    for (const ticket of extraTickets) {
+      if (!ticket.assignedTo) {
+        ticket.assignedTo = parsedUserId;
+        await ticket.save();
+      }
+      ticketMap.set(ticket.id, ticket);
+    }
+  }
+
+  const tickets = Array.from(ticketMap.values()).sort((a, b) => {
+    const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
+    const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
+    return dateA - dateB;
+  });
+
+  if (!tickets.length) {
+    return [];
+  }
+
+  const conversationIds = tickets
+    .map((ticket) => ticket.conversationId)
+    .filter(Boolean);
+
+  const matchedConversations = conversationIds.length
+    ? await Conversation.findAll({
+        where: {
+          id: { [Op.in]: conversationIds },
+          ...buildInboxBaseWhere()
+        }
+      })
+    : [];
+
+  const conversationById = new Map(matchedConversations.map((item) => [item.id, item]));
+  const enriched = await enrichConversations(matchedConversations);
+
+  return tickets.map((ticket) => {
+    const conversation = conversationById.get(ticket.conversationId);
+    const enrichedConversation = enriched.find((item) => item.id === ticket.conversationId) || null;
+
+    return {
+      ticketId: ticket.id,
+      protocol: ticket.protocol,
+      subject: ticket.subject,
+      department: ticket.department,
+      assignedAt: ticket.assignedAt,
+      conversationId: ticket.conversationId,
+      conversation: enrichedConversation || conversation,
+      waitingHumanReason: enrichedConversation?.metadata?.waitingHumanReason
+        || conversation?.metadata?.waitingHumanReason
+        || ticket.subject
+    };
+  });
 }
 
 async function markWaitingHuman(conversation, reason = 'Solicitação de atendimento') {
@@ -458,6 +742,7 @@ module.exports = {
   ensureSchema,
   ensureConversation,
   findOrCreateConversation,
+  findOrCreateConversationByIdentity,
   listConversations,
   getConversationById,
   enrichConversations,
@@ -466,5 +751,6 @@ module.exports = {
   finishConversation,
   saveConversationContact,
   markWaitingHuman,
+  listPendingForAgent,
   getUnreadConversationIds
 };

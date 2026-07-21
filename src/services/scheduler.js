@@ -111,6 +111,22 @@ function initializeScheduledJobs() {
     'America/Sao_Paulo'
   );
 
+  // Job 7: Expirar fluxos de avaliação sem resposta (a cada 2 minutos)
+  const expireRatingFlowJob = new cron.CronJob(
+    '*/2 * * * *',
+    async () => {
+      try {
+        const postAttendanceService = require('./postAttendanceService');
+        await postAttendanceService.expireStaleRatingSessions();
+      } catch (error) {
+        logger.error('Erro ao expirar fluxos de avaliação:', error);
+      }
+    },
+    null,
+    true,
+    'America/Sao_Paulo'
+  );
+
   logger.info('✅ Jobs agendados iniciados com sucesso!');
 
   return {
@@ -119,7 +135,8 @@ function initializeScheduledJobs() {
     cleanTempFilesJob,
     dailyReportJob,
     backupJob,
-    ticketReminderJob
+    ticketReminderJob,
+    expireRatingFlowJob
   };
 }
 

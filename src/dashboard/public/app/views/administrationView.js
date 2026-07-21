@@ -869,7 +869,6 @@ function getCategoryLabel(category) {
     security: 'Segurança',
     appearance: 'Aparência',
     birthday: 'Aniversários',
-    automation: 'Automação',
     api: 'API',
     advanced: 'Avançado'
   };

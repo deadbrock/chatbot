@@ -1,4 +1,5 @@
 const logger = require('../utils/logger');
+const { resolveGroqApiKey } = require('../config/ai');
 const Groq = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
@@ -14,10 +15,9 @@ const AIConfig = require('../models/AIConfigSQL');
 let groqClient = null;
 
 function getGroqClient() {
-  if (!groqClient && process.env.GROQ_API_KEY) {
-    groqClient = new Groq({
-      apiKey: process.env.GROQ_API_KEY
-    });
+  const apiKey = resolveGroqApiKey();
+  if (!groqClient && apiKey) {
+    groqClient = new Groq({ apiKey });
     logger.info('✅ Cliente Groq inicializado');
   }
   return groqClient;
@@ -127,12 +127,12 @@ async function testMessage(req, res) {
     }
 
     // Verificar se API key está configurada
-    if (!process.env.GROQ_API_KEY) {
-      logger.warn('⚠️ [AI PLAYGROUND] GROQ_API_KEY não configurada');
+    if (!resolveGroqApiKey()) {
+      logger.warn('⚠️ [AI PLAYGROUND] Chave Groq/Grok não configurada');
       return res.status(503).json({
         success: false,
         error: 'API de IA não configurada',
-        message: 'Configure a variável GROQ_API_KEY no ambiente'
+        message: 'Configure GROQ_API_KEY ou GROK_API_KEY no ambiente'
       });
     }
 

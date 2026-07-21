@@ -15,6 +15,15 @@ class FlowManager {
   }
 
   /**
+   * Primeiro step de um fluxo com steps (muitos fluxos não usam 'start')
+   */
+  resolveInitialStep(flow) {
+    if (!flow?.steps) return 'start';
+    if (flow.steps.start) return 'start';
+    return Object.keys(flow.steps)[0];
+  }
+
+  /**
    * Processa uma mensagem do usuário
    * @param {Object} session - Sessão do usuário
    * @param {string} userMessage - Mensagem enviada
@@ -116,21 +125,19 @@ class FlowManager {
       // Navegar para próximo fluxo
       if (option.next) {
         session.currentFlow = option.next;
-        session.currentStep = 'start';
-        await session.save();
-        
-        // Obter próximo fluxo
         const nextFlow = this.flows[option.next];
-        if (nextFlow && nextFlow.message) {
-          return { 
+        session.currentStep = this.resolveInitialStep(nextFlow);
+        await session.save();
+
+        if (nextFlow?.steps) {
+          return await this.processFlowSteps(session, nextFlow, '', whatsappClient);
+        }
+
+        if (nextFlow?.message) {
+          return {
             message: nextFlow.message,
             next: option.next
           };
-        }
-        
-        // Se próximo fluxo tem steps, processar primeiro step
-        if (nextFlow && nextFlow.steps) {
-          return await this.processFlowSteps(session, nextFlow, '', whatsappClient);
         }
       }
     }
@@ -283,10 +290,10 @@ class FlowManager {
 
     // Navegar para próximo step/flow
     if (option.next) {
-      // Verificar se é um fluxo ou step
-      if (this.flows[option.next]) {
+      const nextFlow = this.flows[option.next];
+      if (nextFlow) {
         session.currentFlow = option.next;
-        session.currentStep = 'start';
+        session.currentStep = this.resolveInitialStep(nextFlow);
       } else {
         session.currentStep = option.next;
       }

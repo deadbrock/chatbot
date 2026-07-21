@@ -403,6 +403,7 @@ async function startServer() {
       const chatSocketService = new ChatSocketService(io);
       chatSocketService.initialize();
       app.set('chatSocketService', chatSocketService);
+      global.chatSocketService = chatSocketService;
       logger.info('✅ Chat Socket Service inicializado');
     } catch (socketError) {
       logger.error('⚠️ AVISO: Erro ao configurar Socket.IO (não crítico):');
@@ -545,6 +546,20 @@ async function startServer() {
     const totalTime = Date.now() - startTime;
     logger.info('═══════════════════════════════════════════════════════');
     logger.info(`✅ SERVIDOR INICIADO COM SUCESSO (${totalTime}ms)`);
+    try {
+      const { checkAutoReplyEnabled } = require('./config/bot');
+      const { resolveGroqApiKey, resolveGroqApiKeySource, getAutoReplyDiagnostics, isAIEnabled } = require('./config/ai');
+      const aiKey = resolveGroqApiKey();
+      const diag = getAutoReplyDiagnostics();
+      logger.info(`🤖 Respostas automáticas: ${checkAutoReplyEnabled() ? 'ATIVAS' : 'DESATIVADAS'} (${diag.reason})`);
+      logger.info(`🧠 IA Groq: ${isAIEnabled(true)
+        ? `OPERACIONAL via ${resolveGroqApiKeySource() || 'env'} (***${aiKey.slice(-6)}) — modelo ${require('./bot/services/intentClassifier').config.model}`
+        : aiKey
+          ? 'parcial (verifique ai-config.json enabled=true)'
+          : `sem chave gsk_ (defina GROQ_API_KEY no Railway; vars detectadas: ${resolveGroqApiKeySource() || 'nenhuma'})`}`);
+    } catch (bootAiLogErr) {
+      logger.debug('Log IA boot:', bootAiLogErr.message);
+    }
     logger.info('═══════════════════════════════════════════════════════');
 
   } catch (error) {

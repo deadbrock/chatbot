@@ -4,12 +4,12 @@
  */
 
 const logger = require('../utils/logger');
-const { isAutoReplyEnabled } = require('../config/bot');
+const { checkAutoReplyEnabled } = require('../config/bot');
+const { getAutoReplyDiagnostics, resolveGroqApiKey } = require('../config/ai');
 const UserSession = require('../models/UserSessionSQL');
 const flowManager = require('./services/flowManager');
 const scheduleService = require('./services/scheduleService');
 const intentClassifier = require('./services/intentClassifier');
-const automationService = require('../services/automationService');
 const Ticket = require('../models/TicketSQL');
 const ChatMessage = require('../models/ChatMessageSQL');
 const Contact = require('../models/ContactSQL');
@@ -22,6 +22,23 @@ const chatMediaUtils = require('../utils/chatMediaUtils');
 const chatMediaService = require('../services/chatMediaService');
 
 class FlowMessageHandler {
+  constructor() {
+    this._processingLocks = new Set();
+  }
+
+  async withProcessingLock(key, fn) {
+    if (!key) return fn();
+    if (this._processingLocks.has(key)) {
+      logger.info(`⏭️ Mensagem ignorada — processamento em andamento (${key})`);
+      return;
+    }
+    this._processingLocks.add(key);
+    try {
+      return await fn();
+    } finally {
+      this._processingLocks.delete(key);
+    }
+  }
   /**
    * Resolve corpo da mensagem (texto ou placeholder para mídia)
    */
@@ -50,17 +67,82 @@ class FlowMessageHandler {
   }
 
   /**
+   * Resolve telefone real a partir de JID (@lid → número @c.us)
+   */
+  async resolveInboundIdentity(whatsappClient, contact, message) {
+    const rawJid = whatsappClient?.serializeChatId?.(contact?.id || message?.from)
+      || contact?.id
+      || message?.from
+      || '';
+    const jid = typeof rawJid === 'string' ? rawJid : String(rawJid || '');
+    const prefix = jid.split('@')[0] || '';
+    const suffix = jid.split('@')[1] || '';
+    let phone = contact?.number || prefix;
+    let displayPhone = null;
+
+    if (suffix === 'lid' && whatsappClient && typeof whatsappClient.getPnLidEntry === 'function') {
+      try {
+        const entry = await whatsappClient.getPnLidEntry(jid);
+        const phoneJid = entry?.phoneNumber?._serialized
+          || (entry?.phoneNumber?.user
+            ? `${entry.phoneNumber.user}@${entry.phoneNumber.server || 'c.us'}`
+            : null);
+        if (phoneJid && String(phoneJid).includes('@')) {
+          displayPhone = String(phoneJid).split('@')[0];
+          phone = displayPhone;
+        }
+      } catch (err) {
+        logger.debug(`getPnLidEntry(${jid}): ${err.message}`);
+      }
+    }
+
+    if (!displayPhone && suffix !== 'lid' && contactDisplayUtils.isValidPhoneDigits(prefix)) {
+      displayPhone = prefix;
+      phone = prefix;
+    }
+
+    const whatsappId = displayPhone
+      ? `${displayPhone.replace(/\D/g, '')}@s.whatsapp.net`
+      : jid;
+
+    return { jid, phone, displayPhone: displayPhone || phone, whatsappId };
+  }
+
+  async findOrCreateUserSession(phoneKeys, defaults = {}) {
+    for (const key of phoneKeys.filter(Boolean)) {
+      const session = await UserSession.findOne({ where: { phone: key } });
+      if (session) return session;
+    }
+
+    const primaryPhone = phoneKeys.find(Boolean);
+    return UserSession.create({
+      phone: primaryPhone,
+      currentFlow: 'initial',
+      currentStep: 'start',
+      menuPath: [],
+      ...defaults
+    });
+  }
+
+  /**
    * Handler principal - Processa mensagem do usuário
    * @param {Object} whatsappClient - Cliente WhatsApp (Baileys)
    * @param {Object} message - Mensagem recebida
    * @param {Object} contact - Contato que enviou
    */
   async handleMessage(whatsappClient, message, contact) {
+    const identity = await this.resolveInboundIdentity(whatsappClient, contact, message);
+    const lockKey = identity.jid || identity.phone;
+    return this.withProcessingLock(lockKey, () => this._handleMessageCore(whatsappClient, message, contact, identity));
+  }
+
+  async _handleMessageCore(whatsappClient, message, contact, identity) {
     try {
-      const phone = contact.number || contact.id.split('@')[0];
-      const jid = contact.id; // JID completo com @lid ou @s.whatsapp.net
-      const rawName = contact.name || contact.pushName || '';
-      const name = contactDisplayUtils.resolveContactNameForStorage(rawName, phone);
+      const { jid, phone, displayPhone, whatsappId } = identity;
+      const sessionPhoneKeys = [...new Set([displayPhone, phone, jid.split('@')[0]].filter(Boolean))];
+
+      const rawName = contact.name || contact.pushName || message?.notifyName || '';
+      const name = contactDisplayUtils.resolveContactNameForStorage(rawName, displayPhone || phone);
       const messageBody = this.resolveMessageBody(message);
 
       // Ignorar status do WhatsApp, newsletters e mensagens de sistema
@@ -87,49 +169,89 @@ class FlowMessageHandler {
           where: { messageId: incomingMessageId }
         });
         if (existingMessage) {
-          logger.debug(`⏭️ Mensagem já sincronizada: ${incomingMessageId}`);
-          return;
+          const isLiveMessage = this.isRecentWhatsAppMessage(message, existingMessage);
+          if (!isLiveMessage) {
+            logger.debug(`⏭️ Mensagem histórica já sincronizada: ${incomingMessageId}`);
+            return;
+          }
+          logger.debug(`♻️ Mensagem ao vivo já salva (${incomingMessageId}) — processando resposta automática`);
         }
       }
 
-      // Ignorar replay de histórico durante sincronização em massa
+      // Durante sync em massa, ignorar apenas replay de histórico (não mensagens ao vivo)
       const whatsappSyncService = require('../services/whatsappSyncService');
-      if (whatsappSyncService.syncInProgress) {
-        logger.debug(`⏭️ Sync em andamento — mensagem ao vivo ignorada: ${incomingMessageId || 'sem-id'}`);
+      if (whatsappSyncService.syncInProgress && !this.isRecentWhatsAppMessage(message, null)) {
+        logger.debug(`⏭️ Sync em andamento — mensagem histórica ignorada: ${incomingMessageId || 'sem-id'}`);
         return;
       }
 
-      // Criar ou buscar contato
-      const whatsappId = contact.id || `${phone}@s.whatsapp.net`;
-      let contactRecord = await Contact.findOne({ where: { phone } });
-      if (!contactRecord) {
-        contactRecord = await Contact.create({
-          whatsappId,
-          phone,
-          name,
-          isActive: true,
-          source: 'whatsapp_sync'
-        });
-        logger.info(`✅ Novo contato criado: ${name} (${phone})`);
-      } else {
-        // Atualizar nome se mudou para um nome real do WhatsApp
-        const resolvedName = contactDisplayUtils.resolveContactNameForStorage(rawName, phone);
-        if (!contactDisplayUtils.isGenericContactName(resolvedName)
-          && contactRecord.name !== resolvedName) {
-          contactRecord.name = resolvedName;
-          await contactRecord.save();
+      const employeeContactService = require('../services/employeeContactService');
+
+      let { conversation, employee } = await inboxConversationService.findOrCreateConversationByIdentity(
+        displayPhone || phone,
+        name,
+        jid
+      );
+
+      if (!employee && conversation?.contactId) {
+        const linkedContact = await Contact.findByPk(conversation.contactId);
+        if (employeeContactService.isRegisteredEmployee(linkedContact)) {
+          employee = linkedContact;
         }
       }
 
-      // Criar ou buscar conversa (ticket só quando atendente aceitar)
-      const conversation = await inboxConversationService.findOrCreateConversation(
-        phone,
-        name,
-        contactRecord.id,
-        whatsappId
-      );
+      if (!employee && conversation?.userPhone) {
+        try {
+          employee = await employeeContactService.findEmployeeByPhone({
+            phone: conversation.userPhone,
+            whatsappId: whatsappId || jid
+          });
+        } catch (employeeErr) {
+          logger.error('❌ Erro ao buscar funcionário (continuando sem perfil):', employeeErr.message);
+        }
+      }
 
-      if (!contactRecord.profilePicUrl) {
+      let contactRecord = employee;
+
+      let session = await this.findOrCreateUserSession(sessionPhoneKeys, {
+        name: name ? name.split(' ')[0] : null
+      });
+
+      // Migrar sessão de @lid para telefone real quando identificado
+      const canonicalPhone = displayPhone || phone;
+      if (session && canonicalPhone && session.phone !== canonicalPhone && !sessionPhoneKeys.includes(session.phone)) {
+        await session.update({ phone: canonicalPhone });
+      }
+
+      if (employee) {
+        try {
+          await employeeContactService.hydrateSessionFromEmployee(session, employee);
+          logger.info(`👤 Funcionário identificado: ${employee.name} (${employee.contract || 'sem contrato'})`);
+        } catch (hydrateErr) {
+          logger.error('❌ Erro ao hidratar sessão do funcionário:', hydrateErr.message);
+        }
+
+        const legacyFlows = [
+          'main_menu', 'client_menu', 'administrative_menu', 'dp_menu',
+          'benefits_menu', 'leave_menu', 'maintenance_menu', 'purchasing_menu',
+          'billing_menu', 'hr_menu', 'safety_menu', 'management_menu',
+          'client_flow', 'prospect_flow', 'employee_flow', 'supplier_flow',
+          'termination_flow', 'materials_request', 'ask_name'
+        ];
+        if (legacyFlows.includes(session.currentFlow) || session.currentFlow?.endsWith('_menu') || session.currentFlow?.endsWith('_flow')) {
+          session.currentFlow = 'initial';
+          session.currentStep = 'ask_subject';
+          await session.save();
+        }
+      } else if (session.currentStep === 'ask_name') {
+        session.currentStep = 'ask_subject';
+        await session.save();
+      } else if (name && !session.name) {
+        session.name = name.split(' ')[0];
+        await session.save();
+      }
+
+      if (contactRecord?.profilePicUrl == null && contactRecord?.id) {
         const whatsappProfilePicService = require('../services/whatsappProfilePicService');
         whatsappProfilePicService.refreshContactProfilePic(contactRecord.id, whatsappId)
           .catch(() => {});
@@ -144,34 +266,78 @@ class FlowMessageHandler {
       const chatMessage = await this.saveIncomingMessage({
         conversationId: conversation.id,
         ticketId: ticket?.id || null,
-        contactId: contactRecord.id,
+        contactId: contactRecord?.id || null,
         phone,
-        name,
+        name: employee?.name || name,
         body: messageBody,
         rawMessage: message,
         whatsappClient
       });
 
       if (this.isRecentWhatsAppMessage(message, chatMessage)) {
-        this.notifyDashboard(conversation, ticket, contactRecord, chatMessage, 'incoming');
+        this.notifyDashboard(conversation, ticket, contactRecord || { name, phone }, chatMessage, 'incoming');
       } else {
         logger.debug(`⏭️ Mensagem histórica — sem notificação em tempo real (${incomingMessageId || 'sem-id'})`);
       }
 
       // Modo manual: sem boas-vindas, IA, fluxos ou automações
-      if (!isAutoReplyEnabled) {
-        logger.info(`🔇 [MODO MANUAL] Resposta automática desabilitada. Conversa ${conversation.id} aguardando atendente.`);
+      if (!checkAutoReplyEnabled()) {
+        const diag = getAutoReplyDiagnostics();
+        logger.info(`🔇 [MODO MANUAL] Resposta automática desabilitada (${diag.reason}). Conversa ${conversation.id}`);
         return;
+      }
+
+      if (session.currentFlow === 'nps_evaluation') {
+        const postAttendanceService = require('../services/postAttendanceService');
+        const stillWaitingRating = await postAttendanceService.ensureActiveRatingFlow(
+          session,
+          conversation
+        );
+
+        if (stillWaitingRating) {
+          const response = await this.handleNPSEvaluation(
+            session,
+            messageBody,
+            conversation,
+            ticket
+          );
+          if (response) {
+            await this.sendResponse(
+              whatsappClient,
+              jid,
+              response,
+              session,
+              conversation,
+              ticket,
+              contactRecord
+            );
+          }
+          return;
+        }
+
+        await session.reload();
       }
 
       // 👤 VERIFICAR SE TEM ATENDENTE HUMANO ATRIBUÍDO
       if (ticket?.assignedTo && ticket.status === 'in_progress') {
+        if (this.isSelfFinishRequest(messageBody)) {
+          logger.info(`✅ [AUTO-FINALIZAR] Cliente solicitou encerramento do ticket ${ticket.protocol}`);
+          await inboxConversationService.finishConversation(
+            conversation.id,
+            { id: ticket.assignedTo, role: 'agent', name: 'Sistema' },
+            { initiatedBy: 'customer' }
+          );
+          return;
+        }
+
         logger.info(`👤 [ATENDIMENTO HUMANO] Ticket ${ticket.protocol} está com atendente ${ticket.assignedTo}. IA bloqueada.`);
         logger.info(`📨 [ATENDIMENTO HUMANO] Mensagem encaminhada apenas para o atendente. Sem resposta automática.`);
         return;
       }
 
-      const waitingHuman = Boolean(conversation.metadata?.waitingHuman) || ticket?.status === 'waiting_human';
+      const waitingHuman = (
+        Boolean(conversation.metadata?.waitingHuman) || ticket?.status === 'waiting_human'
+      ) && ticket?.status !== 'in_progress';
 
       // 🔔 SE ESTÁ AGUARDANDO ATENDENTE
       if (waitingHuman) {
@@ -185,96 +351,12 @@ class FlowMessageHandler {
         return;
       }
 
-      // Obter ou criar sessão
-      let session = await UserSession.findOne({ where: { phone } });
-      
-      if (!session) {
-        session = await UserSession.create({
-          phone,
-          name: name || null,
-          currentFlow: 'initial',
-          currentStep: 'start',
-          menuPath: []
-        });
-        logger.info(`✅ Nova sessão criada para ${phone}`);
-      }
+      // Sessão já obtida/criada acima (com perfil de funcionário quando aplicável)
 
       // Verificar se sessão expirou (24h inatividade)
       if (session.expiresAt && new Date() > session.expiresAt) {
         logger.info(`⏰ Sessão expirada para ${phone}, resetando...`);
         await session.reset();
-      }
-
-      // 🤖 VERIFICAR AUTOMAÇÕES INTELIGENTES
-      // Verificar se há automação ativa para este contato
-      if (automationService.hasActiveExecution(contactRecord.id)) {
-        logger.info(`🤖 [AUTOMAÇÃO] Continuando execução ativa para ${name}`);
-        const automationResult = await automationService.continueExecution(contactRecord.id, messageBody);
-        
-        if (automationResult) {
-          // Enviar resposta da automação
-          await whatsappClient.sendMessage(message.from, automationResult.response.message);
-          
-          // Salvar resposta no banco
-          await this.saveOutgoingMessage({
-            conversationId: conversation.id,
-            ticketId: ticket?.id || null,
-            contactId: contactRecord.id,
-            phone,
-            body: automationResult.response.message
-          });
-          
-          this.notifyDashboard(conversation, ticket, contactRecord, automationResult.response.message, 'outgoing');
-          
-          // Se completou e criou ticket, atualizar status
-          if (automationResult.execution.status === 'completed' && automationResult.execution.ticketId) {
-            logger.info(`✅ [AUTOMAÇÃO] Execução completada com sucesso`);
-          }
-          
-          return;
-        }
-      } else {
-        // Verificar se deve iniciar nova automação
-        logger.info(`🎯 [AUTOMAÇÃO] Verificando se mensagem aciona alguma regra...`);
-        const automationResult = await automationService.processMessage(
-          contactRecord.id,
-          messageBody,
-          ticket?.id || null
-        );
-        
-        if (automationResult) {
-          logger.info(`🤖 [AUTOMAÇÃO] Regra acionada: ${automationResult.response.message}`);
-          
-          // Enviar resposta da automação
-          await whatsappClient.sendMessage(message.from, automationResult.response.message);
-          
-          // Salvar resposta no banco
-          await this.saveOutgoingMessage({
-            conversationId: conversation.id,
-            ticketId: ticket?.id || null,
-            contactId: contactRecord.id,
-            phone,
-            body: automationResult.response.message
-          });
-          
-          this.notifyDashboard(conversation, ticket, contactRecord, automationResult.response.message, 'outgoing');
-          
-          // Se precisa de input adicional, aguardar próxima mensagem
-          if (automationResult.response.needsInput) {
-            const slotPrompt = automationResult.response.slotPrompt || `Por favor, informe ${automationResult.response.nextSlot}:`;
-            await whatsappClient.sendMessage(message.from, slotPrompt);
-            
-            await this.saveOutgoingMessage({
-              conversationId: conversation.id,
-              ticketId: ticket?.id || null,
-              contactId: contactRecord.id,
-              phone,
-              body: slotPrompt
-            });
-          }
-          
-          return; // Não processar fluxo padrão
-        }
       }
 
       // Atualizar última interação
@@ -287,7 +369,8 @@ class FlowMessageHandler {
         whatsappClient,
         conversation,
         ticket,
-        message.from
+        message.from,
+        contactRecord
       );
 
       logger.info(`🎯 Resposta gerada: ${response ? (typeof response === 'object' ? JSON.stringify(response).substring(0, 100) : response.substring(0, 100)) : 'NULL'}`);
@@ -297,6 +380,8 @@ class FlowMessageHandler {
         await this.sendResponse(whatsappClient, jid, response, session, conversation, ticket, contactRecord);
       } else {
         logger.warn(`⚠️ Nenhuma resposta gerada! Fluxo: ${session.currentFlow}, Step: ${session.currentStep}`);
+        const fallback = this.buildAIFallbackMessage(session);
+        await this.sendResponse(whatsappClient, jid, fallback, session, conversation, ticket, contactRecord);
       }
 
     } catch (error) {
@@ -309,10 +394,15 @@ class FlowMessageHandler {
       }
       
       try {
-        if (isAutoReplyEnabled) {
+        if (checkAutoReplyEnabled()) {
+          if (typeof session !== 'undefined' && session) {
+            session.currentFlow = 'initial';
+            session.currentStep = 'ask_subject';
+            await session.save().catch(() => {});
+          }
           await whatsappClient.sendMessage(
             message.from,
-            '⚠️ Desculpe, ocorreu um erro. Digite *menu* para recomeçar.'
+            '⚠️ Desculpe, ocorreu um erro. Digite *CANCELAR* para recomeçar.'
           );
         }
       } catch (sendError) {
@@ -322,190 +412,468 @@ class FlowMessageHandler {
   }
 
   /**
+   * Detecta comando de cancelamento
+   */
+  isCancelCommand(messageBody) {
+    const normalized = String(messageBody || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    return ['cancelar', 'cancel', 'sair', 'reset', 'reiniciar', 'recomecar', 'voltar'].includes(normalized);
+  }
+
+  /**
+   * Reseta sessão ao receber CANCELAR
+   */
+  async handleCancelFlow(session) {
+    const wasEmployee = this.isRegisteredEmployeeSession(session);
+    const employeeFormData = wasEmployee ? { ...(session.formData || {}) } : null;
+    const firstName = this.getEmployeeFirstName(session);
+
+    await session.reset();
+
+    if (wasEmployee && employeeFormData) {
+      session.formData = employeeFormData;
+      session.name = firstName;
+    }
+
+    session.currentFlow = 'initial';
+    session.currentStep = 'ask_subject';
+    await session.save();
+
+    const namePart = firstName && firstName !== 'colaborador(a)' ? `, *${firstName}*` : '';
+    return `${this.getGreeting()}${namePart}! ✅\n\nAtendimento *cancelado* e reiniciado.\n\nCom qual *assunto* posso te ajudar agora?\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._`;
+  }
+
+  /**
+   * Fallback quando a IA não classifica — pede descrição livre (sem menu fixo)
+   */
+  buildAIFallbackMessage(session) {
+    const firstName = (session.name || '').split(' ')[0];
+    const greeting = this.getGreeting();
+    const namePart = firstName ? `, *${firstName}*` : '';
+    return `${greeting}${namePart}! 😊\n\nNão consegui identificar seu assunto com clareza.\n\nPor favor, *descreva com suas palavras* o que você precisa (ex.: holerite, férias, afastamento de colaborador, manutenção de equipamento).\n\n_Digite *CANCELAR* para recomeçar._`;
+  }
+
+  buildAfastamentoMenuMessage(session) {
+    const firstName = (session.name || '').split(' ')[0];
+    const namePart = firstName ? `, *${firstName}*` : '';
+    return `${this.getGreeting()}${namePart}! Entendi — você precisa tratar um *afastamento*.\n\nQual tipo?\n\n1️⃣ Licença maternidade\n2️⃣ Licença paternidade\n3️⃣ Outro tipo de afastamento\n\n_Responda com o número da opção._\n\n_Digite *CANCELAR* para recomeçar._`;
+  }
+
+  /**
+   * Detecta assunto localmente (keywords) antes de depender só da API
+   */
+  applyLocalSubjectDetection(session, messageBody) {
+    const intentClassifier = require('./services/intentClassifier');
+    const details = intentClassifier.resolveSubjectDetails(messageBody);
+    if (!details) return null;
+
+    const formData = { ...(session.formData || {}) };
+    formData.last_intent = details.intent || formData.last_intent;
+    formData.subject = details.subject || formData.subject;
+    if (details.dpTopic) formData.dpTopic = details.dpTopic;
+    if (details.menuContext) formData.menu_context = details.menuContext;
+
+    if (details.needsMenu) {
+      formData.awaiting_menu_choice = true;
+      session.formData = formData;
+      return {
+        response: this.buildAfastamentoMenuMessage(session),
+        shouldRoute: false
+      };
+    }
+
+    session.formData = formData;
+    return {
+      intent: details.intent,
+      subject: details.subject,
+      dpTopic: details.dpTopic,
+      shouldRoute: Boolean(details.shouldRoute),
+      confidence: details.confidence || 0.8
+    };
+  }
+
+  normalizeText(value = '') {
+    return String(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  messageHasNumberedMenu(text) {
+    const t = String(text || '');
+    return /\b1[\.\)\-:\u2013]/m.test(t) && /\b2[\.\)\-:\u2013]/m.test(t);
+  }
+
+  /**
+   * Resolve escolha numérica de menu gerado pela IA
+   */
+  resolveMenuSelection(session, messageBody) {
+    const trimmed = String(messageBody || '').trim();
+    const formData = session.formData || {};
+
+    if (!/^\d+$/.test(trimmed)) return null;
+    if (!formData.awaiting_menu_choice && session.currentFlow !== 'ai_chat') return null;
+
+    const option = parseInt(trimmed, 10);
+    if (option < 1 || option > 9) return null;
+
+    const intent = formData.last_intent || 'dp';
+    const baseSubject = formData.last_subject || formData.subject || 'Assunto';
+    const context = this.normalizeText(`${baseSubject} ${formData.menu_context || ''} ${formData.ai_topic || ''}`);
+
+    if (intent === 'dp' && (context.includes('afastamento') || formData.menu_context === 'afastamento')) {
+      const map = {
+        1: { subject: 'Licença maternidade', dpTopic: 'Afastamentos' },
+        2: { subject: 'Licença paternidade', dpTopic: 'Afastamentos' },
+        3: { subject: 'Outro tipo de afastamento', dpTopic: 'Outros e Afastamentos' }
+      };
+      const pick = map[option];
+      if (pick) {
+        return { intent: 'dp', shouldRoute: true, ...pick };
+      }
+    }
+
+    return {
+      enrichedMessage: `${baseSubject} — opção ${option}`,
+      shouldRoute: false
+    };
+  }
+
+  /**
+   * Persiste contexto da conversa com IA para próximas mensagens
+   */
+  saveAIConversationContext(session, { classification, responseText, originalMessage }) {
+    const formData = { ...(session.formData || {}) };
+    const intent = classification?.intent;
+
+    if (intent) formData.last_intent = intent;
+    if (classification?.dpTopic) formData.dpTopic = classification.dpTopic;
+
+    formData.last_subject = formData.subject || originalMessage;
+    formData.subject = formData.subject || originalMessage;
+
+    const response = String(responseText || '');
+    formData.awaiting_menu_choice = this.messageHasNumberedMenu(response);
+
+    const ctx = this.normalizeText(`${originalMessage} ${formData.last_subject || ''}`);
+    if (ctx.includes('afastamento')) formData.menu_context = 'afastamento';
+
+    session.formData = formData;
+  }
+
+  /**
+   * Confirma assunto e direciona ao atendente humano correspondente
+   */
+  async confirmSubjectAndRoute(session, routingInfo, whatsappClient, conversation, ticket, jid, contact) {
+    const ticketRoutingService = require('../services/ticketRoutingService');
+    const intent = routingInfo.intent || session.formData?.last_intent || 'dp';
+    const subject = routingInfo.subject || routingInfo.dpTopic || session.formData?.subject || 'Atendimento';
+    const dpTopic = routingInfo.dpTopic || session.formData?.dpTopic || null;
+    const departmentLabel = this.getIntentLabel(intent);
+
+    const formData = { ...(session.formData || {}) };
+    formData.subject = subject;
+    formData.dpTopic = dpTopic || formData.dpTopic;
+    formData.awaiting_menu_choice = false;
+    formData.collecting_data = false;
+    formData.department = departmentLabel;
+    formData.departmentId = intent === 'dp' ? 'dp' : intent;
+    session.formData = formData;
+    session.currentFlow = 'wait_for_agent';
+    session.currentStep = 'active';
+    await session.save();
+
+    if (!conversation) {
+      return `✅ Entendi! Sua solicitação sobre *${subject}* foi registrada.\n\n⏳ _Aguarde, em breve um atendente entrará em contato._`;
+    }
+
+    const employeeContactService = require('../services/employeeContactService');
+    const profileComplete = employeeContactService.employeeProfileIsComplete(formData);
+    const descriptionParts = [];
+    if (formData.nome_completo) descriptionParts.push(`Nome: ${formData.nome_completo}`);
+    if (formData.contrato) descriptionParts.push(`Contrato: ${formData.contrato}`);
+    if (formData.cargo) descriptionParts.push(`Cargo: ${formData.cargo}`);
+    descriptionParts.push(`Assunto: ${subject}`);
+    const description = descriptionParts.join('\n');
+
+    let routing = null;
+    try {
+      if (intent === 'dp') {
+        routing = await ticketRoutingService.routeDPTicket({
+          topic: dpTopic,
+          subject,
+          description,
+          userMessage: subject,
+          department: departmentLabel
+        });
+      } else {
+        routing = await ticketRoutingService.routeTicket({
+          departmentId: intent,
+          department: departmentLabel,
+          subject,
+          description,
+          userMessage: subject
+        });
+      }
+    } catch (routeErr) {
+      logger.error('❌ Erro no roteamento (seguindo para fila humana):', routeErr.message);
+    }
+
+    let activeTicket = ticket;
+    if (conversation.activeTicketId) {
+      activeTicket = await Ticket.findByPk(conversation.activeTicketId) || ticket;
+    }
+
+    if (activeTicket) {
+      activeTicket.subject = subject;
+      activeTicket.department = departmentLabel;
+      activeTicket.departmentId = formData.departmentId;
+      activeTicket.description = description;
+      activeTicket.status = 'waiting_human';
+      if (routing?.agentId) {
+        activeTicket.assignedTo = routing.agentId;
+        activeTicket.assignedAt = new Date();
+      }
+      await activeTicket.save();
+    } else {
+      const protocol = await Ticket.generateProtocol();
+      activeTicket = await Ticket.create({
+        protocol,
+        userId: conversation.contactId || String(conversation.id),
+        userName: formData.nome_completo || session.name || conversation.displayName || 'Contato',
+        userPhone: session.phone || conversation.userPhone,
+        conversationId: conversation.id,
+        department: departmentLabel,
+        departmentId: formData.departmentId,
+        status: 'waiting_human',
+        subject,
+        description,
+        assignedTo: routing?.agentId || null,
+        assignedAt: routing?.agentId ? new Date() : null,
+        messages: [],
+        attachments: []
+      });
+      await conversation.update({ activeTicketId: activeTicket.id });
+    }
+
+    const reason = `${departmentLabel} — ${subject}`;
+    await this.syncConversationAfterRouting(
+      session,
+      conversation,
+      contact,
+      activeTicket,
+      routing,
+      reason
+    );
+
+    const agentPart = routing?.agentName
+      ? `*${routing.agentName}* (${routing.topicLabel || departmentLabel})`
+      : `nossa equipe de *${departmentLabel}*`;
+
+    logger.info(`🎯 Assunto confirmado e roteado: ${subject} → ${routing?.agentName || 'fila'}`);
+
+    return `✅ Perfeito! Registrei sua solicitação sobre *${subject}*.\n\n🎯 Estou direcionando você para ${agentPart}.\n\n⏳ _Por favor, aguarde — em breve você será atendido._\n\n_Digite *CANCELAR* para recomeçar._`;
+  }
+
+  /**
+   * Monta resposta final a partir da classificação da IA
+   */
+  buildAIUserResponse(session, classification, options = {}) {
+    const userMessage = classification.userMessage
+      || classification.rawResponse?.userMessage
+      || classification.reasoning;
+
+    if (userMessage && String(userMessage).trim().length > 20) {
+      return String(userMessage).trim();
+    }
+
+    const label = this.getIntentLabel(classification.intent);
+    const greeting = options.skipGreeting ? '' : `${this.getGreeting()}! 😊\n\n`;
+    return `${greeting}Entendi! Vou te ajudar com *${label}*.\n\nMe conte mais detalhes sobre sua solicitação.\n\n_Digite *CANCELAR* para recomeçar._`;
+  }
+
+  /**
    * Processa mensagem baseada no fluxo
    */
-  async processMessageFlow(session, messageBody, whatsappClient, conversation = null, ticket = null, jid = null) {
+  async processMessageFlow(session, messageBody, whatsappClient, conversation = null, ticket = null, jid = null, contact = null) {
     const currentFlow = session.currentFlow;
     const currentStep = session.currentStep;
 
     logger.info(`🔄 Processando fluxo: ${currentFlow}, step: ${currentStep}`);
 
-    // 🤖 MODO IA PURA: Se IA estiver ativada, processar TUDO pela IA (sem fluxos tradicionais)
-    if (intentClassifier.config.enabled) {
-      logger.info(`🤖 [MODO IA PURA] Processando mensagem exclusivamente pela IA...`);
-      
-      // Exceção: Fluxo inicial de boas-vindas (primeira mensagem)
-      if (currentFlow === 'initial' && currentStep === 'start') {
-        return await this.handleInitialFlow(session);
-      }
-
-      // Exceção: Coleta de nome
-      if (currentFlow === 'initial' && currentStep === 'ask_name') {
-        return await this.handleAskName(session, messageBody);
-      }
-
-      // Exceção: Mensagem fora do horário
-      if (currentFlow === 'initial' && currentStep === 'collect_offline_message') {
-        return await this.handleOfflineMessage(session, messageBody);
-      }
-
-      // 📋 PRIORIDADE: Se está coletando dados, processar os dados primeiro (evita loop)
-      const formData = session.formData || {};
-      if (formData.collecting_data === true) {
-        logger.info(`📋 [COLETA DE DADOS] Processando dados fornecidos pelo usuário...`);
-        return await this.handleDataCollection(session, messageBody);
-      }
-
-      // TUDO MAIS: Processar pela IA
-      const aiResult = await this.tryAIClassification(session, messageBody);
-      if (aiResult) {
-        // Se IA identificou necessidade de atendente humano
-        if (aiResult.needsHuman) {
-          logger.info(`🤚 [MODO IA PURA] IA solicitou atendimento humano`);
-          if (conversation && jid) {
-            await this.requestHumanAttendance(conversation, whatsappClient, jid, 'Cliente solicitou atendimento humano');
-          } else {
-            logger.error('❌ Não foi possível solicitar atendimento humano: conversa ou jid não disponível');
-          }
-          return null; // Mensagem já foi enviada pela requestHumanAttendance
-        }
-        
-        logger.info(`🎯 [MODO IA PURA] IA redirecionou para: ${aiResult.flow} (confiança: ${aiResult.confidence})`);
-        return aiResult.response;
-      } else {
-        // Se a IA não conseguiu classificar com confiança suficiente
-        logger.warn(`⚠️ [MODO IA PURA] IA não conseguiu classificar. Solicitando reformulação...`);
-        return `Desculpe, não entendi sua solicitação. 🤔\n\nPoderia reformular de forma mais clara? Por exemplo:\n- "Quero tirar férias"\n- "Preciso de ajuda com manutenção"\n- "Quero ser cliente"\n\nEstou aqui para ajudar! 😊`;
-      }
+    if (this.isCancelCommand(messageBody)) {
+      return await this.handleCancelFlow(session);
     }
 
-    // 🔧 MODO TRADICIONAL (IA desativada): Continuar com fluxos tradicionais
+    const legacyFlows = [
+      'main_menu', 'client_menu', 'administrative_menu', 'dp_menu',
+      'benefits_menu', 'leave_menu', 'maintenance_menu', 'purchasing_menu',
+      'billing_menu', 'hr_menu', 'safety_menu', 'management_menu',
+      'client_flow', 'prospect_flow', 'employee_flow', 'supplier_flow',
+      'termination_flow', 'materials_request'
+    ];
+    if (legacyFlows.includes(currentFlow) || currentFlow?.endsWith('_menu') || currentFlow?.endsWith('_flow')) {
+      logger.info(`♻️ Fluxo legado "${currentFlow}" — redirecionando para IA`);
+      session.currentFlow = 'ai_chat';
+      session.currentStep = 'active';
+      await session.save();
+      return await this.processWithAI(session, messageBody, whatsappClient, conversation, ticket, jid, contact);
+    }
 
-    // FLUXO INICIAL - Verificação de horário
+    const formDataCheck = session.formData || {};
+    if (formDataCheck.collecting_data === true) {
+      logger.info(`📋 [COLETA DE DADOS] Processando dados fornecidos pelo usuário...`);
+      return await this.handleDataCollection(session, messageBody);
+    }
+
+    // Fluxo inicial — boas-vindas
     if (currentFlow === 'initial' && currentStep === 'start') {
+      const trimmed = (messageBody || '').trim();
+      const isGenericGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite|hey|e aí|eai|hello|hi)[!.?\s]*$/i.test(trimmed);
+
+      if (!isGenericGreeting && trimmed.length >= 3) {
+        session.currentStep = 'ask_subject';
+        await session.save();
+        return await this.processWithAI(session, messageBody, whatsappClient, conversation, ticket, jid, contact);
+      }
+
+      if (this.isRegisteredEmployeeSession(session)) {
+        return await this.handleEmployeeFirstContact(session, messageBody);
+      }
       return await this.handleInitialFlow(session);
     }
 
-    // FLUXO INICIAL - Pergunta nome
     if (currentFlow === 'initial' && currentStep === 'ask_name') {
-      return await this.handleAskName(session, messageBody);
+      session.currentStep = 'ask_subject';
+      await session.save();
     }
 
-    // FLUXO INICIAL - Mensagem fora do horário
+    if (currentFlow === 'initial' && currentStep === 'ask_subject') {
+      const trimmed = (messageBody || '').trim();
+      const isGenericGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite|hey|e aí|eai|hello|hi)[!.?\s]*$/i.test(trimmed);
+      if (isGenericGreeting || !trimmed) {
+        const firstName = (session.name || '').split(' ')[0];
+        const namePart = firstName ? `, *${firstName}*` : '';
+        return `${this.getGreeting()}${namePart}! 😊\n\nCom qual *assunto* posso te ajudar hoje?\n\n_Ex.: holerite, férias, manutenção, financeiro..._\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._`;
+      }
+      return await this.processWithAI(session, messageBody, whatsappClient, conversation, ticket, jid, contact);
+    }
+
     if (currentFlow === 'initial' && currentStep === 'collect_offline_message') {
       return await this.handleOfflineMessage(session, messageBody);
     }
 
-    // 🧠 SISTEMA HÍBRIDO: Tentar classificação por IA antes de processar opções numéricas
-    // Aplica apenas em menus que esperam escolha do usuário
-    const menusForAI = ['main_menu', 'client_menu', 'administrative_menu'];
-    const isNumericOption = /^\d+$/.test(messageBody.trim());
-    
-    if (menusForAI.includes(currentFlow) && !isNumericOption) {
-      const aiResult = await this.tryAIClassification(session, messageBody);
-      if (aiResult) {
-        logger.info(`🎯 IA redirecionou para: ${aiResult.flow} (confiança: ${aiResult.confidence})`);
-        return aiResult.response;
-      }
-    }
-
-    // MENU PRINCIPAL
-    if (currentFlow === 'main_menu') {
-      return await this.handleMainMenu(session, messageBody, whatsappClient);
-    }
-
-    // FLUXO CLIENTE
-    if (currentFlow === 'client_flow') {
-      return await this.handleClientFlow(session, messageBody, whatsappClient);
-    }
-
-    // FLUXO PROSPECT (Quero ser cliente)
-    if (currentFlow === 'prospect_flow') {
-      return await this.handleProspectFlow(session, messageBody, whatsappClient);
-    }
-
-    // MENU ADMINISTRATIVO
-    if (currentFlow === 'administrative_menu') {
-      return await this.handleAdministrativeMenu(session, messageBody, whatsappClient);
-    }
-
-    // DEPARTAMENTO PESSOAL
-    if (currentFlow === 'dp_menu') {
-      return await this.handleDPMenu(session, messageBody, whatsappClient);
-    }
-
-    // BENEFÍCIOS
-    if (currentFlow === 'benefits_menu') {
-      return await this.handleBenefitsMenu(session, messageBody, whatsappClient);
-    }
-
-    // AFASTAMENTOS
-    if (currentFlow === 'leave_menu') {
-      return await this.handleLeaveMenu(session, messageBody, whatsappClient);
-    }
-
-    // RESCISÃO
-    if (currentFlow === 'termination_flow') {
-      return await this.handleTerminationFlow(session, messageBody, whatsappClient);
-    }
-
-    // MANUTENÇÃO
-    if (currentFlow === 'maintenance_menu') {
-      return await this.handleMaintenanceMenu(session, messageBody, whatsappClient);
-    }
-
-    // COMPRAS
-    if (currentFlow === 'purchasing_menu') {
-      return await this.handlePurchasingMenu(session, messageBody, whatsappClient);
-    }
-
-    // PEDIDOS DE MATERIAIS
-    if (currentFlow === 'materials_request') {
-      return await this.handleMaterialsRequest(session, messageBody, whatsappClient);
-    }
-
-    // COLABORADOR
-    if (currentFlow === 'employee_flow') {
-      return await this.handleEmployeeFlow(session, messageBody, whatsappClient);
-    }
-
-    // FORNECEDOR
-    if (currentFlow === 'supplier_flow') {
-      return await this.handleSupplierFlow(session, messageBody, whatsappClient);
-    }
-
-    // FATURAMENTO
-    if (currentFlow === 'billing_menu') {
-      return await this.handleBillingMenu(session, messageBody, whatsappClient);
-    }
-
-    // RH
-    if (currentFlow === 'hr_menu') {
-      return await this.handleHRMenu(session, messageBody, whatsappClient);
-    }
-
-    // SEGURANÇA DO TRABALHO
-    if (currentFlow === 'safety_menu') {
-      return await this.handleSafetyMenu(session, messageBody, whatsappClient);
-    }
-
-    // GERÊNCIA ADMINISTRATIVA
-    if (currentFlow === 'management_menu') {
-      return await this.handleManagementMenu(session, messageBody, whatsappClient);
-    }
-
-    // AGUARDANDO ATENDENTE
     if (currentFlow === 'wait_for_agent' || currentFlow === 'agent_conversation') {
       return await this.handleAgentConversation(session, messageBody);
     }
 
-    // AVALIAÇÃO NPS
     if (currentFlow === 'nps_evaluation') {
-      return await this.handleNPSEvaluation(session, messageBody);
+      const postAttendanceService = require('../services/postAttendanceService');
+      const stillWaitingRating = await postAttendanceService.ensureActiveRatingFlow(
+        session,
+        conversation
+      );
+      if (stillWaitingRating) {
+        return await this.handleNPSEvaluation(session, messageBody, conversation, ticket);
+      }
+      await session.reload();
     }
 
-    // Se chegou aqui, usar flowManager genérico
-    return await flowManager.processMessage(session, messageBody, whatsappClient);
+    // Demais mensagens: somente IA (sem menus automáticos legados)
+    return await this.processWithAI(session, messageBody, whatsappClient, conversation, ticket, jid, contact);
+  }
+
+  /**
+   * Processamento exclusivo via IA
+   */
+  async processWithAI(session, messageBody, whatsappClient, conversation = null, ticket = null, jid = null, contact = null) {
+    try {
+      const menuPick = this.resolveMenuSelection(session, messageBody);
+      if (menuPick?.shouldRoute) {
+        return await this.confirmSubjectAndRoute(
+          session, menuPick, whatsappClient, conversation, ticket, jid, contact
+        );
+      }
+
+      const localSubject = this.applyLocalSubjectDetection(session, messageBody);
+      if (localSubject?.response) {
+        await session.save();
+        return localSubject.response;
+      }
+      if (localSubject?.shouldRoute && conversation) {
+        return await this.confirmSubjectAndRoute(
+          session,
+          localSubject,
+          whatsappClient,
+          conversation,
+          ticket,
+          jid,
+          contact
+        );
+      }
+
+      const bodyForAI = menuPick?.enrichedMessage || messageBody;
+      const aiResult = await this.tryAIClassification(session, bodyForAI);
+
+      if (aiResult?.needsHuman) {
+        logger.info(`🤚 [IA] Solicitou atendimento humano`);
+        if (conversation && jid) {
+          await this.requestHumanAttendance(conversation, whatsappClient, jid, 'Cliente solicitou atendimento humano');
+        }
+        return `✅ Entendi! Vou te conectar com um *atendente humano*.\n\n⏳ _Aguarde — em breve alguém da nossa equipe continuará o atendimento._\n\n_Digite *CANCELAR* para recomeçar._`;
+      }
+
+      if (aiResult?.shouldRoute && conversation) {
+        return await this.confirmSubjectAndRoute(
+          session,
+          {
+            intent: aiResult.intent,
+            subject: aiResult.subject || session.formData?.subject,
+            dpTopic: aiResult.dpTopic || session.formData?.dpTopic
+          },
+          whatsappClient,
+          conversation,
+          ticket,
+          jid,
+          contact
+        );
+      }
+
+      if (aiResult?.response) {
+        session.currentFlow = 'ai_chat';
+        session.currentStep = 'active';
+        await session.save();
+        return aiResult.response;
+      }
+
+      // IA sem resposta — tentar detecção local novamente
+      const localFallback = this.applyLocalSubjectDetection(session, messageBody);
+      if (localFallback?.response) {
+        await session.save();
+        return localFallback.response;
+      }
+      if (localFallback?.shouldRoute && conversation) {
+        return await this.confirmSubjectAndRoute(
+          session, localFallback, whatsappClient, conversation, ticket, jid, contact
+        );
+      }
+
+      // Com contexto de menu ativo, não desistir — reinterpretar seleção
+      const formData = session.formData || {};
+      if (formData.awaiting_menu_choice && /^\d+$/.test(String(messageBody || '').trim())) {
+        const fallbackPick = this.resolveMenuSelection(session, messageBody);
+        if (fallbackPick?.shouldRoute) {
+          return await this.confirmSubjectAndRoute(
+            session, fallbackPick, whatsappClient, conversation, ticket, jid, contact
+          );
+        }
+      }
+
+      return this.buildAIFallbackMessage(session);
+    } catch (error) {
+      logger.error('❌ Erro no processWithAI:', error);
+      return this.buildAIFallbackMessage(session);
+    }
   }
 
   /**
@@ -616,15 +984,15 @@ class FlowMessageHandler {
       if (typeof response === 'string' && response.trim()) {
         await whatsappClient.sendMessage(jid, response);
         // Salvar resposta no banco
-        if (conversation && contact) {
+        if (conversation) {
           await this.saveOutgoingMessage({
             conversationId: conversation.id,
             ticketId: ticket?.id || conversation.activeTicketId || null,
-            contactId: contact.id,
+            contactId: contact?.id || null,
             phone,
             body: response
           });
-          this.notifyDashboard(conversation, ticket, contact, response, 'outgoing');
+          this.notifyDashboard(conversation, ticket, contact || { name: conversation.displayName, phone }, response, 'outgoing');
         }
       }
 
@@ -655,52 +1023,143 @@ class FlowMessageHandler {
     return 'Boa noite';
   }
 
-  async handleInitialFlow(session) {
-    // Verificar horário de atendimento
-    const schedule = scheduleService.isBusinessHours();
+  isRegisteredEmployeeSession(session) {
+    const formData = session?.formData || {};
+    return Boolean(formData.is_employee && formData.employee_profile_loaded);
+  }
+
+  getEmployeeFirstName(session) {
+    const fullName = session?.formData?.nome_completo || session?.name || '';
+    const first = fullName.trim().split(/\s+/)[0];
+    return first || 'colaborador(a)';
+  }
+
+  buildEmployeeWelcome(session) {
     const greeting = this.getGreeting();
-    const name = session.name || '';
-    
-    if (schedule.isOpen) {
-      // Dentro do horário
-      session.currentStep = 'ask_name';
-      await session.save();
-      
-      return {
-        message: `${greeting}! ${name ? name + ', ' : ''}😊\n\nSeja muito bem-vindo(a) ao atendimento da *FG SERVICES*! 🌟\n\n_Excelência para quem faz com excelência_\n\nEstou aqui para te ajudar! Como posso te atender hoje?`,
-        next: true
-      };
-    } else {
-      // Fora do horário
+    const firstName = this.getEmployeeFirstName(session);
+    const formData = session?.formData || {};
+    let message = `${greeting}, *${firstName}*! 😊\n\n`;
+    message += 'Seja muito bem-vindo(a) ao atendimento da *FG SERVICES*! 🌟\n\n';
+    message += '_Excelência para quem faz com excelência_\n\n';
+    message += 'Identifiquei seu cadastro como *colaborador*';
+    if (formData.contrato) {
+      message += ` no contrato *${formData.contrato}*`;
+    }
+    if (formData.cargo) {
+      message += ` — cargo: *${formData.cargo}*`;
+    }
+    message += '.';
+    return message;
+  }
+
+  formatAIResponse(response) {
+    if (!response) return '';
+    if (typeof response === 'string') return response;
+    if (typeof response === 'object' && response.message) return String(response.message);
+    return '';
+  }
+
+  async handleEmployeeFirstContact(session, messageBody) {
+    const schedule = scheduleService.isBusinessHours();
+    const welcome = this.buildEmployeeWelcome(session);
+
+    if (!schedule.isOpen) {
       session.currentStep = 'collect_offline_message';
       await session.save();
-      
+
       const nextOpenFormatted = scheduleService.formatNextOpen(schedule.nextOpen);
-      
       return {
-        message: `${greeting}! ${name ? name + ', ' : ''}😊\n\nSeja bem-vindo(a) ao atendimento da *FG SERVICES*! 🌟\n\n_Excelência para quem faz com excelência_\n\n⏰ *No momento estamos fora do horário de atendimento.*\n\n📅 Nosso horário:\n• Segunda a Sexta\n• 8h às 12h | 13h às 17h\n\n${nextOpenFormatted ? `Retornaremos: ${nextOpenFormatted}` : ''}\n\n💬 Pode deixar sua mensagem que retornaremos assim que possível!`
+        message: `${welcome}\n\n⏰ *No momento estamos fora do horário de atendimento.*\n\n📅 Segunda a Sexta • 8h–12h | 13h–17h\n\n${nextOpenFormatted ? `Retornaremos: ${nextOpenFormatted}\n\n` : ''}💬 Pode deixar sua mensagem que retornaremos assim que possível!`
       };
     }
+
+    const trimmed = (messageBody || '').trim();
+    const isGenericGreeting = !trimmed || /^(oi|olá|ola|bom dia|boa tarde|boa noite|hey|e aí|eai|hello|hi)[!.?\s]*$/i.test(trimmed);
+
+    if (!isGenericGreeting) {
+      const localSubject = this.applyLocalSubjectDetection(session, trimmed);
+      if (localSubject?.response) {
+        await session.save();
+        return `${welcome}\n\n${localSubject.response}`;
+      }
+
+      const aiResult = await this.tryAIClassification(session, trimmed, { skipGreeting: true });
+      if (aiResult?.response) {
+        const aiText = this.formatAIResponse(aiResult.response);
+        return `${welcome}\n\n${aiText}`;
+      }
+    }
+
+    session.currentFlow = 'initial';
+    session.currentStep = 'ask_subject';
+    await session.save();
+
+    return `${welcome}\n\nCom qual *assunto* posso te ajudar hoje?\n\n_Ex.: holerite, férias, vale transporte, manutenção de equipamento..._\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._`;
+  }
+
+  async handleEmployeeAskSubject(session, messageBody, whatsappClient, conversation, ticket, jid, contact) {
+    return await this.processWithAI(session, messageBody, whatsappClient, conversation, ticket, jid, contact);
+  }
+
+  async handleInitialFlow(session) {
+    const schedule = scheduleService.isBusinessHours();
+    const greeting = this.getGreeting();
+
+    if (this.isRegisteredEmployeeSession(session)) {
+      return this.handleEmployeeFirstContact(session, '');
+    }
+
+    const firstName = (session.name || '').split(' ')[0];
+    const namePart = firstName ? `${firstName}, ` : '';
+
+    if (schedule.isOpen) {
+      session.currentStep = 'ask_subject';
+      await session.save();
+
+      return {
+        message: `${greeting}! ${namePart}😊\n\nSeja muito bem-vindo(a) ao atendimento da *FG SERVICES*! 🌟\n\n_Excelência para quem faz com excelência_\n\nCom qual *assunto* posso te ajudar hoje?\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._`
+      };
+    }
+
+    session.currentStep = 'collect_offline_message';
+    await session.save();
+
+    const nextOpenFormatted = scheduleService.formatNextOpen(schedule.nextOpen);
+
+    return {
+      message: `${greeting}! ${namePart}😊\n\nSeja bem-vindo(a) ao atendimento da *FG SERVICES*! 🌟\n\n_Excelência para quem faz com excelência_\n\n⏰ *No momento estamos fora do horário de atendimento.*\n\n📅 Segunda a Sexta • 8h–12h | 13h–17h\n\n${nextOpenFormatted ? `Retornaremos: ${nextOpenFormatted}\n\n` : ''}💬 Pode deixar sua mensagem que retornaremos assim que possível!`
+    };
   }
 
   /**
    * Pergunta nome (se não tiver)
    */
   async handleAskName(session, messageBody) {
+    if (this.isRegisteredEmployeeSession(session)) {
+      return this.handleEmployeeFirstContact(session, messageBody);
+    }
+
+    const trimmed = (messageBody || '').trim();
+    const isGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite|hey|e aí|eai|hello|hi)[!.?\s]*$/i.test(trimmed);
+
+    if (isGreeting || !trimmed) {
+      session.currentFlow = 'initial';
+      session.currentStep = 'ask_subject';
+      await session.save();
+      const firstName = (session.name || 'visitante').split(' ')[0];
+      return `${this.getGreeting()}, *${firstName}*! 😊\n\nCom qual *assunto* posso te ajudar hoje?\n\n_Ex.: holerite, férias, manutenção, financeiro..._\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._`;
+    }
+
     if (!session.name || session.name.length < 2) {
-      // Primeira interação - pergunta nome
-      session.name = messageBody.trim();
+      session.name = trimmed.split(' ')[0];
       await session.save();
     }
-    
-    // Ir para menu principal
-    session.currentFlow = 'main_menu';
-    session.currentStep = 'start';
+
+    session.currentFlow = 'initial';
+    session.currentStep = 'ask_subject';
     await session.save();
-    
-    return {
-      message: `Selecione a opção que indica seu perfil:\n\n1️⃣ Sou Cliente\n2️⃣ Quero ser cliente\n3️⃣ Colaborador\n4️⃣ Atual fornecedor\n5️⃣ Quero ser fornecedor\n6️⃣ Trabalhe Conosco\n7️⃣ Outros`
-    };
+
+    return `${this.getGreeting()}, *${session.name}*! 😊\n\nCom qual *assunto* posso te ajudar hoje?`;
   }
 
   /**
@@ -759,7 +1218,7 @@ class FlowMessageHandler {
    * Texto para voltar ao menu
    */
   getMainMenuAgain() {
-    return '\n\n_Digite *menu* para voltar ao início._';
+    return '\n\n_Digite *CANCELAR* a qualquer momento para recomeçar._';
   }
 
   /**
@@ -821,33 +1280,76 @@ class FlowMessageHandler {
    * Conversa com atendente humano
    */
   async handleAgentConversation(session, messageBody) {
-    // Apenas registrar mensagem, atendente humano responde pelo dashboard
     logger.info(`💬 Mensagem em atendimento humano de ${session.phone}: ${messageBody}`);
-    
-    // Não responder automaticamente, deixar para o atendente
     return null;
   }
 
   /**
-   * Avaliação NPS
+   * Detecta pedido do cliente para encerrar o atendimento
    */
-  async handleNPSEvaluation(session, messageBody) {
-    const score = parseInt(messageBody.trim());
-    
-    if (isNaN(score) || score < 0 || score > 10) {
+  isSelfFinishRequest(messageBody = '') {
+    const normalized = this.normalizeText(String(messageBody || ''));
+    const patterns = [
+      'finalizar atendimento',
+      'encerrar atendimento',
+      'pode encerrar',
+      'pode finalizar',
+      'quero encerrar',
+      'quero finalizar',
+      'nao preciso mais',
+      'não preciso mais',
+      'obrigado pode encerrar',
+      'obrigada pode encerrar',
+      'concluir atendimento',
+      'terminar atendimento',
+      '#finalizar',
+      '#encerrar'
+    ];
+
+    if (patterns.some((pattern) => normalized.includes(pattern))) {
+      return true;
+    }
+
+    return /^(finalizar|encerrar|concluir|terminar)[!.?\s]*$/i.test(String(messageBody || '').trim());
+  }
+
+  /**
+   * Avaliação pós-atendimento (1 a 5 estrelas)
+   */
+  async handleNPSEvaluation(session, messageBody, conversation = null, ticket = null) {
+    const postAttendanceService = require('../services/postAttendanceService');
+    const score = parseInt(String(messageBody || '').trim(), 10);
+
+    if (!Number.isFinite(score) || score < 1 || score > 5) {
       return {
-        message: '❌ Por favor, digite um número de 0 a 10.'
+        message: '❌ Por favor, responda com uma nota de *1 a 5* para avaliar o atendimento.'
       };
     }
-    
-    session.npsScore = score;
-    session.isActive = false;
-    await session.save();
-    
-    logger.info(`⭐ NPS Score: ${score} de ${session.phone}`);
-    
+
+    const ticketId = session.formData?.pendingRatingTicketId
+      || conversation?.metadata?.lastFinishedTicketId
+      || ticket?.id;
+
+    if (!ticketId) {
+      session.currentFlow = 'initial';
+      session.currentStep = 'ask_subject';
+      await session.save();
+      return { message: postAttendanceService.FAREWELL_MESSAGE };
+    }
+
+    await postAttendanceService.submitRating({ session, score, ticketId });
+
+    if (conversation) {
+      await conversation.update({
+        metadata: {
+          ...(conversation.metadata || {}),
+          awaitingRating: false
+        }
+      });
+    }
+
     return {
-      message: '✨ *Até mais e conte com a FG SERVICES*\n\nObrigado pela sua avaliação! 🙏'
+      message: `${postAttendanceService.FAREWELL_MESSAGE}\n\n_Obrigado pela sua avaliação (${score}/5)!_ 🙏`
     };
   }
 
@@ -903,6 +1405,13 @@ class FlowMessageHandler {
 
       const displayBody = chatMediaUtils.sanitizeBodyForDisplay(body, msgType, hasMedia);
       const messageTimestamp = resolveWhatsAppTimestamp(rawMessage) || new Date();
+
+      const existing = await ChatMessage.findOne({ where: { messageId } });
+      if (existing) {
+        logger.debug(`💾 Mensagem já existia no banco: ${messageId}`);
+        await inboxConversationService.touchConversation(conversationId, messageTimestamp);
+        return existing;
+      }
 
       const chatMessage = await ChatMessage.create({
         messageId,
@@ -991,97 +1500,144 @@ class FlowMessageHandler {
   }
 
   /**
-   * 🧠 Tenta classificar intenção com IA (Sistema Híbrido)
+   * 🧠 Classifica intenção com IA e retorna mensagem gerada pela IA
    */
-  async tryAIClassification(session, messageBody) {
+  async tryAIClassification(session, messageBody, options = {}) {
     try {
-      // Construir contexto do usuário
+      const formData = session.formData || {};
       const userContext = {
         name: session.name,
         currentFlow: session.currentFlow,
         currentStep: session.currentStep,
-        formData: session.formData || {}
+        is_employee: Boolean(formData.is_employee),
+        employee_profile_loaded: Boolean(formData.employee_profile_loaded),
+        contrato: formData.contrato || null,
+        cargo: formData.cargo || null,
+        cidade: formData.cidade || null,
+        estado: formData.estado || null,
+        formData
       };
 
-      // Tentar classificar com IA
       const classification = await intentClassifier.classify(messageBody, userContext);
-      
-      // Se IA não conseguiu classificar ou confiança baixa, retorna null para usar fluxo tradicional
-      if (!classification || classification.confidence < intentClassifier.config.confidenceThreshold) {
-        logger.info(`🤖 IA: Confiança baixa (${classification?.confidence || 0}), usando fluxo tradicional`);
+
+      if (!classification) {
+        logger.info('🤖 IA: Sem resposta da classificação — tentando keywords locais');
+        const localDetails = intentClassifier.resolveSubjectDetails(messageBody);
+        if (localDetails) {
+          const formData = session.formData || {};
+          if (localDetails.intent) formData.last_intent = localDetails.intent;
+          if (localDetails.subject) formData.subject = localDetails.subject;
+          if (localDetails.dpTopic) formData.dpTopic = localDetails.dpTopic;
+          session.formData = formData;
+          await session.save();
+
+          if (localDetails.needsMenu) {
+            formData.awaiting_menu_choice = true;
+            formData.menu_context = localDetails.menuContext || 'afastamento';
+            session.formData = formData;
+            await session.save();
+            return {
+              flow: 'ai_chat',
+              intent: localDetails.intent,
+              response: this.buildAfastamentoMenuMessage(session),
+              shouldRoute: false
+            };
+          }
+
+          const isEmployee = this.isRegisteredEmployeeSession(session);
+          const shouldRoute = Boolean(localDetails.shouldRoute)
+            && localDetails.intent
+            && (isEmployee || !this.needsDataCollection(localDetails.intent));
+
+          return {
+            flow: 'ai_chat',
+            intent: localDetails.intent,
+            dpTopic: localDetails.dpTopic,
+            subject: localDetails.subject,
+            confidence: localDetails.confidence || 0.8,
+            response: shouldRoute ? null : this.buildAIUserResponse(session, {
+              intent: localDetails.intent,
+              reasoning: localDetails.subject
+            }, options),
+            shouldRoute
+          };
+        }
         return null;
       }
 
-      // Log da classificação
-      logger.info(`✅ IA classificou com sucesso:`, {
+      const threshold = intentClassifier.config.confidenceThreshold || 0.5;
+      const hasUserMessage = Boolean(
+        classification.userMessage && String(classification.userMessage).trim().length > 10
+      );
+
+      if (classification.confidence < threshold && !hasUserMessage) {
+        logger.info(`🤖 IA: Confiança baixa (${classification.confidence}), sem userMessage`);
+        return null;
+      }
+
+      logger.info('✅ IA classificou:', {
         intent: classification.intent,
-        flow: classification.flow,
         confidence: classification.confidence,
-        method: classification.method
+        method: classification.method,
+        hasUserMessage
       });
 
-      // Salvar log de classificação para analytics
       await this.logAIClassification(session, messageBody, classification);
 
-      // 🤚 CASO ESPECIAL: IA identificou necessidade de atendente humano
       if (classification.intent === 'atendimento_humano' || classification.flow === 'human_handoff') {
-        logger.info(`🤚 [IA] Detectou necessidade de atendimento humano`);
-        
-        // Marcar resposta especial para solicitar atendimento humano
+        logger.info('🤚 [IA] Detectou necessidade de atendimento humano');
         return {
           flow: 'human_handoff',
           confidence: classification.confidence,
-          response: null, // Será tratado no handleMessage
+          response: null,
           needsHuman: true
         };
       }
 
-      // Redirecionar para o fluxo identificado
-      if (classification.flow) {
-        // Atualizar sessão
-        session.currentFlow = classification.flow;
-        session.currentStep = 'start';  // Iniciar do primeiro passo do fluxo
-        await session.save();
-
-        // Obter mensagem do fluxo de destino
-        const flowResponse = await flowManager.processMessage(
-          session.toJSON(),
-          messageBody,
-          { forceFlow: classification.flow }
-        );
-
-        // Mensagem educada com coleta de dados
-        const greeting = this.getGreeting();
-        let confirmationMessage = `${greeting}! 😊\n\nPerfeito! Vou te ajudar com *${this.getIntentLabel(classification.intent)}*.\n\n`;
-        
-        // Verificar se precisa coletar dados
-        const needsData = this.needsDataCollection(classification.intent);
-        if (needsData) {
-          const dataMessage = await this.getDataCollectionMessage(session, classification.intent);
-          if (dataMessage) {
-            confirmationMessage += dataMessage;
-            // Se está coletando dados, NÃO adicionar a resposta do fluxo ainda
-            return {
-              flow: classification.flow,
-              confidence: classification.confidence,
-              response: confirmationMessage
-            };
-          }
-        }
-        
-        // Se não precisa coletar dados OU já tem todos os dados
-        return {
-          flow: classification.flow,
-          confidence: classification.confidence,
-          response: confirmationMessage
-        };
+      if (classification.intent === 'dp' && classification.dpTopic) {
+        formData.dpTopic = classification.dpTopic;
+        formData.subject = classification.dpTopic;
+        session.formData = formData;
       }
 
-      return null;
+      if (classification.intent) {
+        formData.last_intent = classification.intent;
+        session.formData = formData;
+      }
+
+      const response = this.buildAIUserResponse(session, classification, options);
+      this.saveAIConversationContext(session, {
+        classification,
+        responseText: response,
+        originalMessage: messageBody
+      });
+
+      session.currentFlow = 'ai_chat';
+      session.currentStep = 'active';
+      await session.save();
+
+      const updatedFormData = session.formData || {};
+      const isEmployee = this.isRegisteredEmployeeSession(session);
+      const routeThreshold = isEmployee ? 0.55 : 0.75;
+      const shouldRoute = !updatedFormData.awaiting_menu_choice
+        && classification.confidence >= routeThreshold
+        && classification.intent
+        && classification.intent !== 'atendimento_humano'
+        && (isEmployee || !this.needsDataCollection(classification.intent));
+
+      return {
+        flow: 'ai_chat',
+        intent: classification.intent,
+        dpTopic: classification.dpTopic || updatedFormData.dpTopic,
+        subject: updatedFormData.subject,
+        confidence: classification.confidence,
+        response,
+        shouldRoute
+      };
 
     } catch (error) {
       logger.error('❌ Erro na classificação por IA:', error);
-      return null; // Fallback para fluxo tradicional
+      return null;
     }
   }
 
@@ -1100,13 +1656,17 @@ class FlowMessageHandler {
    * Retorna mensagem de coleta de dados
    */
   async getDataCollectionMessage(session, intent) {
-    let message = '';
-    
-    // Verificar dados que faltam
-    const missingData = [];
+    const employeeContactService = require('../services/employeeContactService');
     const formData = session.formData || {};
-    
-    // SEMPRE pedir nome completo se não foi coletado ainda
+
+    if (employeeContactService.employeeProfileIsComplete(formData)) {
+      logger.info('👤 Perfil de funcionário já cadastrado — pulando coleta de dados');
+      return null;
+    }
+
+    let message = '';
+
+    const missingData = [];
     if (!formData.nome_completo) {
       missingData.push('nome completo');
     }
@@ -1334,10 +1894,10 @@ class FlowMessageHandler {
           currentStep: session.currentStep,
           formData: session.formData
         },
-        intent: classification.intent,
-        targetFlow: classification.flow,
-        confidence: classification.confidence,
-        method: classification.method,
+        intent: classification.intent || 'desconhecido',
+        targetFlow: classification.flow || 'ai_chat',
+        confidence: classification.confidence || 0,
+        method: classification.method || 'keywords',
         matchedKeywords: classification.matchedKeywords || null,
         reasoning: classification.reasoning || null,
         used: true
@@ -1357,7 +1917,8 @@ class FlowMessageHandler {
       || (chatMessage?.timestamp ? new Date(chatMessage.timestamp) : null);
 
     if (!messageTime || Number.isNaN(messageTime.getTime())) {
-      return false;
+      // Sem timestamp confiável: tratar como ao vivo para não perder resposta
+      return true;
     }
 
     const ageMs = Date.now() - messageTime.getTime();
@@ -1408,9 +1969,56 @@ class FlowMessageHandler {
   }
 
   /**
+   * Sincroniza conversa/ticket após roteamento e notifica painel + atendente
+   */
+  async syncConversationAfterRouting(session, conversation, contact, ticket, routing, reason) {
+    const pendingAcceptance = Boolean(routing?.agentId && ticket?.status === 'waiting_human');
+    const metadata = {
+      ...(conversation.metadata || {}),
+      waitingHuman: pendingAcceptance || !routing?.agentId,
+      pendingAcceptance,
+      waitingHumanReason: reason,
+      waitingHumanAt: new Date().toISOString(),
+      suggestedAgentId: routing?.agentId || null,
+      suggestedAgentName: routing?.agentName || null,
+      assignedAgentId: routing?.agentId || ticket?.assignedTo || null,
+      dpTopic: routing?.topicLabel || session.formData?.dpTopic || null,
+      dpDepartment: session.formData?.department || null,
+      routedAt: new Date().toISOString()
+    };
+
+    await conversation.update({
+      activeTicketId: ticket?.id || conversation.activeTicketId,
+      metadata
+    });
+
+    await this.notifyAvailableAgents(conversation, contact, reason, routing, ticket);
+
+    try {
+      const enriched = await inboxConversationService.getConversationById(conversation.id);
+      this.emitSocketEvent('conversation_updated', {
+        conversationId: conversation.id,
+        conversation: enriched
+      });
+      this.emitSocketEvent('ticket_updated', {
+        ticketId: ticket.id,
+        ticket: ticket.toJSON ? ticket.toJSON() : ticket
+      });
+    } catch (notifyErr) {
+      logger.error('❌ Erro ao notificar painel após roteamento:', notifyErr.message);
+    }
+
+    if (routing?.agentId) {
+      logger.info(`✅ Ticket ${ticket.protocol} direcionado a ${routing.agentName} (ID ${routing.agentId}) — aguardando aceite`);
+    } else {
+      logger.warn(`⚠️ Ticket ${ticket.protocol} na fila waiting_human — nenhum atendente encontrado no roteamento`);
+    }
+  }
+
+  /**
    * Encaminha conversa para atendente humano com roteamento por tema do DP
    */
-  async handleTransferToAgent(session, conversation, contact, response, ticket) {
+  async handleTransferToAgent(session, conversation, contact, response, ticket, routing = null) {
     try {
       const ticketRoutingService = require('../services/ticketRoutingService');
       const formData = session.formData || {};
@@ -1420,33 +2028,29 @@ class FlowMessageHandler {
         ? `Atendimento DP — ${topic}`
         : `Atendimento — ${department}`;
 
-      const routing = await ticketRoutingService.routeDPTicket({
+      const resolvedRouting = routing || await ticketRoutingService.routeDPTicket({
         topic,
         department,
         subject: topic || department,
-        description: formData.name ? `Nome: ${formData.name}` : '',
-        userMessage: formData.cpf ? `CPF informado` : ''
+        description: formData.nome_completo ? `Nome: ${formData.nome_completo}` : '',
+        userMessage: formData.subject || topic || department
       });
 
-      const metadata = {
-        ...(conversation.metadata || {}),
-        waitingHuman: true,
-        waitingHumanReason: reason,
-        waitingHumanAt: new Date().toISOString(),
-        suggestedAgentId: routing?.agentId || null,
-        suggestedAgentName: routing?.agentName || null,
-        dpTopic: routing?.topicLabel || topic || null,
-        dpDepartment: department
-      };
-
-      await conversation.update({ metadata });
-      await inboxConversationService.markWaitingHuman(conversation, reason);
-
-      if (routing?.agentId) {
-        logger.info(`🎯 Conversa ${conversation.id} direcionada para ${routing.agentName} (${routing.topicLabel || topic})`);
+      if (ticket && resolvedRouting?.agentId && !ticket.assignedTo) {
+        ticket.assignedTo = resolvedRouting.agentId;
+        ticket.assignedAt = new Date();
+        ticket.status = 'waiting_human';
+        await ticket.save();
       }
 
-      await this.notifyAvailableAgents(conversation, contact, reason, routing);
+      await this.syncConversationAfterRouting(
+        session,
+        conversation,
+        contact,
+        ticket,
+        resolvedRouting,
+        reason
+      );
     } catch (error) {
       logger.error('❌ Erro ao encaminhar para atendente:', error);
     }
@@ -1481,80 +2085,59 @@ class FlowMessageHandler {
   /**
    * Notifica atendentes disponíveis sobre conversa aguardando humano
    */
-  async notifyAvailableAgents(conversation, contact, messageBody, routing = null) {
+  async notifyAvailableAgents(conversation, contact, messageBody, routing = null, ticket = null) {
     try {
       const User = require('../models/UserSQL');
       const { Op } = require('sequelize');
-      const { getAgentEmailsForTopic, resolveDPTopic } = require('../config/dpAttendanceRouting');
+      const chatSocketService = global.chatSocketService;
+      const enriched = await inboxConversationService.getConversationById(conversation.id);
 
-      let where = {
-        role: ['agent', 'manager', 'admin'],
-        status: 'online',
-        active: true
+      const payload = {
+        conversation: enriched || (conversation.toJSON ? conversation.toJSON() : conversation),
+        contact: contact?.toJSON ? contact.toJSON() : contact,
+        message: messageBody,
+        ticketId: ticket?.id || enriched?.activeTicketId || null,
+        suggestedAgentId: routing?.agentId || null,
+        suggestedAgentName: routing?.agentName || null,
+        dpTopic: routing?.topicLabel || null,
+        timestamp: new Date()
       };
 
-      if (routing?.agentEmail) {
-        where = {
-          [Op.or]: [
-            { email: routing.agentEmail },
-            { departmentId: 'dp', status: 'online', active: true, role: ['agent', 'manager'] }
-          ]
-        };
-      } else if (routing?.topicId) {
-        const topicConfig = resolveDPTopic({ topic: routing.topicId });
-        const emails = getAgentEmailsForTopic(topicConfig);
-        if (emails.length) {
-          where = {
-            [Op.or]: [
-              { email: { [Op.in]: emails } },
-              { departmentId: 'dp', status: 'online', active: true, role: ['agent', 'manager', 'admin'] }
-            ]
-          };
-        }
-      }
-
-      const availableAgents = await User.findAll({ where });
-
-      if (availableAgents.length === 0) {
-        logger.warn('⚠️ Nenhum atendente online disponível!');
+      if (routing?.agentId && chatSocketService) {
+        chatSocketService.emitToUser(routing.agentId, 'ticket_assigned_to_you', {
+          ...payload,
+          protocol: ticket?.protocol || enriched?.activeTicket?.protocol,
+          subject: ticket?.subject || enriched?.activeTicket?.subject,
+          targetUserId: routing.agentId
+        });
+        logger.info(`🔔 Notificação enviada ao atendente ${routing.agentName} (ID ${routing.agentId})`);
         return;
       }
 
-      logger.info(`🔔 Notificando ${availableAgents.length} atendentes disponíveis...`);
+      const managers = await User.findAll({
+        where: {
+          role: 'manager',
+          active: true,
+          status: 'online'
+        },
+        attributes: ['id', 'name']
+      });
 
-      const io = global.io || require('../server').io;
-      if (io) {
-        io.emit('new_conversation_notification', {
-          conversation: conversation.toJSON ? conversation.toJSON() : conversation,
-          contact: contact?.toJSON ? contact.toJSON() : contact,
-          message: messageBody,
-          suggestedAgentId: routing?.agentId || null,
-          suggestedAgentName: routing?.agentName || null,
-          dpTopic: routing?.topicLabel || null,
-          timestamp: new Date()
-        });
+      if (managers.length === 0) {
+        logger.warn('⚠️ Nenhum gestor online para fila sem roteamento específico');
+        return;
       }
 
-      const conversationId = conversation.id;
-      setTimeout(async () => {
-        try {
-          const refreshed = await inboxConversationService.getConversationById(conversationId);
-          if (refreshed?.waitingHuman && !refreshed.activeTicketId) {
-            logger.info(`⏰ Timeout! Nenhum atendente aceitou a conversa ${conversationId}.`);
-            const conv = await require('../models/ConversationSQL').findByPk(conversationId);
-            if (conv) {
-              await conv.update({
-                metadata: { ...(conv.metadata || {}), waitingHuman: false }
-              });
-            }
-            if (io) {
-              io.emit('conversation_timeout', { conversationId, reason: 'timeout' });
-            }
-          }
-        } catch (error) {
-          logger.error('❌ Erro no timeout de atendimento:', error);
+      logger.info(`🔔 Notificando ${managers.length} gestor(es) sobre fila sem atendente definido`);
+
+      if (chatSocketService) {
+        for (const manager of managers) {
+          chatSocketService.emitToUser(manager.id, 'new_conversation_notification', {
+            ...payload,
+            targetUserId: manager.id
+          });
         }
-      }, 30000);
+      }
     } catch (error) {
       logger.error('❌ Erro ao notificar atendentes:', error);
     }

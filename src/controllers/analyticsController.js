@@ -137,7 +137,14 @@ async function ratings(req, res) {
       order: [[col('rating'), 'ASC']],
       raw: true
     });
-    return ok(res, rows);
+
+    const countByRating = new Map(rows.map((row) => [Number(row._id), Number(row.count || 0)]));
+    const data = [1, 2, 3, 4, 5].map((rating) => ({
+      _id: rating,
+      count: countByRating.get(rating) || 0
+    }));
+
+    return ok(res, data);
   } catch (error) {
     return fail(res, 500, error.message);
   }

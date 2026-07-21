@@ -625,9 +625,15 @@ class WhatsAppClient {
         if (message.from?.includes('@broadcast') || message.from === 'status@broadcast') return;
 
         const whatsappSyncService = require('../services/whatsappSyncService');
-        if (this.awaitingInitialSync || whatsappSyncService.syncInProgress) {
-          logger.debug(`⏭️ Replay/sync em andamento — ignorando: ${message.from}`);
-          return;
+        if (whatsappSyncService.syncInProgress) {
+          const { resolveWhatsAppTimestamp } = require('../utils/whatsappMessageUtils');
+          const messageTime = resolveWhatsAppTimestamp(message);
+          const isLive = !messageTime || (Date.now() - messageTime.getTime()) <= 3 * 60 * 1000;
+          if (!isLive) {
+            logger.debug(`⏭️ Sync em andamento — mensagem histórica ignorada: ${message.from}`);
+            return;
+          }
+          logger.info(`📨 Mensagem ao vivo durante sync — processando: ${message.from}`);
         }
 
         logger.info(`📨 Nova mensagem de ${message.from}: ${message.body?.substring(0, 50)}...`);
@@ -671,16 +677,17 @@ class WhatsAppClient {
       const flowMessageHandler = require('./flowMessageHandler');
       
       // Extrair informações do contato
+      const fromJid = this.serializeChatId(msg.from) || msg.from;
       const contact = {
-        id: msg.from,
+        id: fromJid,
         name: msg.notifyName || msg.sender?.pushname || msg.sender?.name || '',
-        number: msg.from.split('@')[0]
+        number: String(fromJid).split('@')[0]
       };
 
       // Formatar mensagem
       const message = {
         id: msg.id,
-        from: msg.from,
+        from: fromJid,
         to: msg.to,
         body: msg.body || msg.caption || '',
         caption: msg.caption || '',
@@ -745,21 +752,173 @@ class WhatsAppClient {
   }
 
   normalizeChatId(to) {
-    if (!to || typeof to !== 'string') {
+    const serialized = this.serializeChatId(to);
+    if (!serialized) {
       throw new Error('Destinatário inválido');
     }
 
-    const trimmed = to.trim();
-    if (trimmed.includes('@')) {
-      return trimmed;
+    if (serialized.includes('@')) {
+      return serialized;
     }
 
-    const digits = trimmed.replace(/\D/g, '');
+    const digits = serialized.replace(/\D/g, '');
     if (!digits) {
       throw new Error('Número do destinatário inválido');
     }
 
     return `${digits}@c.us`;
+  }
+
+  serializeChatId(value) {
+    if (!value) return null;
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'object') {
+      return this.serializeWid(value);
+    }
+    return String(value).trim() || null;
+  }
+
+  serializeWid(wid) {
+    if (!wid) return null;
+    if (typeof wid === 'string') return wid;
+    if (wid._serialized) return wid._serialized;
+    if (wid.user) return `${wid.user}@${wid.server || 'c.us'}`;
+    return null;
+  }
+
+  isLidRelatedError(error) {
+    const msg = String(error?.message || error || '').toLowerCase();
+    return msg.includes('no lid') || msg.includes('lid for user');
+  }
+
+  /**
+   * Proxy para WPP.contact.getPnLidEntry — mapeia @c.us ↔ @lid
+   */
+  async getPnLidEntry(phoneOrLid) {
+    if (!this.client?.getPnLidEntry || !phoneOrLid) return null;
+    const serialized = this.serializeChatId(phoneOrLid);
+    if (!serialized) return null;
+    try {
+      return await this.client.getPnLidEntry(serialized);
+    } catch (err) {
+      logger.debug(`getPnLidEntry(${serialized}): ${err.message}`);
+      return null;
+    }
+  }
+
+  isInvalidWidError(error) {
+    const msg = String(error?.message || error || '').toLowerCase();
+    return msg.includes('invalid wid') || this.isLidRelatedError(error);
+  }
+
+  /**
+   * Envio direto via WPP no browser — contorna bugs do wrapper sendText com @lid
+   */
+  async sendTextDirect(target, message) {
+    const chatId = this.serializeChatId(target);
+    if (!chatId) {
+      throw new Error('Destinatário inválido');
+    }
+
+    if (!this.client?.page?.evaluate) {
+      return this.client.sendText(chatId, message);
+    }
+
+    return this.client.page.evaluate(
+      ({ to, content }) => WPP.chat.sendTextMessage(to, content, {
+        waitForAck: true,
+        createChat: true
+      }),
+      { to: chatId, content: message }
+    );
+  }
+
+  /**
+   * Monta lista de JIDs para tentativa de envio (suporte a contas LID do WhatsApp)
+   */
+  async buildSendTargets(chatId) {
+    const contactDisplayUtils = require('../utils/contactDisplayUtils');
+    const targets = [];
+    const push = (id) => {
+      if (id && typeof id === 'string' && !targets.includes(id)) {
+        targets.push(id);
+      }
+    };
+
+    push(chatId);
+
+    const [prefix, suffix = ''] = chatId.split('@');
+    const entry = await this.getPnLidEntry(chatId);
+
+    if (entry) {
+      push(this.serializeWid(entry.lid));
+      if (!chatId.includes('@lid')) {
+        push(this.serializeWid(entry.phoneNumber));
+        const phoneDigits = contactDisplayUtils.normalizePhoneDigits(
+          this.serializeWid(entry.phoneNumber) || prefix
+        );
+        if (contactDisplayUtils.isValidPhoneDigits(phoneDigits)) {
+          push(`${phoneDigits}@c.us`);
+        }
+      }
+    } else if (suffix !== 'lid') {
+      const digits = contactDisplayUtils.normalizePhoneDigits(prefix);
+      if (contactDisplayUtils.isValidPhoneDigits(digits)) {
+        push(`${digits}@c.us`);
+        push(`${digits}@s.whatsapp.net`);
+      }
+    }
+
+    return targets;
+  }
+
+  async sendTextToTargets(targets, message) {
+    let lastError = null;
+    const maxRetries = 2;
+    let index = 0;
+
+    while (index < targets.length) {
+      const target = targets[index];
+      index += 1;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        let timeoutId;
+        try {
+          logger.info(`⏳ [WPPCONNECT] Tentativa ${attempt}/${maxRetries} para ${target}...`);
+
+          const sendPromise = this.sendTextDirect(target, message);
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error('Timeout ao enviar mensagem (30s)'));
+            }, 30000);
+          });
+
+          const sent = await Promise.race([sendPromise, timeoutPromise]);
+          if (timeoutId) clearTimeout(timeoutId);
+
+          logger.info(`✅ [WPPCONNECT] Mensagem enviada com sucesso para ${target}!`);
+          return sent;
+        } catch (error) {
+          if (timeoutId) clearTimeout(timeoutId);
+          lastError = error;
+          logger.warn(`⚠️ [WPPCONNECT] Falha ${target} (tentativa ${attempt}): ${error.message}`);
+
+          if (this.isInvalidWidError(error) && !target.includes('@lid')) {
+            const entry = await this.getPnLidEntry(target);
+            const lid = this.serializeWid(entry?.lid);
+            if (lid && !targets.includes(lid)) {
+              targets.push(lid);
+            }
+          }
+
+          if (attempt < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+        }
+      }
+    }
+
+    throw lastError || new Error('Falha ao enviar mensagem após múltiplas tentativas');
   }
 
   /**
@@ -782,48 +941,9 @@ class WhatsAppClient {
         throw new Error('Cliente WhatsApp indisponível');
       }
 
-      let sent = null;
-      let lastError = null;
-      const maxRetries = 2;
-      const targets = [chatId];
-
-      // Fallback: se falhar com @lid, tenta @c.us com os dígitos do JID
-      if (chatId.includes('@lid')) {
-        const digits = chatId.split('@')[0].replace(/\D/g, '');
-        if (digits) targets.push(`${digits}@c.us`);
-      }
-
-      for (const target of targets) {
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          let timeoutId;
-          try {
-            logger.info(`⏳ [WPPCONNECT] Tentativa ${attempt}/${maxRetries} para ${target}...`);
-
-            const sendPromise = this.client.sendText(target, message);
-            const timeoutPromise = new Promise((_, reject) => {
-              timeoutId = setTimeout(() => {
-                reject(new Error('Timeout ao enviar mensagem (30s)'));
-              }, 30000);
-            });
-
-            sent = await Promise.race([sendPromise, timeoutPromise]);
-            if (timeoutId) clearTimeout(timeoutId);
-
-            logger.info(`✅ [WPPCONNECT] Mensagem enviada com sucesso para ${target}!`);
-            return sent;
-          } catch (error) {
-            if (timeoutId) clearTimeout(timeoutId);
-            lastError = error;
-            logger.warn(`⚠️ [WPPCONNECT] Falha ${target} (tentativa ${attempt}): ${error.message}`);
-
-            if (attempt < maxRetries) {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-          }
-        }
-      }
-
-      throw lastError || new Error('Falha ao enviar mensagem após múltiplas tentativas');
+      const targets = await this.buildSendTargets(chatId);
+      logger.info(`🎯 [WPPCONNECT] Alvos de envio: ${targets.join(', ')}`);
+      return await this.sendTextToTargets(targets, message);
     } catch (error) {
       logger.error(`❌ [WPPCONNECT] Erro ao enviar mensagem: ${error.message}`);
       throw error;
@@ -841,7 +961,19 @@ class WhatsAppClient {
     }
 
     logger.info(`🎤 [WPPCONNECT] Enviando áudio PTT para: ${chatId}`);
-    return this.client.sendPtt(chatId, filePath, filename);
+    const targets = await this.buildSendTargets(chatId);
+    let lastError = null;
+
+    for (const target of targets) {
+      try {
+        return await this.client.sendPtt(target, filePath, filename);
+      } catch (error) {
+        lastError = error;
+        logger.warn(`⚠️ [WPPCONNECT] Falha ao enviar PTT para ${target}: ${error.message}`);
+      }
+    }
+
+    throw lastError || new Error('Falha ao enviar áudio');
   }
 
   /**

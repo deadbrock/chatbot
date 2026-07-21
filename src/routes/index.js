@@ -14,7 +14,6 @@ const schedulesRoutes = require('./schedules'); // Agendamentos
 const contactsRoutes = require('./contacts'); // Gestão de Contatos
 const ticketStatusesRoutes = require('./ticketStatuses'); // Status Personalizados
 const queuesRoutes = require('./queues'); // Filas de Atendimento
-const campaignsRoutes = require('./campaigns'); // Campanhas de Mensagens em Massa
 const messageTemplatesAdvancedRoutes = require('./messageTemplatesAdvanced'); // Templates Avançados
 const apiKeysRoutes = require('./apiKeys'); // Gerenciamento de API Keys
 const connectionsRoutes = require('./connections'); // Conexões WhatsApp
@@ -33,7 +32,6 @@ const conversationFlowsRoutes = require('./conversationFlows'); // Fluxos intern
 const botFlowsRoutes = require('./botFlows'); // Editor do fluxo do bot (base + overrides)
 const aiRoutes = require('./ai'); // IA e Classificação de Intenções
 const aiPlaygroundRoutes = require('./aiPlayground'); // AI Playground (Treinamento e Testes)
-const automationsRoutes = require('./automations'); // Automações Inteligentes
 
 // Middleware de autenticação (implementar conforme necessário)
 const authMiddleware = require('../middleware/auth');
@@ -53,7 +51,6 @@ router.use('/schedules', authMiddleware, schedulesRoutes); // Agendamentos
 router.use('/contacts', authMiddleware, contactsRoutes); // Gestão de Contatos
 router.use('/ticket-statuses', authMiddleware, ticketStatusesRoutes); // Status Personalizados
 router.use('/queues', authMiddleware, queuesRoutes); // Filas de Atendimento
-router.use('/campaigns', authMiddleware, campaignsRoutes); // Campanhas de Mensagens em Massa
 router.use('/message-templates-advanced', authMiddleware, messageTemplatesAdvancedRoutes); // Templates Avançados
 router.use('/api-keys', authMiddleware, apiKeysRoutes); // Gerenciamento de API Keys
 router.use('/connections', authMiddleware, connectionsRoutes); // Conexões WhatsApp
@@ -72,7 +69,6 @@ router.use('/conversation-flows', authMiddleware, conversationFlowsRoutes);
 router.use('/bot-flows', authMiddleware, botFlowsRoutes);
 router.use('/ai', authMiddleware, aiRoutes); // IA e Classificação de Intenções
 router.use('/ai-playground', aiPlaygroundRoutes); // AI Playground (Treinamento e Testes) - auth dentro das rotas
-router.use('/automations', automationsRoutes); // Automações Inteligentes - auth dentro das rotas
 
 // Rota de status
 router.get('/status', (req, res) => {

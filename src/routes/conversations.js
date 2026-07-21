@@ -7,6 +7,7 @@ const conversationsController = require('../controllers/conversationsController'
  */
 
 router.get('/', conversationsController.list);
+router.get('/pending', conversationsController.pending);
 router.get('/:id', conversationsController.get);
 router.post('/:id/accept', conversationsController.accept);
 router.post('/:id/finish', conversationsController.finish);

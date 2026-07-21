@@ -331,12 +331,6 @@ async function listAvailablePermissions(req, res) {
       { value: 'quick-replies.delete', label: 'Deletar Respostas Rápidas', category: 'Respostas Rápidas' },
       { value: 'quick-replies.*', label: 'Todas - Respostas Rápidas', category: 'Respostas Rápidas' },
       
-      // Campaigns
-      { value: 'campaigns.view', label: 'Visualizar Campanhas', category: 'Campanhas' },
-      { value: 'campaigns.create', label: 'Criar Campanhas', category: 'Campanhas' },
-      { value: 'campaigns.send', label: 'Enviar Campanhas', category: 'Campanhas' },
-      { value: 'campaigns.*', label: 'Todas - Campanhas', category: 'Campanhas' },
-      
       // Settings
       { value: 'settings.view', label: 'Visualizar Configurações', category: 'Configurações' },
       { value: 'settings.update', label: 'Atualizar Configurações', category: 'Configurações' },

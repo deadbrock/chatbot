@@ -117,6 +117,14 @@ function bindCoreEvents() {
     window.dispatchEvent(new CustomEvent('realtime:ticket_updated', { detail: data }));
   });
 
+  socket.on('new_conversation_notification', (data) => {
+    window.dispatchEvent(new CustomEvent('realtime:new_conversation_notification', { detail: data }));
+  });
+
+  socket.on('ticket_assigned_to_you', (data) => {
+    window.dispatchEvent(new CustomEvent('realtime:ticket_assigned_to_you', { detail: data }));
+  });
+
   socket.on('new_ticket', (data) => {
     listeners.new_ticket.forEach((fn) => {
       try { fn(data); } catch (e) { console.error(e); }

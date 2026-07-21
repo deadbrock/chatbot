@@ -8,7 +8,7 @@ import { showToast, createToast } from '../ui/toast.js';
 import { showLoading, hideLoading } from '../ui/loading.js';
 import { getSocket, connectSocket, requestNotificationPermission, getNotificationPermission, onSocketEvent } from '../socket.js';
 import { resolveContactDisplayName, getContactInitials, formatPhoneDisplay, normalizePhoneDigits } from '../utils/contactDisplay.js';
-import { debounce } from '../ui/dom.js';
+import { debounce, setNavBadge } from '../ui/dom.js';
 
 // Socket.IO
 let socket = null;
@@ -88,7 +88,10 @@ export function registerChatRealtime() {
   });
 
   socket.on('new_conversation_notification', (data) => {
-    showConversationNotification(data);
+    loadChats({ silent: true });
+  });
+
+  socket.on('ticket_assigned_to_you', (data) => {
     loadChats({ silent: true });
   });
 
@@ -168,8 +171,15 @@ export async function initChatView() {
   setupEventListeners();
   setupChatUiSocketEvents();
 
+  window.addEventListener('tickets:pending_updated', (event) => {
+    const count = event.detail?.count ?? 0;
+    const pendingCountEl = document.getElementById('filterPendingCount');
+    if (pendingCountEl) pendingCountEl.textContent = count;
+  });
+
   window.acceptConversation = acceptConversation;
   window.finishConversation = finishConversation;
+  window.__chatAcceptAndOpen = acceptConversationFromNotification;
   window.acceptTicketFromNotification = acceptConversationFromNotification;
 
   console.log('✅ Chat View inicializado');
@@ -352,6 +362,21 @@ function setupEventListeners() {
     if (conversationId) {
       console.log('🎯 Abrindo conversa:', conversationId);
       openChat(conversationId);
+    }
+  });
+
+  window.addEventListener('employeeRegistered', async (event) => {
+    const conversationId = event?.detail?.conversationId;
+    if (!conversationId || conversationId !== currentConversationId) return;
+
+    try {
+      const conversation = await apiFetch(`/conversations/${conversationId}`);
+      currentConversation = conversation?.data || conversation;
+      renderChatHeader(currentConversation);
+      updateSaveContactMenu(currentConversation);
+      loadChats();
+    } catch (error) {
+      console.error('Erro ao atualizar conversa após cadastro:', error);
     }
   });
   
@@ -599,15 +624,17 @@ function applyHeaderAvatar(conversation) {
 }
 
 /**
- * Atualiza visibilidade do menu "Salvar contato"
+ * Atualiza visibilidade do menu "Cadastrar funcionário"
  */
 function updateSaveContactMenu(conversation) {
   const item = document.getElementById('chatSaveContactItem');
   if (!item) return;
 
-  const source = conversation?.contact?.source;
-  const isSaved = source === 'Manual';
-  item.style.display = isSaved ? 'none' : '';
+  const contact = conversation?.contact;
+  const isEmployee = contact?.category === 'Colaborador'
+    && ['Manual', 'Importação'].includes(contact?.source);
+
+  item.style.display = isEmployee ? 'none' : '';
 }
 
 /**
@@ -621,7 +648,8 @@ function renderChatList(tickets) {
     const emptyMessages = {
       all: 'Nenhuma conversa ativa',
       unread: 'Nenhuma conversa não lida',
-      open: 'Nenhuma conversa aberta'
+      open: 'Nenhuma conversa aberta',
+      pending: 'Nenhum atendimento pendente para você'
     };
     const emptyText = emptyMessages[currentChatFilter] || emptyMessages.all;
 
@@ -634,6 +662,9 @@ function renderChatList(tickets) {
     return;
   }
   
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const currentUserId = Number(currentUser.id);
+
   chatList.innerHTML = tickets.map(ticket => {
     const contact = ticket.contact || {};
     const lastMessage = ticket.lastMessage || {};
@@ -642,9 +673,16 @@ function renderChatList(tickets) {
     const phone = ticket.contact?.phone || ticket.userPhone || '';
     const profilePicUrl = ticket.contact?.profilePicUrl || null;
     const preview = formatMessagePreview(lastMessage);
+    const isPendingForMe = (
+      ticket.waitingHuman
+      || ticket.activeTicket?.status === 'waiting_human'
+    ) && (
+      !ticket.activeTicket?.assignedTo
+      || Number(ticket.activeTicket?.assignedTo) === currentUserId
+    );
     
     return `
-      <div class="chat-item ${unreadCount > 0 ? 'unread' : ''}" data-conversation-id="${ticket.id}">
+      <div class="chat-item ${unreadCount > 0 ? 'unread' : ''} ${isPendingForMe ? 'chat-item-pending' : ''}" data-conversation-id="${ticket.id}">
         <div class="chat-item-avatar">
           ${buildAvatarInnerHtml(profilePicUrl, displayName, phone)}
           ${ticket.activeTicket?.status === 'in_progress' ? '<span class="status-indicator online"></span>' : ''}
@@ -656,7 +694,10 @@ function renderChatList(tickets) {
           </div>
           <div class="chat-item-bottom">
             <p class="chat-item-preview">${escapeHtml(preview)}</p>
-            ${unreadCount > 0 ? `<span class="chat-item-unread">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
+            <div class="chat-item-badges">
+              ${isPendingForMe ? '<span class="chat-item-pending-badge">Pendente</span>' : ''}
+              ${unreadCount > 0 ? `<span class="chat-item-unread">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -811,8 +852,14 @@ function renderActionButtons(conversation) {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const activeTicket = conversation.activeTicket || null;
   const conversationId = conversation.id;
+  const canAccept = !activeTicket
+    || activeTicket.status === 'waiting_human'
+    || activeTicket.status === 'open';
+  const isMyTicket = Number(activeTicket?.assignedTo) === Number(currentUser.id);
+  const isUnassigned = !activeTicket?.assignedTo;
+  const isAdmin = currentUser.role === 'admin';
 
-  if (!activeTicket) {
+  if (canAccept && !isAdmin && (isUnassigned || isMyTicket)) {
     actionsContainer.innerHTML = `
       <button class="btn btn-success btn-sm" onclick="acceptConversation('${conversationId}')" title="Aceitar Atendimento">
         <i class="bi bi-check-circle"></i> Aceitar
@@ -820,7 +867,7 @@ function renderActionButtons(conversation) {
     `;
   }
 
-  if (activeTicket?.status === 'in_progress' && activeTicket.assignedTo === currentUser.id) {
+  if (activeTicket?.status === 'in_progress' && isMyTicket) {
     actionsContainer.innerHTML = `
       <button class="btn btn-primary btn-sm" onclick="finishConversation('${conversationId}')" title="Finalizar Atendimento">
         <i class="bi bi-check2-all"></i> Finalizar Atendimento
@@ -882,6 +929,12 @@ function renderMessage(message) {
 
   const isFromMe = message.fromMe === true || message.direction === 'outgoing';
   const messageClass = isFromMe ? 'outgoing' : 'incoming';
+  const senderName = (!isFromMe || message.from === 'bot' || message.fromName === 'Bot')
+    ? ''
+    : (message.fromName || '');
+  const senderNameHtml = senderName
+    ? `<div class="message-sender-name">${escapeHtml(senderName)}</div>`
+    : '';
   const time = message.timestamp
     ? new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     : '';
@@ -901,6 +954,7 @@ function renderMessage(message) {
     return `
       <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
         <div class="message-bubble has-media audio-message">
+          ${senderNameHtml}
           <audio controls preload="metadata" class="message-audio">
             <source src="${escapeAttr(message.mediaUrl)}" type="audio/ogg">
             <source src="${escapeAttr(message.mediaUrl)}" type="audio/webm">
@@ -927,6 +981,7 @@ function renderMessage(message) {
     return `
       <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
         <div class="message-bubble has-media image-message ${hasCaption ? 'has-caption' : 'media-only'}">
+          ${senderNameHtml}
           <div class="message-media-wrap"
                data-media-url="${escapeAttr(imageSrc)}"
                data-media-type="image"
@@ -957,6 +1012,7 @@ function renderMessage(message) {
     return `
       <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
         <div class="message-bubble has-media file-message">
+          ${senderNameHtml}
           <div class="message-file-card"
                data-media-url="${escapeAttr(message.mediaUrl)}"
                data-media-type="file"
@@ -994,6 +1050,7 @@ function renderMessage(message) {
   return `
     <div class="chat-message ${messageClass}" data-message-id="${message.id || message.messageId}">
       <div class="message-bubble">
+        ${senderNameHtml}
         <div class="message-content">${content}</div>
         <div class="message-footer">
           <span class="message-time">${time}</span>
@@ -1625,8 +1682,7 @@ function playNotificationSound() {
 async function updateGlobalUnreadBadge() {
   try {
     if (chatListStats.unread != null) {
-      const badge = document.getElementById('chatBadge');
-      if (badge) badge.textContent = chatListStats.unread > 99 ? '99+' : chatListStats.unread;
+      setNavBadge('chatBadge', chatListStats.unread);
       return;
     }
 
@@ -1947,9 +2003,9 @@ function updateFilterCounts(stats = chatListStats) {
   document.getElementById('filterAllCount').textContent = stats.all ?? 0;
   document.getElementById('filterUnreadCount').textContent = stats.unread ?? 0;
   document.getElementById('filterOpenCount').textContent = stats.open ?? 0;
+  document.getElementById('filterPendingCount').textContent = stats.pending ?? 0;
 
-  const badge = document.getElementById('chatBadge');
-  if (badge) badge.textContent = (stats.unread ?? 0) > 99 ? '99+' : (stats.unread ?? 0);
+  setNavBadge('chatBadge', stats.unread ?? 0);
 }
 
 /**
@@ -2023,43 +2079,24 @@ async function archiveTicket() {
 }
 
 /**
- * Salvar contato da conversa atual
+ * Abrir cadastro de funcionário a partir da conversa atual
  */
 async function saveContactFromChat() {
-  if (!currentConversationId) return;
+  if (!currentConversationId || !currentConversation) return;
 
-  try {
-    showLoading();
+  const phone = currentConversation.userPhone
+    || currentConversation.contact?.phone
+    || currentConversation.whatsappJid?.split('@')[0]
+    || '';
 
-    const response = await apiFetch(`/conversations/${currentConversationId}/save-contact`, {
-      method: 'POST'
-    });
-
-    const conversation = response?.conversation;
-    const alreadySaved = response?.alreadySaved;
-
-    if (conversation) {
-      currentConversation = conversation;
-      renderChatHeader(conversation);
-
-      const idx = cachedTickets.findIndex((item) => item.id === currentConversationId);
-      if (idx >= 0) {
-        cachedTickets[idx] = { ...cachedTickets[idx], ...conversation };
-        renderChatList(cachedTickets);
-        document.querySelector(`[data-conversation-id="${currentConversationId}"]`)?.classList.add('active');
-      }
+  window.dispatchEvent(new CustomEvent('openEmployeeModal', {
+    detail: {
+      conversationId: currentConversationId,
+      name: currentConversation.displayName || currentConversation.contact?.name || '',
+      phone,
+      whatsappId: currentConversation.whatsappJid || currentConversation.contact?.whatsappId || null
     }
-
-    showToast(
-      alreadySaved ? 'Este contato já está salvo na sua agenda.' : 'Contato salvo com sucesso!',
-      alreadySaved ? 'info' : 'success'
-    );
-    hideLoading();
-  } catch (error) {
-    console.error('❌ Erro ao salvar contato:', error);
-    showToast(error.message || 'Erro ao salvar contato', 'error');
-    hideLoading();
-  }
+  }));
 }
 
 /**
@@ -2117,8 +2154,9 @@ function showConversationNotification(data) {
   }, 30000);
 }
 
-async function acceptConversationFromNotification(conversationId) {
+async function acceptConversationFromNotification(conversationId, ticketId = null) {
   await acceptConversation(conversationId);
+  if (ticketId) currentTicketId = Number(ticketId) || ticketId;
   await openChat(conversationId);
 }
 
@@ -2146,6 +2184,10 @@ async function acceptConversation(conversationId) {
     
     await loadChats();
     hideLoading();
+
+    if (typeof window.loadPendingTicketNotifications === 'function') {
+      await window.loadPendingTicketNotifications();
+    }
   } catch (error) {
     console.error('❌ Erro ao aceitar atendimento:', error);
     showToast('Erro ao aceitar atendimento', 'error');
@@ -2164,7 +2206,7 @@ async function finishConversation(conversationId) {
       body: { feedback: feedback || null }
     });
     
-    showToast('✅ Atendimento finalizado com sucesso!', 'success');
+    showToast('Atendimento finalizado. O cliente receberá a solicitação de avaliação.', 'success');
     
     await loadChats();
     

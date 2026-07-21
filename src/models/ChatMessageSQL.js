@@ -22,7 +22,7 @@ const ChatMessage = sequelize.define('ChatMessage', {
   
   // Relacionamentos
   ticketId: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER,
     allowNull: true,
     comment: 'Ticket associado (somente durante atendimento humano)'
   },
@@ -40,7 +40,7 @@ const ChatMessage = sequelize.define('ChatMessage', {
   },
   
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER,
     allowNull: true,
     comment: 'Usuário/Atendente que enviou (se interno)'
   },

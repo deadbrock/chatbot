@@ -1,8 +1,9 @@
 {
-  "enabled": false,
+  "enabled": true,
+  "mode": "pure",
   "provider": "groq",
   "model": "llama-3.1-8b-instant",
-  "confidenceThreshold": 0.7,
-  "temperature": 0.3,
-  "maxTokens": 150
+  "confidenceThreshold": 0.50,
+  "temperature": 0.35,
+  "maxTokens": 450
 }

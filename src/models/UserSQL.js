@@ -37,6 +37,10 @@ const User = sequelize.define('User', {
   phone: {
     type: DataTypes.STRING
   },
+  avatar: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   status: {
     type: DataTypes.ENUM('online', 'offline', 'busy', 'away'),
     defaultValue: 'offline'

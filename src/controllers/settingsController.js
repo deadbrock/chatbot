@@ -80,7 +80,6 @@ async function listCategories(req, res) {
       { value: 'security', label: 'Segurança', icon: 'shield' },
       { value: 'appearance', label: 'Aparência', icon: 'palette' },
       { value: 'birthday', label: 'Aniversários', icon: 'gift' },
-      { value: 'automation', label: 'Automação', icon: 'robot' },
       { value: 'api', label: 'API', icon: 'code' },
       { value: 'advanced', label: 'Avançado', icon: 'tools' }
     ];

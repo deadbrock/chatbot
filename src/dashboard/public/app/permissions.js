@@ -12,12 +12,10 @@ const ALL_SECTIONS = [
   'analytics',
   'kanban',
   'executive-dashboard',
-  'campaigns',
   'tags',
   'schedules',
   'administration',
   'ai-playground',
-  'automations',
   'settings'
 ];
 

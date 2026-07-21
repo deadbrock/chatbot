@@ -14,6 +14,8 @@ const {
   getAgentEmailsForTopic
 } = require('../config/dpAttendanceRouting');
 
+const STAFF_ROLES = ['agent', 'manager'];
+
 class TicketRoutingService {
   /**
    * Roteia um ticket para o atendente mais adequado
@@ -30,9 +32,7 @@ class TicketRoutingService {
         where: {
           departmentId: departmentId || department,
           active: true,
-          role: {
-            [Op.in]: ['agent', 'manager']
-          }
+          role: { [Op.in]: STAFF_ROLES }
         },
         attributes: ['id', 'name', 'email', 'role', 'stats']
       });
@@ -143,6 +143,17 @@ class TicketRoutingService {
 
     let candidateEmails = getAgentEmailsForTopic(topicConfig);
 
+    for (const email of candidateEmails) {
+      const primaryAgent = await this.findAgentByEmails([email]);
+      if (primaryAgent) {
+        return this.buildRoutingResult(
+          primaryAgent,
+          topicConfig,
+          `Responsável pelo tema ${topicConfig.label}`
+        );
+      }
+    }
+
     if (topicConfig.id === 'juridico_arquivo') {
       const extraAgents = await User.findAll({
         where: {
@@ -161,18 +172,22 @@ class TicketRoutingService {
       }
     }
 
+    const orConditions = [{ email: { [Op.in]: candidateEmails } }];
+    if (sequelize.getDialect() === 'postgres') {
+      orConditions.push(
+        sequelize.where(
+          sequelize.fn('json_extract_path_text', sequelize.col('stats'), 'dpTopic'),
+          topicConfig.id
+        )
+      );
+    }
+
     let agents = await User.findAll({
       where: {
         active: true,
         departmentId: 'dp',
-        role: { [Op.in]: ['agent', 'manager'] },
-        [Op.or]: [
-          { email: { [Op.in]: candidateEmails } },
-          sequelize.where(
-            sequelize.fn('json_extract', sequelize.col('stats'), '$.dpTopic'),
-            topicConfig.id
-          )
-        ]
+        role: { [Op.in]: STAFF_ROLES },
+        [Op.or]: orConditions
       },
       attributes: ['id', 'name', 'email', 'role', 'stats']
     });
@@ -182,7 +197,19 @@ class TicketRoutingService {
         where: {
           email: { [Op.in]: candidateEmails },
           active: true,
-          role: { [Op.in]: ['agent', 'manager'] }
+          role: { [Op.in]: STAFF_ROLES }
+        },
+        attributes: ['id', 'name', 'email', 'role', 'stats']
+      });
+    }
+
+    if (agents.length === 0) {
+      logger.warn(`⚠️ Nenhum atendente encontrado por e-mail para ${topicConfig.label} — buscando por departamento dp`);
+      agents = await User.findAll({
+        where: {
+          active: true,
+          departmentId: 'dp',
+          role: { [Op.in]: STAFF_ROLES }
         },
         attributes: ['id', 'name', 'email', 'role', 'stats']
       });
@@ -233,7 +260,8 @@ class TicketRoutingService {
     return User.findOne({
       where: {
         email: { [Op.in]: emails },
-        active: true
+        active: true,
+        role: { [Op.in]: STAFF_ROLES }
       },
       attributes: ['id', 'name', 'email', 'role', 'stats']
     });

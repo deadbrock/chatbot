@@ -11,15 +11,27 @@ const {
   importContacts,
   exportContacts,
   addTags,
-  removeTag
+  removeTag,
+  lookupEmployeeByPhone
 } = require('../controllers/contactsController');
 const { authenticate } = require('../middleware/auth');
+const inboxConversationService = require('../services/inboxConversationService');
 
 // Todas as rotas requerem autenticação
 router.use(authenticate);
 
+router.use(async (req, res, next) => {
+  try {
+    await inboxConversationService.ensureSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Rotas de estatísticas e ações em massa
 router.get('/stats', getStats);
+router.get('/lookup/:phone', lookupEmployeeByPhone);
 router.post('/import', importContacts);
 router.get('/export', exportContacts);
 

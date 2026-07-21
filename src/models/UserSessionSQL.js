@@ -150,7 +150,15 @@ UserSession.prototype.reset = function() {
 };
 
 UserSession.prototype.addToMenuPath = function(choice) {
-  const path = this.menuPath || [];
+  let path = this.menuPath || [];
+  if (typeof path === 'string') {
+    try {
+      path = JSON.parse(path);
+    } catch {
+      path = [];
+    }
+  }
+  if (!Array.isArray(path)) path = [];
   path.push(choice);
   this.menuPath = path;
   return this.save();

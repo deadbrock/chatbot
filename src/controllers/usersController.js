@@ -2,8 +2,144 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/UserSQL');
 const { AGENT_DEPARTMENTS } = require('../constants/agentDepartments');
 const { ok, created, fail } = require('../utils/http');
+const {
+  serializeUser,
+  ensureUserProfileSchema,
+  deleteAvatarFile,
+  ensureAvatarDir
+} = require('../services/userProfileService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
+
+async function getProfile(req, res) {
+  try {
+    await ensureUserProfileSchema();
+    const user = await User.findByPk(req.user.id, {
+      attributes: { exclude: ['password'] }
+    });
+
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    return ok(res, serializeUser(user));
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function updateProfile(req, res) {
+  const logger = require('../utils/logger');
+
+  try {
+    await ensureUserProfileSchema();
+    const user = await User.findByPk(req.user.id);
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    const { name, email, phone, currentPassword, newPassword } = req.body || {};
+    const updates = {};
+
+    if (name !== undefined) {
+      const trimmedName = String(name).trim();
+      if (!trimmedName) {
+        return fail(res, 400, 'Nome é obrigatório');
+      }
+      updates.name = trimmedName;
+    }
+
+    if (email !== undefined) {
+      const trimmedEmail = String(email).trim().toLowerCase();
+      if (!trimmedEmail) {
+        return fail(res, 400, 'E-mail é obrigatório');
+      }
+      updates.email = trimmedEmail;
+    }
+
+    if (phone !== undefined) {
+      updates.phone = String(phone).trim() || null;
+    }
+
+    if (newPassword !== undefined && String(newPassword).trim()) {
+      if (!currentPassword) {
+        return fail(res, 400, 'Informe a senha atual para alterá-la');
+      }
+      const matches = await user.comparePassword(currentPassword);
+      if (!matches) {
+        return fail(res, 400, 'Senha atual incorreta');
+      }
+      if (String(newPassword).trim().length < 6) {
+        return fail(res, 400, 'A nova senha deve ter pelo menos 6 caracteres');
+      }
+      updates.password = String(newPassword).trim();
+    }
+
+    await user.update(updates);
+    logger.info(`✅ Perfil atualizado: ${user.email}`);
+
+    return ok(res, serializeUser(user));
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return fail(res, 400, 'Este e-mail já está cadastrado no sistema');
+    }
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map((e) => e.message).join(', ');
+      return fail(res, 400, `Erro de validação: ${messages}`);
+    }
+    return fail(res, 500, error.message);
+  }
+}
+
+async function uploadAvatar(req, res) {
+  const logger = require('../utils/logger');
+
+  try {
+    await ensureUserProfileSchema();
+    const user = await User.findByPk(req.user.id);
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    if (!req.file) {
+      return fail(res, 400, 'Nenhuma imagem enviada');
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    if (user.avatar && user.avatar !== avatarUrl) {
+      await deleteAvatarFile(user.avatar);
+    }
+
+    await user.update({ avatar: avatarUrl });
+    logger.info(`✅ Avatar atualizado: ${user.email}`);
+
+    return ok(res, serializeUser(user));
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
+
+async function removeAvatar(req, res) {
+  const logger = require('../utils/logger');
+
+  try {
+    await ensureUserProfileSchema();
+    const user = await User.findByPk(req.user.id);
+    if (!user || !user.active) {
+      return fail(res, 404, 'Usuário não encontrado');
+    }
+
+    if (user.avatar) {
+      await deleteAvatarFile(user.avatar);
+      await user.update({ avatar: null });
+      logger.info(`✅ Avatar removido: ${user.email}`);
+    }
+
+    return ok(res, serializeUser(user));
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+}
 
 async function login(req, res) {
   const logger = require('../utils/logger');
@@ -35,7 +171,7 @@ async function login(req, res) {
     }
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, name: user.name },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -47,13 +183,7 @@ async function login(req, res) {
 
     return ok(res, {
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department
-      }
+      user: serializeUser(user)
     });
   } catch (error) {
     logger.error('❌ Erro ao processar login:', {
@@ -243,6 +373,10 @@ async function updateStatus(req, res) {
 
 module.exports = {
   login,
+  getProfile,
+  updateProfile,
+  uploadAvatar,
+  removeAvatar,
   list,
   getById,
   listDepartments,

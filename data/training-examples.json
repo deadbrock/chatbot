@@ -3,12 +3,52 @@
     {
       "message": "quero tirar férias em dezembro",
       "intent": "dp",
-      "reasoning": "Solicitação de férias é assunto de Departamento Pessoal"
+      "reasoning": "Solicitação de férias é assunto de Departamento Pessoal — Folha"
+    },
+    {
+      "message": "preciso do meu holerite",
+      "intent": "dp",
+      "reasoning": "Holerite/contracheque é Departamento Pessoal — Folha"
+    },
+    {
+      "message": "quando cai meu vale transporte?",
+      "intent": "dp",
+      "reasoning": "Vale transporte é benefício do Departamento Pessoal"
+    },
+    {
+      "message": "quero saber sobre vale alimentação",
+      "intent": "dp",
+      "reasoning": "Vale alimentação é benefício do Departamento Pessoal"
+    },
+    {
+      "message": "fui demitido e preciso da rescisão",
+      "intent": "dp",
+      "reasoning": "Rescisão/desligamento é Departamento Pessoal"
+    },
+    {
+      "message": "preciso fazer minha admissão",
+      "intent": "dp",
+      "reasoning": "Admissão de colaborador é Departamento Pessoal"
+    },
+    {
+      "message": "estou de licença maternidade",
+      "intent": "dp",
+      "reasoning": "Afastamento/licença é Departamento Pessoal"
+    },
+    {
+      "message": "preciso transferir de loja",
+      "intent": "dp",
+      "reasoning": "Transferência de colaborador é Folha/DP"
+    },
+    {
+      "message": "documentos do jurídico do dp",
+      "intent": "dp",
+      "reasoning": "Jurídico e arquivo é Departamento Pessoal"
     },
     {
       "message": "quando vou receber meu salário?",
       "intent": "financeiro",
-      "reasoning": "Pagamento de salário é assunto do Financeiro"
+      "reasoning": "Pagamento de salário pode ser Financeiro quando for dúvida de pagamento corporativo"
     },
     {
       "message": "a enceradeira quebrou",
@@ -53,10 +93,110 @@
     {
       "message": "Quero saber do meu salário",
       "intent": "dp",
-      "reasoning": "colaborador salário"
+      "reasoning": "Colaborador perguntando sobre salário/holerite — Departamento Pessoal"
+    },
+    {
+      "message": "meu plano de saúde não apareceu",
+      "intent": "dp",
+      "reasoning": "Plano de saúde é benefício do Departamento Pessoal"
+    },
+    {
+      "message": "preciso atualizar meus dados na folha",
+      "intent": "dp",
+      "reasoning": "Atualização na folha é Departamento Pessoal"
+    },
+    {
+      "message": "quero pedir demissão",
+      "intent": "dp",
+      "reasoning": "Pedido de demissão/rescisão é Departamento Pessoal"
+    },
+    {
+      "message": "estou afastado por doença",
+      "intent": "dp",
+      "reasoning": "Afastamento por doença é Departamento Pessoal"
+    },
+    {
+      "message": "preciso de ajuda com documentos admissionais",
+      "intent": "dp",
+      "reasoning": "Documentos de admissão são Departamento Pessoal"
+    },
+    {
+      "message": "outro assunto do dp",
+      "intent": "dp",
+      "reasoning": "Assunto geral do Departamento Pessoal"
+    },
+    {
+      "message": "a lavadora de piso não funciona",
+      "intent": "manutencao",
+      "reasoning": "Equipamento com defeito é Manutenção"
+    },
+    {
+      "message": "quero renovar meu contrato comercial",
+      "intent": "comercial",
+      "reasoning": "Renovação de contrato é Comercial"
+    },
+    {
+      "message": "preciso de nota fiscal",
+      "intent": "faturamento",
+      "reasoning": "Nota fiscal é Faturamento"
+    },
+    {
+      "message": "sou colaborador e preciso de ajuda",
+      "intent": "dp",
+      "reasoning": "Colaborador buscando ajuda geralmente é Departamento Pessoal"
+    },
+    {
+      "message": "quero falar com o departamento pessoal",
+      "intent": "dp",
+      "reasoning": "Solicitação explícita do Departamento Pessoal"
+    },
+    {
+      "message": "bom dia, preciso do contracheque",
+      "intent": "dp",
+      "reasoning": "Colaborador facilities pedindo contracheque — Departamento Pessoal Folha"
+    },
+    {
+      "message": "boa tarde, a máquina de lavar piso parou",
+      "intent": "manutencao",
+      "reasoning": "Equipamento operacional com defeito — Manutenção"
+    },
+    {
+      "message": "boa noite, tudo bem?",
+      "intent": "dp",
+      "reasoning": "Saudação genérica de colaborador cadastrado — aguardar assunto; classificar como dp genérico ou baixa confiança"
+    },
+    {
+      "message": "preciso reportar problema no posto de trabalho",
+      "intent": "operacional",
+      "reasoning": "Problema operacional em facilities — setor Operacional"
+    },
+    {
+      "message": "supervisor pediu material de limpeza",
+      "intent": "compras",
+      "reasoning": "Solicitação de material operacional — Compras"
+    },
+    {
+      "message": "meu EPI venceu",
+      "intent": "seguranca",
+      "reasoning": "EPI é Segurança do Trabalho"
+    },
+    {
+      "message": "oi, sou do contrato shopping center",
+      "intent": "dp",
+      "reasoning": "Colaborador identificado mencionando contrato — direcionar conforme assunto; sem pedir dados"
+    },
+    {
+      "message": "preciso atualizar meu cadastro de colaborador",
+      "intent": "dp",
+      "reasoning": "Atualização cadastral de colaborador — Departamento Pessoal"
+    },
+    {
+      "message": "escala da equipe de limpeza",
+      "intent": "operacional",
+      "reasoning": "Escala operacional — setor Operacional"
     }
   ],
-  "instructions": "Adicione novos exemplos neste arquivo para treinar a IA. Cada exemplo deve ter: message (mensagem do usuário), intent (intenção correta), e reasoning (explicação)",
-  "updatedAt": "2026-01-13T16:21:43.775Z",
+  "instructions": "Exemplos para FG Services (facilities). Colaboradores cadastrados não precisam informar nome/cidade/contrato — a IA identifica pelo WhatsApp.",
+  "updatedAt": "2026-07-16T16:00:00.000Z",
   "updatedBy": "system"
 }

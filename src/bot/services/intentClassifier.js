@@ -11,6 +11,26 @@ const logger = require('../../utils/logger');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { DP_TOPICS, MENU_TOPIC_MAP } = require('../../config/dpAttendanceRouting');
+const { resolveGroqApiKey, isAutoReplyEnabled, isAIEnabled } = require('../../config/ai');
+
+function resolveApiKey() {
+  return resolveGroqApiKey();
+}
+
+function parseAIJsonResponse(rawText) {
+  if (!rawText) throw new Error('Resposta vazia da IA');
+
+  let clean = String(rawText).trim();
+  clean = clean.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('IA não retornou JSON válido');
+  }
+
+  return JSON.parse(jsonMatch[0]);
+}
 
 class IntentClassifier {
   constructor() {
@@ -18,21 +38,20 @@ class IntentClassifier {
     this.configPath = path.join(__dirname, '../../../data/ai-config.json');
     this.config = this.loadConfig();
     
-    // Sempre usar API Key do .env se disponível (suporta ambas as variáveis para compatibilidade)
-    const apiKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY;
+    const apiKey = resolveApiKey();
     if (apiKey) {
       this.config.apiKey = apiKey;
-      logger.info(`🔑 Groq API Key carregada do .env: ***${apiKey.slice(-6)}`);
+      logger.info(`🔑 API Key carregada do .env: ***${apiKey.slice(-6)}`);
     } else {
-      logger.warn('⚠️ API Key não encontrada no .env (configure GROQ_API_KEY)');
+      logger.warn('⚠️ API Key não encontrada (configure GROQ_API_KEY ou GROK_API_KEY no Railway/.env)');
     }
 
     // Mapeamento de intenções para fluxos
     this.intentMap = {
       // Departamento Pessoal
-      'dp': {
+        'dp': {
         flow: 'dp_menu',
-        keywords: ['férias', 'afastamento', 'benefícios', 'vale', 'plano de saúde', 'atestado', 'licença', 'rescisão', 'demissão', 'holerite', 'contracheque', 'adiantamento']
+        keywords: ['férias', 'ferias', 'afastamento', 'afastar', 'afastamentos', 'colaborador', 'funcionario', 'funcionário', 'benefícios', 'beneficios', 'vale transporte', 'vale alimentação', 'vale alimentacao', 'vale refeição', 'plano de saúde', 'atestado', 'licença', 'licenca', 'rescisão', 'rescisao', 'demissão', 'demissao', 'desligamento', 'desligar', 'holerite', 'contracheque', 'admissão', 'admissao', 'folha', 'departamento pessoal', 'maternidade', 'paternidade']
       },
       
       // Recursos Humanos
@@ -62,7 +81,7 @@ class IntentClassifier {
       // Logística
       'logistica': {
         flow: 'logistics_menu',
-        keywords: ['entrega', 'transporte', 'veículo', 'motorista', 'frete', 'envio', 'remessa']
+        keywords: ['entrega', 'frete', 'veículo', 'veiculo', 'motorista', 'envio', 'remessa', 'rastrear pedido']
       },
       
       // Segurança do Trabalho
@@ -109,22 +128,43 @@ class IntentClassifier {
     };
   }
 
+  /** Modo híbrido: IA + menus (recomendado) */
+  isHybridMode() {
+    return (this.config.mode || 'hybrid') !== 'pure';
+  }
+
+  isPureMode() {
+    return this.config.enabled && !this.isHybridMode();
+  }
+
   /**
    * Classifica a mensagem do usuário usando IA
    */
   async classify(userMessage, userContext = {}) {
     try {
-      logger.info('🧠 Classificando intenção...', { message: userMessage });
-
-      // 🤖 MODO IA PURA: Se IA habilitada, NÃO usar keywords
-      if (this.config.enabled && this.config.apiKey) {
-        logger.info('🤖 [MODO IA PURA] Classificando exclusivamente por IA (SEM keywords)...');
-        const aiResult = await this.classifyWithAI(userMessage, userContext);
-        return aiResult;
+      const apiKey = resolveApiKey();
+      if (apiKey) {
+        this.config.apiKey = apiKey;
+      }
+      if (this.config.enabled !== false) {
+        this.config.enabled = isAIEnabled(true);
       }
 
-      // 🔧 MODO TRADICIONAL: Se IA desabilitada, usar keywords
-      logger.info('🔧 [MODO TRADICIONAL] Classificando por keywords...');
+      logger.info('🧠 Classificando intenção...', { message: userMessage });
+
+      // IA com API Key
+      if (this.config.enabled && this.config.apiKey) {
+        logger.info(`🤖 Classificando por IA (${this.isHybridMode() ? 'híbrido' : 'puro'})...`);
+        try {
+          const aiResult = await this.classifyWithAI(userMessage, userContext);
+          if (aiResult) return aiResult;
+        } catch (aiError) {
+          logger.warn('⚠️ Falha na IA, usando fallback por keywords:', aiError.message);
+        }
+      }
+
+      // Fallback: keywords (IA desabilitada, sem chave, ou falha no Groq)
+      logger.warn('🔧 Classificando por keywords (Groq indisponível ou falhou)...');
       const keywordMatch = this.classifyByKeywords(userMessage);
       
       // Se keywords deram confiança aceitável, usa!
@@ -164,8 +204,7 @@ class IntentClassifier {
       for (const keyword of intentData.keywords) {
         const normalizedKeyword = keyword.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (normalizedMsg.includes(normalizedKeyword)) {
-          // Peso maior para keywords mais específicas
-          const weight = keyword.length > 5 ? 1.5 : 1;
+          const weight = keyword.length > 8 ? 2 : (keyword.length > 5 ? 1.5 : 1);
           score += weight;
           matchedKeywords.push(keyword);
         }
@@ -397,15 +436,18 @@ Responda só isto: {"intent":"categoria","confidence":0.9,"reasoning":"motivo"}`
       );
 
       const result = response.data.choices[0].message.content;
-      const parsed = JSON.parse(result);
+      const parsed = parseAIJsonResponse(result);
 
       logger.info('⚡ Classificação Groq:', parsed);
+      logger.info(`✅ [GROQ] Resposta via API Groq (${this.config.model}) — intent=${parsed.intent}, conf=${parsed.confidence}`);
 
       return {
         intent: parsed.intent,
         flow: this.intentMap[parsed.intent]?.flow || null,
         confidence: parsed.confidence,
         reasoning: parsed.reasoning,
+        userMessage: parsed.userMessage || null,
+        dpTopic: parsed.dpTopic || null,
         method: 'groq',
         rawResponse: parsed
       };
@@ -497,6 +539,10 @@ Responda só isto: {"intent":"categoria","confidence":0.9,"reasoning":"motivo"}`
       ).join('\n\n');
     }
 
+    const dpTopicsText = Object.values(DP_TOPICS)
+      .map((topic) => `- ${topic.label}: ${topic.keywords.slice(0, 6).join(', ')}`)
+      .join('\n');
+
     return `Você é um assistente virtual educado e prestativo da FG SERVICES, especializado em entender e direcionar solicitações.
 
 🎯 SUA MISSÃO:
@@ -512,12 +558,16 @@ ${examplesText}
 ---` : ''}
 
 📋 DADOS QUE VOCÊ DEVE COLETAR (quando necessário):
-- SEMPRE: Nome completo
-- SEMPRE: Email de contato
-- SE FOR COLABORADOR: Contrato/Loja que trabalha
+- Se is_employee=true no CONTEXTO: NÃO peça nome, e-mail, contrato, cidade ou estado — já estão no cadastro
+- Para colaboradores cadastrados: identifique o assunto e direcione ao departamento correto
+- Para visitantes/desconhecidos: colete nome completo, e-mail e contrato/loja quando necessário
+
+🕐 SAUDAÇÃO:
+- Use tom educado e cordial
+- Bom dia: 5h–11h59 | Boa tarde: 12h–17h59 | Boa noite: demais horários
 
 🏢 DEPARTAMENTOS DISPONÍVEIS:
-- dp: Departamento Pessoal (férias, benefícios, holerite, atestados)
+- dp: Departamento Pessoal (férias, benefícios, holerite, atestados, admissão, rescisão, folha)
 - financeiro: Financeiro (salário, pagamentos, adiantamentos)
 - rh: Recursos Humanos (vagas, recrutamento, currículos)
 - faturamento: Faturamento (notas fiscais, cobranças a clientes)
@@ -530,6 +580,11 @@ ${examplesText}
 - novo_cliente: Novo Cliente (interesse em contratar)
 - trabalhe_conosco: Trabalhe Conosco (vagas de emprego)
 - atendimento_humano: Atendimento Humano (urgências, reclamações)
+
+📂 TEMAS DO DEPARTAMENTO PESSOAL (quando intent=dp, informe dpTopic):
+${dpTopicsText}
+
+Temas válidos para dpTopic: ${Object.values(MENU_TOPIC_MAP).join(', ')}
 
 ---
 
@@ -545,16 +600,24 @@ INTENÇÕES DISPONÍVEIS:
 ${intents}
 
 INSTRUÇÕES:
-1. Seja EDUCADO e PRESTATIVO
+1. Seja EDUCADO, CORDIAL e PRESTATIVO
 2. Identifique a intenção do usuário
 3. Atribua confiança de 0 a 1
-4. Se precisar de dados (nome, email, contrato), indique no reasoning
+4. Se is_employee=true, NÃO solicite dados pessoais — apenas classifique o assunto
+5. Mensagens genéricas (oi, olá): apresente opções de departamentos em userMessage
+6. O campo userMessage é a mensagem COMPLETA enviada ao usuário no WhatsApp — inclua saudação, orientação e menu numerado quando necessário
+7. NÃO use menus fixos do sistema — você cria o menu dinamicamente em userMessage
+8. Informe que o usuário pode digitar CANCELAR para recomeçar
+9. Quando o assunto estiver claro (ex.: afastamento, holerite), use dpTopic correto: Afastamentos, Benefícios, Rescisões, Admissão, Folha de Pagamento, etc.
+10. Se precisar de sub-opções (ex.: tipos de afastamento), use menu numerado 1, 2, 3 — o sistema roteará automaticamente após a escolha
 
 RESPONDA APENAS COM JSON:
 {
   "intent": "nome_da_intencao",
   "confidence": 0.95,
-  "reasoning": "Explicação educada e prestativa"
+  "reasoning": "Explicação interna breve",
+  "dpTopic": "Benefícios ou null se não for dp",
+  "userMessage": "Mensagem completa e educada para o WhatsApp com menu numerado quando fizer sentido"
 }`;
   }
 
@@ -567,11 +630,12 @@ RESPONDA APENAS COM JSON:
         const data = fs.readFileSync(this.configPath, 'utf8');
         const config = JSON.parse(data);
         logger.info('📂 Configurações da IA carregadas do arquivo');
-        const autoReplyEnabled = process.env.BOT_AUTO_REPLY === 'true';
+        const apiKey = resolveApiKey();
         return {
           ...config,
-          enabled: autoReplyEnabled ? config.enabled : false,
-          apiKey: process.env.AI_API_KEY || null
+          enabled: isAIEnabled(config.enabled),
+          mode: config.mode || 'hybrid',
+          apiKey
         };
       }
     } catch (error) {
@@ -580,12 +644,13 @@ RESPONDA APENAS COM JSON:
     
     // Configuração padrão
     return {
-      enabled: false,
+      enabled: isAIEnabled(true),
+      mode: 'pure',
       provider: 'groq',
       model: 'llama-3.1-8b-instant',
-      apiKey: process.env.AI_API_KEY || null,
-      confidenceThreshold: 0.4,
-      maxTokens: 150,
+      apiKey: resolveApiKey(),
+      confidenceThreshold: 0.55,
+      maxTokens: 200,
       temperature: 0.3
     };
   }
@@ -636,8 +701,9 @@ RESPONDA APENAS COM JSON:
     logger.info('🔧 [INTENT-CLASSIFIER] Config DEPOIS do merge:', JSON.stringify({ ...this.config, apiKey: this.config.apiKey ? '***' : null }, null, 2));
     
     // Sempre manter API Key do .env
-    if (process.env.AI_API_KEY) {
-      this.config.apiKey = process.env.AI_API_KEY;
+    const envKey = resolveApiKey();
+    if (envKey) {
+      this.config.apiKey = envKey;
       logger.info('🔑 [INTENT-CLASSIFIER] API Key restaurada do .env');
     }
     
@@ -670,11 +736,88 @@ RESPONDA APENAS COM JSON:
   getStats() {
     return {
       enabled: this.config.enabled,
+      mode: this.config.mode || 'hybrid',
+      hybridMode: this.isHybridMode(),
       provider: this.config.provider,
       hasApiKey: !!this.config.apiKey,
+      operational: this.isEnabled(),
       threshold: this.config.confidenceThreshold,
-      availableIntents: Object.keys(this.intentMap).length
+      availableIntents: Object.keys(this.intentMap).length,
+      trainingExamples: this.loadTrainingExamples().length
     };
+  }
+
+  /**
+   * Interpreta assunto diretamente pela mensagem (fallback rápido sem API)
+   */
+  resolveSubjectDetails(message) {
+    const normalized = String(message || '').toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    if (normalized.length < 4) return null;
+
+    const keywordMatch = this.classifyByKeywords(message);
+    const intent = keywordMatch?.intent || null;
+    let dpTopic = null;
+    let subject = String(message || '').trim().slice(0, 120);
+    let shouldRoute = false;
+    let needsMenu = false;
+
+    if (/maternidade/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Afastamentos', subject: 'Licença maternidade', confidence: 0.95, shouldRoute: true };
+    }
+    if (/paternidade/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Afastamentos', subject: 'Licença paternidade', confidence: 0.95, shouldRoute: true };
+    }
+
+    if (/afast|licen[cç]a|atestado|afastamento|afastar|desligar colaborador|desligamento de colaborador/.test(normalized)) {
+      subject = 'Afastamento de colaborador';
+      dpTopic = 'Outros e Afastamentos';
+      needsMenu = !/maternidade|paternidade|medico|medica|doenca|doença|acidente/.test(normalized);
+      return {
+        intent: 'dp',
+        dpTopic,
+        subject,
+        confidence: 0.92,
+        shouldRoute: !needsMenu,
+        needsMenu,
+        menuContext: 'afastamento'
+      };
+    }
+
+    if (/holerite|contracheque|pagamento|salario|salário|decimo|13/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Folha e Transferências', subject: 'Folha de pagamento / holerite', confidence: 0.9, shouldRoute: true };
+    }
+    if (/ferias|férias/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Folha e Transferências', subject: 'Férias', confidence: 0.9, shouldRoute: true };
+    }
+    if (/beneficio|benefício|vale transporte|vale refeicao|vale refeição|plano de saude|plano de saúde/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Benefícios', subject: 'Benefícios', confidence: 0.88, shouldRoute: true };
+    }
+    if (/admissao|admissão|contratacao|contratação|admitir/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Admissão', subject: 'Admissão', confidence: 0.88, shouldRoute: true };
+    }
+    if (/rescisao|rescisão|demissao|demissão|desligamento/.test(normalized)) {
+      return { intent: 'dp', dpTopic: 'Rescisões', subject: 'Rescisão / desligamento', confidence: 0.9, shouldRoute: true };
+    }
+
+    if (keywordMatch && keywordMatch.confidence >= 0.35) {
+      shouldRoute = keywordMatch.confidence >= 0.55;
+      if (intent === 'dp' && !dpTopic) {
+        dpTopic = 'Outros e Afastamentos';
+      }
+      return {
+        intent,
+        dpTopic,
+        subject,
+        confidence: keywordMatch.confidence,
+        shouldRoute,
+        matchedKeywords: keywordMatch.matchedKeywords
+      };
+    }
+
+    return null;
   }
 }
 

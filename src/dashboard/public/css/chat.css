@@ -22,13 +22,13 @@
 /* Container Principal */
 .chat-container {
   display: flex;
-  height: calc(100vh - 80px);
+  height: calc(100vh - var(--navbar-height, 64px) - 3.5rem);
   min-height: 560px;
   background-color: var(--chat-sidebar-bg);
   border: 1px solid var(--chat-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg, 16px);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(11, 20, 26, 0.08);
+  box-shadow: var(--shadow-sm, 0 4px 12px rgba(15, 23, 42, 0.06));
   position: relative;
 }
 

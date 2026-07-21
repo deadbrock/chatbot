@@ -176,6 +176,16 @@ const io = socketIO(server, {
 global.io = io;
 
 // Middlewares
+function isVercelOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'vercel.app' || hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
 // Configurar CORS para permitir requisições do frontend (Vercel)
 const corsOptions = {
   origin: function (origin, callback) {
@@ -189,7 +199,7 @@ const corsOptions = {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       // Adicionar origens do Vercel via variável de ambiente
-      ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [])
+      ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean) : [])
     ];
     
     // Em desenvolvimento, permitir qualquer origem
@@ -197,24 +207,33 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // Em produção, verificar se a origem está permitida
-    // Se ALLOWED_ORIGINS não estiver configurado, permitir qualquer origem (temporário para debug)
-    const hasCustomOrigins = process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim() !== '';
-    
+    const hasCustomOrigins = allowedOrigins.length > 4;
+    const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS !== 'false';
+    const hasVercelInAllowList = allowedOrigins.some((o) => o.includes('vercel.app'));
+
     if (!hasCustomOrigins) {
-      // Se não houver ALLOWED_ORIGINS configurado, permitir todas as origens (temporário)
       logger.warn(`⚠️ ALLOWED_ORIGINS não configurado. Permitindo todas as origens (não recomendado para produção)`);
-      callback(null, true);
-    } else if (allowedOrigins.includes(origin)) {
-      // Origem está na lista permitida
-      callback(null, true);
-    } else {
-      // Log para debug
-      logger.warn(`⚠️ CORS bloqueado para origem: ${origin}`);
-      logger.info(`💡 Origens permitidas: ${allowedOrigins.join(', ')}`);
-      logger.info(`💡 Configure ALLOWED_ORIGINS no Railway para permitir esta origem`);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Previews da Vercel (astrochat-xxx.vercel.app) — mesma equipe/projeto
+    if (
+      allowVercelPreviews
+      && isVercelOrigin(origin)
+      && (hasVercelInAllowList || process.env.ALLOW_VERCEL_PREVIEWS === 'true')
+    ) {
+      logger.debug(`✅ CORS preview Vercel permitido: ${origin}`);
+      return callback(null, true);
+    }
+
+    logger.warn(`⚠️ CORS bloqueado para origem: ${origin}`);
+    logger.info(`💡 Origens permitidas: ${allowedOrigins.join(', ')}`);
+    logger.info(`💡 Previews Vercel: configure ALLOWED_ORIGINS com sua URL .vercel.app ou ALLOW_VERCEL_PREVIEWS=true`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

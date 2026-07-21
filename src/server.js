@@ -209,7 +209,12 @@ const corsOptions = {
     
     const hasCustomOrigins = allowedOrigins.length > 4;
     const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS !== 'false';
-    const hasVercelInAllowList = allowedOrigins.some((o) => o.includes('vercel.app'));
+
+    // Produção e previews Vercel (*.vercel.app)
+    if (allowVercelPreviews && isVercelOrigin(origin)) {
+      logger.debug(`✅ CORS Vercel permitido: ${origin}`);
+      return callback(null, true);
+    }
 
     if (!hasCustomOrigins) {
       logger.warn(`⚠️ ALLOWED_ORIGINS não configurado. Permitindo todas as origens (não recomendado para produção)`);
@@ -217,16 +222,6 @@ const corsOptions = {
     }
 
     if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    // Previews da Vercel (astrochat-xxx.vercel.app) — mesma equipe/projeto
-    if (
-      allowVercelPreviews
-      && isVercelOrigin(origin)
-      && (hasVercelInAllowList || process.env.ALLOW_VERCEL_PREVIEWS === 'true')
-    ) {
-      logger.debug(`✅ CORS preview Vercel permitido: ${origin}`);
       return callback(null, true);
     }
 

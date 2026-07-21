@@ -10,6 +10,7 @@ const { formatDateStr, dateDiffMinutes, dateDiffMillis, rawExtractHourSQL } = re
 const userPresenceService = require('../services/userPresenceService');
 
 const STAFF_ROLES = ['agent', 'manager'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function buildStaffUserWhere({ onlineOnly = false } = {}) {
   const where = {
@@ -85,7 +86,7 @@ async function ticketsByDepartment(req, res) {
         [fn('SUM', literal("CASE WHEN status = 'closed' THEN 1 ELSE 0 END")), 'closed']
       ],
       group: ['department'],
-      order: [[literal('count'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       raw: true
     });
     return ok(res, rows);
@@ -99,7 +100,7 @@ async function ticketsByStatus(req, res) {
     const rows = await Ticket.findAll({
       attributes: [[col('status'), '_id'], [fn('COUNT', col('id')), 'count']],
       group: ['status'],
-      order: [[literal('count'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       raw: true
     });
     return ok(res, rows);
@@ -161,7 +162,7 @@ async function agentsPerformance(req, res) {
       ],
       where: { assignedTo: { [Op.ne]: null } },
       group: ['assignedTo'],
-      order: [[literal('totalTickets'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       limit: 10,
       raw: true
     });
@@ -296,12 +297,12 @@ async function contactsRanking(req, res) {
       ],
       where: { userId: { [Op.ne]: null } },
       group: ['userId', 'department'],
-      order: [[col('ticketCount'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       limit: parseInt(limit, 10),
       raw: true
     });
 
-    const contactIds = rankings.map((r) => r.userId).filter(Boolean);
+    const contactIds = rankings.map((r) => r.userId).filter((id) => UUID_RE.test(String(id)));
     const contacts = contactIds.length
       ? await Contact.findAll({
           where: { id: { [Op.in]: contactIds } },
@@ -342,7 +343,7 @@ async function agentsRanking(req, res) {
       ],
       where: { assignedTo: { [Op.ne]: null } },
       group: ['assignedTo'],
-      order: [[col('ticketCount'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       raw: true
     });
 
@@ -456,7 +457,7 @@ async function hourlyActivity(req, res) {
       ],
       where: { createdAt: { [Op.gte]: today } },
       group: [hourExpr],
-      order: [[literal('hour'), 'ASC']],
+      order: [[hourExpr, 'ASC']],
       raw: true
     });
 
@@ -513,7 +514,7 @@ async function departmentDistribution(req, res) {
         [fn('COUNT', col('id')), 'count']
       ],
       group: ['department'],
-      order: [[literal('count'), 'DESC']],
+      order: [[fn('COUNT', col('id')), 'DESC']],
       raw: true
     });
 

@@ -31,6 +31,31 @@ function buildChatScopeBaseWhere({ department, assignedTo }) {
   return where;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function findContactForTicket(ticket) {
+  const userId = ticket.userId;
+  if (!userId) return null;
+
+  if (UUID_RE.test(String(userId))) {
+    return Contact.findByPk(userId);
+  }
+
+  const digits = contactDisplayUtils.normalizePhoneDigits(userId);
+  if (digits) {
+    return Contact.findOne({
+      where: {
+        [Op.or]: [
+          { phone: { [Op.like]: `%${digits}%` } },
+          { whatsappId: { [Op.like]: `%${digits}%` } }
+        ]
+      }
+    });
+  }
+
+  return null;
+}
+
 async function getUnreadTicketIds() {
   const rows = await ChatMessage.findAll({
     attributes: ['ticketId'],
@@ -76,8 +101,8 @@ async function enrichTickets(tickets) {
         where: { ticketId: ticket.id },
         order: [['timestamp', 'DESC']]
       }),
-      ChatMessage.countUnread(ticket.id),
-      ticket.userId ? Contact.findByPk(ticket.userId) : null
+      ChatMessage.countUnread(ticket.id, { by: 'ticket' }),
+      findContactForTicket(ticket)
     ]);
 
     const rawPhone = contact?.phone || (json.userPhone || '').split('@')[0];
@@ -157,7 +182,7 @@ async function list(req, res) {
         where.id = {
           [Op.in]: unreadIds.length
             ? unreadIds
-            : ['00000000-0000-0000-0000-000000000000']
+            : [-1]
         };
       } else if (filter === 'open') {
         where.status = 'open';

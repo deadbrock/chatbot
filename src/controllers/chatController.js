@@ -128,7 +128,7 @@ async function getTicketMessages(req, res) {
       ]
     });
 
-    const unreadCount = await ChatMessage.countUnread(ticketId);
+    const unreadCount = await ChatMessage.countUnread(ticketId, { by: 'ticket' });
     const ordered = messages.reverse();
 
     return sendSuccess(res, {
